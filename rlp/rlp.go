@@ -1,8 +1,8 @@
 package rlp
 
 import (
+	"encoding/binary"
 	"math"
-	"math/bits"
 )
 
 type Item struct {
@@ -28,20 +28,15 @@ func encode(input *Item) []byte {
 func encodeLength(input []byte, offset uint8) []byte {
 	switch l := uint64(len(input)); {
 	case l < 56:
-		// range of first byte in decimal: [128, 183]
-		return []byte{byte(uint64(offset) + l)}
+		header := uint64(offset) + l
+		return []byte{byte(header)} // (max(128,192) + 55) < 255
 	case l <= math.MaxUint64:
-		// The following calculation finds the number
-		// of bytes needed to represent the length.
-		// This is a standard way to compute the cieling
-		// of the length in bits divided by the number
-		// of bits in a byte.
-		n := 1 + ((bits.Len(64) - 1) / 8)
-		// range of first byte in decimal: [184, 191]
-		return []byte{
-			byte(int(offset) + 55 + n),
-			byte(l),
-		}
+		var (
+			buf    = make([]byte, binary.MaxVarintLen64)
+			n      = binary.PutUvarint(buf, l) //bytes needed to encode length
+			header = int(offset) + 55 + n
+		)
+		return append([]byte{byte(header)}, buf[:n]...)
 	default:
 		return []byte{}
 	}
