@@ -10,7 +10,7 @@ func BenchmarkEncode(b *testing.B) {
 	payload := []byte("hello world")
 	b.ReportAllocs()
 	for n := 0; n < b.N; n++ {
-		encode(&Item{D: payload})
+		Encode(&Item{D: payload})
 	}
 }
 
@@ -164,7 +164,7 @@ func TestEncode(t *testing.T) {
 		},
 	}
 	for _, tc := range cases {
-		got := encode(tc.item)
+		got := Encode(tc.item)
 		if !bytes.Equal(tc.want, got) {
 			t.Errorf("%s\nwant:\n%v\ngot:\n%v\n", tc.desc, tc.want, got)
 		}

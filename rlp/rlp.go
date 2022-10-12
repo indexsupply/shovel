@@ -10,7 +10,7 @@ type Item struct {
 	L []*Item
 }
 
-func encode(input *Item) []byte {
+func Encode(input *Item) []byte {
 	if input.D != nil {
 		if len(input.D) == 1 && input.D[0] < 128 {
 			return input.D
@@ -20,7 +20,7 @@ func encode(input *Item) []byte {
 
 	var out []byte
 	for i := range input.L {
-		out = append(out, encode(input.L[i])...)
+		out = append(out, Encode(input.L[i])...)
 	}
 	return append(encodeLength(out, 192), out...)
 }
