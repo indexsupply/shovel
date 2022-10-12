@@ -11,7 +11,7 @@ type Item struct {
 }
 
 func encode(input *Item) []byte {
-	if len(input.D) > 0 {
+	if input.D != nil {
 		if len(input.D) == 1 && input.D[0] < 128 {
 			return input.D
 		}
