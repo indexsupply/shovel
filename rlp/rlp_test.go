@@ -6,6 +6,14 @@ import (
 	"testing"
 )
 
+func BenchmarkEncode(b *testing.B) {
+	payload := []byte("hello world")
+	b.ReportAllocs()
+	for n := 0; n < b.N; n++ {
+		encode(&Item{D: payload})
+	}
+}
+
 func intTo2b(i uint16) []byte {
 	b := make([]byte, 2)
 	binary.BigEndian.PutUint16(b, i)
