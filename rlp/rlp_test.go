@@ -2,14 +2,25 @@ package rlp
 
 import (
 	"bytes"
+	"encoding/binary"
 	"testing"
 )
+
+func intTo2b(i uint16) []byte {
+	b := make([]byte, 2)
+	binary.BigEndian.PutUint16(b, i)
+	return b
+}
 
 func TestEncode(t *testing.T) {
 	cases := []struct {
 		item *Item
 		want []byte
 	}{
+		{
+			&Item{D: intTo2b(1024)},
+			[]byte{0x82, 0x04, 0x00},
+		},
 		{
 			&Item{
 				L: []*Item{
