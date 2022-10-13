@@ -32,7 +32,8 @@ func encodeLength(input []byte, offset uint8) []byte {
 		return []byte{byte(header)} // (max(128,192) + 55) < 255
 	case l <= math.MaxUint64:
 		var (
-			buf    = make([]byte, binary.MaxVarintLen64)
+			// header must be <= 8 bytes
+			buf    = make([]byte, 8)
 			n      = binary.PutUvarint(buf, l) //bytes needed to encode length
 			header = int(offset) + 55 + n
 		)
