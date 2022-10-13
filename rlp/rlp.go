@@ -42,6 +42,12 @@ func encodeLength(input []byte, offset uint8) []byte {
 	}
 }
 
+func decodeLength(input []byte, offset uint64) uint64 {
+	n := uint64(input[0]) - offset
+	length, _ := binary.Uvarint(input[1 : n+1])
+	return n + length
+}
+
 func Decode(input []byte) *Item {
 	switch {
 	case input[0] < 128: // string
@@ -91,10 +97,4 @@ func Decode(input []byte) *Item {
 		}
 		return item
 	}
-}
-
-func decodeLength(input []byte, offset uint64) uint64 {
-	n := uint64(input[0]) - offset
-	length, _ := binary.Uvarint(input[1 : n+1])
-	return n + length
 }
