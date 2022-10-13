@@ -41,3 +41,60 @@ func encodeLength(input []byte, offset uint8) []byte {
 		return []byte{}
 	}
 }
+
+func Decode(input []byte) *Item {
+	switch {
+	case input[0] < 128: // string
+		return &Item{D: []byte{input[0]}}
+	case input[0] < 184: // string
+		return &Item{D: input[1:]}
+	case input[0] < 192: // string
+		headerSize := 1 + input[0] - 183
+		return &Item{D: input[headerSize:]}
+	default:
+		// The first byte indicates a list
+		// and if the first byte is > 247 then
+		// the list has a length of > 55 and
+		// therefore the next (input[0] - 247)
+		// bytes will represent the length of the list.
+		// We advance the cursor past the length.
+		var i uint64 = 1
+		if input[0] > 247 {
+			i += uint64(input[0]) - 247
+		}
+
+		item := &Item{L: []*Item{}}
+		for i < uint64(len(input)) {
+			var n uint64
+			switch {
+			case input[i] < 128:
+				// 1 byte string
+				n = 1
+			case input[i] < 184:
+				// < 55 byte string
+				n += 1 //header byte
+				n += uint64(input[i]) - 128
+			case input[i] < 192:
+				// > 55 byte string
+				n += 1 //header byte
+				n += decodeLength(input[i:], 183)
+			case input[i] < 248:
+				n += 1 // header byte
+				n += uint64(input[i]) - 192
+			default:
+				n += 1 //header byte
+				n += decodeLength(input[i:], 247)
+			}
+
+			item.L = append(item.L, Decode(input[i:i+n]))
+			i += n
+		}
+		return item
+	}
+}
+
+func decodeLength(input []byte, offset uint64) uint64 {
+	n := uint64(input[0]) - offset
+	length, _ := binary.Uvarint(input[1 : n+1])
+	return n + length
+}

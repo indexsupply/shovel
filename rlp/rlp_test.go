@@ -3,6 +3,7 @@ package rlp
 import (
 	"bytes"
 	"encoding/binary"
+	"reflect"
 	"testing"
 )
 
@@ -18,6 +19,68 @@ func intTo2b(i uint16) []byte {
 	b := make([]byte, 2)
 	binary.BigEndian.PutUint16(b, i)
 	return b
+}
+
+func TestDecode(t *testing.T) {
+	cases := []struct {
+		desc string
+		item *Item
+	}{
+		{
+			"short string",
+			&Item{D: []byte("a")},
+		},
+		{
+			"long string",
+			&Item{D: []byte("Lorem ipsum dolor sit amet, consectetur adipisicing elit")},
+		},
+
+		{
+			"empty list",
+			&Item{L: []*Item{}},
+		},
+		{
+			"list of short strings",
+			&Item{
+				L: []*Item{
+					&Item{D: []byte("a")},
+					&Item{D: []byte("b")},
+				},
+			},
+		},
+		{
+			"list of long strings",
+			&Item{
+				L: []*Item{
+					&Item{D: []byte("Lorem ipsum dolor sit amet, consectetur adipisicing elit")},
+					&Item{D: []byte("Porem ipsum dolor sit amet, consectetur adipisicing elit")},
+				},
+			},
+		},
+		{
+			"the set theoretical representation of three",
+			&Item{
+				L: []*Item{
+					&Item{L: []*Item{}},
+					&Item{L: []*Item{
+						&Item{L: []*Item{}},
+					}},
+					&Item{L: []*Item{
+						&Item{L: []*Item{}},
+						&Item{L: []*Item{
+							&Item{L: []*Item{}},
+						}},
+					}},
+				},
+			},
+		},
+	}
+	for _, tc := range cases {
+		got := Decode(Encode(tc.item))
+		if !reflect.DeepEqual(tc.item, got) {
+			t.Errorf("%s\nwant:\n%# v\ngot:\n%# v\n", tc.desc, tc.item, got)
+		}
+	}
 }
 
 func TestEncode(t *testing.T) {
@@ -124,15 +187,15 @@ func TestEncode(t *testing.T) {
 				},
 			},
 			[]byte{
-				0xc8,
-				0x83,
-				0x63, //c
-				0x61, //a
-				0x74, //t
-				0x83,
-				0x64, //d
-				0x6f, //o
-				0x67, //g
+				0xc8, // 200
+				0x83, // 131
+				0x63, // c
+				0x61, // a
+				0x74, // t
+				0x83, // 131
+				0x64, // d
+				0x6f, // o
+				0x67, // g
 			},
 		},
 		{
