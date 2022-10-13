@@ -3,9 +3,34 @@ package rlp
 import (
 	"bytes"
 	"encoding/binary"
+	"math/rand"
 	"reflect"
 	"testing"
 )
+
+func randStr(n int) string {
+	all := []rune("abcdefghijklmnopqrstuvwxyz")
+	res := make([]rune, n)
+	for i := range res {
+		res[i] = all[rand.Intn(len(all))]
+	}
+	return string(res)
+}
+
+func FuzzEncodeList(f *testing.F) {
+	var x, y uint8 = 1, 10
+	f.Add(x, y)
+	f.Fuzz(func(t *testing.T, numItems, itemLength uint8) {
+		item := &Item{L: []*Item{}}
+		for i := 0; i < int(numItems); i++ {
+			item.L = append(item.L, &Item{D: []byte(randStr(int(itemLength)))})
+		}
+		got := Decode(Encode(item))
+		if !reflect.DeepEqual(got, item) {
+			t.Error("not equal")
+		}
+	})
+}
 
 func BenchmarkEncode(b *testing.B) {
 	payload := []byte("hello world")
