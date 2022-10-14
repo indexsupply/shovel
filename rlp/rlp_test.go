@@ -3,6 +3,7 @@ package rlp
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"reflect"
 	"testing"
 )
@@ -18,7 +19,11 @@ func FuzzEncode(f *testing.F) {
 		for i := 0; i < int(n); i++ {
 			item.L = append(item.L, &Item{D: d})
 		}
-		got := Decode(Encode(item))
+		b, err := Encode(item)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := Decode(b)
 		if !reflect.DeepEqual(item, got) {
 			t.Errorf("want:\n%v\ngot:\n%v\n", item, got)
 		}
@@ -29,7 +34,10 @@ func BenchmarkEncode(b *testing.B) {
 	payload := []byte("hello world")
 	b.ReportAllocs()
 	for n := 0; n < b.N; n++ {
-		Encode(&Item{D: payload})
+		_, err := Encode(&Item{D: payload})
+		if err != nil {
+			b.Fatal(err)
+		}
 	}
 }
 
@@ -93,7 +101,11 @@ func TestDecode(t *testing.T) {
 		},
 	}
 	for _, tc := range cases {
-		got := Decode(Encode(tc.item))
+		b, err := Encode(tc.item)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := Decode(b)
 		if !reflect.DeepEqual(tc.item, got) {
 			t.Errorf("%s\nwant:\n%# v\ngot:\n%# v\n", tc.desc, tc.item, got)
 		}
@@ -105,26 +117,43 @@ func TestEncode(t *testing.T) {
 		desc string
 		item *Item
 		want []byte
+		err  error
 	}{
+		{
+			"missing item",
+			nil,
+			[]byte{},
+			ErrTooFewArgs,
+		},
+		{
+			"setting L & D",
+			&Item{D: []byte{}, L: []*Item{}},
+			[]byte{},
+			ErrTooManyArgs,
+		},
 		{
 			"zero byte",
 			&Item{D: []byte{byte(0)}},
 			[]byte{0x00},
+			nil,
 		},
 		{
 			"int 0",
 			&Item{D: []byte{}},
 			[]byte{0x80},
+			nil,
 		},
 		{
 			"int 1024",
 			&Item{D: intTo2b(1024)},
 			[]byte{0x82, 0x04, 0x00},
+			nil,
 		},
 		{
 			"empty string",
 			&Item{D: []byte("")},
 			[]byte{0x80},
+			nil,
 		},
 		{
 			"non-empty string",
@@ -189,11 +218,13 @@ func TestEncode(t *testing.T) {
 				0x69,
 				0x74,
 			},
+			nil,
 		},
 		{
 			"empty list",
 			&Item{L: []*Item{}},
 			[]byte{0xc0},
+			nil,
 		},
 		{
 			"list of strings",
@@ -214,6 +245,7 @@ func TestEncode(t *testing.T) {
 				0x6f, // o
 				0x67, // g
 			},
+			nil,
 		},
 		{
 			"the set theoretical representation of three",
@@ -241,10 +273,19 @@ func TestEncode(t *testing.T) {
 				0xc1,
 				0xc0,
 			},
+			nil,
 		},
 	}
 	for _, tc := range cases {
-		got := Encode(tc.item)
+		if tc.desc != "missing item" {
+			continue
+		}
+		got, err := Encode(tc.item)
+		if err != nil {
+			if !errors.Is(err, tc.err) {
+				t.Fatalf("%s: want: %v got: %v", tc.desc, tc.err, err)
+			}
+		}
 		if !bytes.Equal(tc.want, got) {
 			t.Errorf("%s\nwant:\n%v\ngot:\n%v\n", tc.desc, tc.want, got)
 		}

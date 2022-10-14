@@ -4,7 +4,10 @@
 // https://ethereum.org/en/developers/docs/data-structures-and-encoding/rlp/
 package rlp
 
-import "encoding/binary"
+import (
+	"encoding/binary"
+	"errors"
+)
 
 const (
 	str1L, str1H     byte = 000, 127
@@ -25,38 +28,53 @@ type Item struct {
 	L []*Item
 }
 
-func Encode(input *Item) []byte {
+var (
+	ErrTooManyArgs = errors.New("must set D xor L")
+	ErrTooFewArgs  = errors.New("input Item is nil")
+)
+
+func Encode(input *Item) ([]byte, error) {
+	if input == nil {
+		return nil, ErrTooFewArgs
+	}
+	if input.D != nil && input.L != nil {
+		return nil, ErrTooManyArgs
+	}
 	if input.D != nil {
 		switch n := len(input.D); {
 		case n == 1 && input.D[0] <= str1H:
-			return input.D
+			return input.D, nil
 		case n <= 55:
 			return append(
 				[]byte{str55L + byte(n)},
 				input.D...,
-			)
+			), nil
 		default:
 			return append(
 				encodeLength(str55H, len(input.D)),
 				input.D...,
-			)
+			), nil
 		}
 	}
 
 	var out []byte
 	for i := range input.L {
-		out = append(out, Encode(input.L[i])...)
+		b, err := Encode(input.L[i])
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, b...)
 	}
 	if len(out) <= 55 {
 		return append(
 			[]byte{list55L + byte(len(out))},
 			out...,
-		)
+		), nil
 	}
 	return append(
 		encodeLength(list55H, len(out)),
 		out...,
-	)
+	), nil
 }
 
 func encodeLength(t byte, l int) []byte {
