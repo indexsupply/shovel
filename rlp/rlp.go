@@ -95,19 +95,46 @@ func decodeLength(t byte, input []byte) int {
 	return int(n) + int(length)
 }
 
-func Decode(input []byte) *Item {
+var (
+	ErrNoBytes      = errors.New("input has no bytes")
+	ErrTooManyBytes = errors.New("input has more bytes than specified by outermost header")
+	ErrTooFewBytes  = errors.New("input has fewer bytes than specified by header")
+)
+
+func Decode(input []byte) (*Item, int, error) {
+	if len(input) == 0 {
+		return nil, 0, ErrNoBytes
+	}
 	switch {
 	case input[0] <= str1H:
-		return &Item{D: []byte{input[0]}}
+		if len(input) > 1 {
+			return nil, 0, ErrTooManyBytes
+		}
+		return &Item{D: []byte{input[0]}}, 1, nil
 	case input[0] <= str55H:
-		i := 1
-		n := input[0] - str1H
-		return &Item{D: input[i:n]}
+		var (
+			i = 1
+			n = int(input[0] - str1H)
+		)
+		switch {
+		case n > len(input):
+			return nil, 0, ErrTooManyBytes
+		case n < len(input)-1:
+			return nil, 0, ErrTooFewBytes
+		}
+		return &Item{D: input[i:n]}, n, nil
 	case input[0] <= strNH:
-		i := int(1 + (input[0] - str55H)) //head length
-		n := 1                            //header byte
-		n += decodeLength(str55H, input)
-		return &Item{D: input[i:n]}
+		var (
+			i = int(1 + (input[0] - str55H))    //head length
+			n = 1 + decodeLength(str55H, input) // add 1 for header byte
+		)
+		switch {
+		case n > len(input):
+			return nil, 0, ErrTooManyBytes
+		case n < len(input)-1:
+			return nil, 0, ErrTooFewBytes
+		}
+		return &Item{D: input[i:n]}, n, nil
 	default:
 		// The first byte indicates a list
 		// and if the first byte is >= 248 (listNL)
@@ -115,11 +142,26 @@ func Decode(input []byte) *Item {
 		// therefore the next (input[0]-247 (list55H))
 		// bytes will describe the length of the list.
 		// We advance the cursor i past the length description.
-		i := 1
-		if input[0] >= listNL {
+		var i, listSize int
+		switch {
+		case input[0] <= list55H:
+			i = 1
+			listSize = int(input[0] - list55L)
+		case input[0] <= listNH:
+			i = 1 //header byte
 			i += int(input[0] - list55H)
+			listSize = decodeLength(list55H, input)
+			listSize-- //account for header byte
 		}
 
+		switch {
+		case listSize < len(input[i:]):
+			return nil, 0, ErrTooManyBytes
+		case listSize > len(input[i:]):
+			return nil, 0, ErrTooFewBytes
+		}
+
+		var bytesRead int
 		item := &Item{L: []*Item{}}
 		for i < len(input) {
 			var n int
@@ -143,9 +185,18 @@ func Decode(input []byte) *Item {
 				n += decodeLength(list55H, input[i:])
 			}
 
-			item.L = append(item.L, Decode(input[i:i+n]))
+			if int(i+n) > len(input) {
+				return nil, bytesRead, ErrTooFewBytes
+			}
+
+			d, nb, err := Decode(input[i : i+n])
+			if err != nil {
+				return nil, nb, err
+			}
+			item.L = append(item.L, d)
 			i += n
+			bytesRead += nb
 		}
-		return item
+		return item, bytesRead, nil
 	}
 }

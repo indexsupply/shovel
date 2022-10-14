@@ -23,7 +23,10 @@ func FuzzEncode(f *testing.F) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		got := Decode(b)
+		got, _, err := Decode(b)
+		if err != nil {
+			t.Fatal(err)
+		}
 		if !reflect.DeepEqual(item, got) {
 			t.Errorf("want:\n%v\ngot:\n%v\n", item, got)
 		}
@@ -105,7 +108,10 @@ func TestDecode(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		got := Decode(b)
+		got, _, err := Decode(b)
+		if err != nil {
+			t.Fatal(err)
+		}
 		if !reflect.DeepEqual(tc.item, got) {
 			t.Errorf("%s\nwant:\n%# v\ngot:\n%# v\n", tc.desc, tc.item, got)
 		}
@@ -277,9 +283,6 @@ func TestEncode(t *testing.T) {
 		},
 	}
 	for _, tc := range cases {
-		if tc.desc != "missing item" {
-			continue
-		}
 		got, err := Encode(tc.item)
 		if err != nil {
 			if !errors.Is(err, tc.err) {
