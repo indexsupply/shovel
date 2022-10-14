@@ -91,11 +91,11 @@ func Decode(input []byte) *Item {
 		return &Item{D: input[i:n]}
 	default:
 		// The first byte indicates a list
-		// and if the first byte is > 247 then
-		// the list has a length of > 55 and
-		// therefore the next (input[0] - 247)
-		// bytes will represent the length of the list.
-		// We advance the cursor past the length.
+		// and if the first byte is >= 248 (listNL)
+		// then the list has a length > 55 and
+		// therefore the next (input[0]-247 (list55H))
+		// bytes will describe the length of the list.
+		// We advance the cursor i past the length description.
 		i := 1
 		if input[0] >= listNL {
 			i += int(input[0] - list55H)
