@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func FuzzEncodeList(f *testing.F) {
+func FuzzEncode(f *testing.F) {
 	var (
 		numItems uint64 = 10
 		payload         = []byte("hello")
