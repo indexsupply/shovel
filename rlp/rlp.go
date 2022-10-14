@@ -153,7 +153,7 @@ func Decode(input []byte) (*Item, int, error) {
 			i = 1 //header byte
 			i += int(input[0] - list55H)
 			listSize = decodeLength(list55H, input)
-			listSize-- //account for header byte
+			listSize -= int(input[0] - list55H) //subtract header
 		}
 
 		switch {
