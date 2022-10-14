@@ -142,6 +142,8 @@ func Decode(input []byte) (*Item, int, error) {
 		// therefore the next (input[0]-247 (list55H))
 		// bytes will describe the length of the list.
 		// We advance the cursor i past the length description.
+		// We also compute the size of the list and check the input
+		// to ensure the size matches the header's length description.
 		var i, listSize int
 		switch {
 		case input[0] <= list55H:
