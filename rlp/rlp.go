@@ -81,8 +81,9 @@ func Decode(input []byte) *Item {
 	case input[0] <= str1H:
 		return &Item{D: []byte{input[0]}}
 	case input[0] <= str55H:
+		i := 1
 		n := input[0] - str1H
-		return &Item{D: input[1:n]}
+		return &Item{D: input[i:n]}
 	case input[0] <= strNH:
 		i := int(1 + (input[0] - str55H)) //head length
 		n := 1                            //header byte
