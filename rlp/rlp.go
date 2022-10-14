@@ -84,8 +84,10 @@ func Decode(input []byte) *Item {
 		n := input[0] - str1H
 		return &Item{D: input[1:n]}
 	case input[0] <= strNH:
-		headerSize := 1 + input[0] - str55H
-		return &Item{D: input[headerSize:]}
+		i := int(1 + (input[0] - str55H)) //head length
+		n := 1                            //header byte
+		n += decodeLength(str55H, input)
+		return &Item{D: input[i:n]}
 	default:
 		// The first byte indicates a list
 		// and if the first byte is > 247 then

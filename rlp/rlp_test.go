@@ -59,7 +59,10 @@ func TestDecode(t *testing.T) {
 			"long string",
 			&Item{D: []byte("Lorem ipsum dolor sit amet, consectetur adipisicing elit")},
 		},
-
+		{
+			"extra long string",
+			&Item{D: []byte(randStr(1 << 20))},
+		},
 		{
 			"empty list",
 			&Item{L: []*Item{}},
