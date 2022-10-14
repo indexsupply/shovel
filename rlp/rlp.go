@@ -1,6 +1,12 @@
+// This package implements a basic encoder/decoder for
+// Ethereum's Recursive-Length Prefix (RLP) Serialization.
+// For a detailed description of RLP, see Ethereum's  page:
+// https://ethereum.org/en/developers/docs/data-structures-and-encoding/rlp/
 package rlp
 
-import "encoding/binary"
+import (
+	"encoding/binary"
+)
 
 const (
 	str1L, str1H     byte = 000, 127
@@ -10,6 +16,12 @@ const (
 	listNL, listNH   byte = 248, 255
 )
 
+// Instead of using standard data types and reflection
+// this package chooses to encode Items.
+// Set D or L but not both.
+// L is a list of *Item so that arbitrarily nested lists
+// can be encoded.
+// D is the data payload for the item.
 type Item struct {
 	D []byte
 	L []*Item
