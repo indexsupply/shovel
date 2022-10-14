@@ -4,9 +4,7 @@
 // https://ethereum.org/en/developers/docs/data-structures-and-encoding/rlp/
 package rlp
 
-import (
-	"encoding/binary"
-)
+import "encoding/binary"
 
 const (
 	str1L, str1H     byte = 000, 127
