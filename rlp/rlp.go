@@ -88,6 +88,8 @@ func encodeLength(t byte, l int) []byte {
 	)
 }
 
+// Returns  two values representing the length of the
+// header and payload respectively.
 func decodeLength(t byte, input []byte) (int, int) {
 	n := input[0] - t
 	length, _ := binary.Uvarint(input[1 : n+1])
