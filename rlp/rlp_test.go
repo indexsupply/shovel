@@ -105,6 +105,55 @@ func TestDecode_Errors(t *testing.T) {
 	}
 }
 
+func TestDecodeLength(t *testing.T) { 
+	cases := []struct {
+		t byte
+		header []byte
+		expectedLength int
+	}{
+		// list more than 55 bytes, full 8 bytes needed for length
+		{
+			t: list55H,
+			header: []byte{0xff, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
+			expectedLength: 1 << 56,
+		},
+		// list more than 55 bytes, but binary encoding of length only fits into one byte
+		{
+			t: list55H,
+			header: []byte{list55H + 1, 0xe2},
+			expectedLength: 226, // e2 is 226 in decimal
+		},
+		// list more than 55 bytes, but binary encoding of length  fits into two bytes
+		{
+			t: list55H,
+			header: []byte{list55H + 2, 0x12, 0xab},
+			expectedLength: 4779, // 12ab is 4779 in decimal
+		},
+		// string more than 55 bytes, but binary encoding of length fits into two bytes
+		{
+			t: str55H,
+			header: []byte{str55H + 2, 0x12, 0xab},
+			expectedLength: 4779, // 12ab is 4779 in decimal
+		},
+		// string more than 55 bytes, but binary encoding of length fits into two bytes
+		{
+			t: str55H,
+			header: []byte{str55H + 2, 0x12, 0xab},
+			expectedLength: 4779, // 12ab is 4779 in decimal
+		},
+	}
+
+	for _, c := range cases {
+		gotHeaderLength, gotLength := decodeLength(c.t, c.header)
+		if gotHeaderLength != len(c.header) {
+			t.Errorf("expected header length %d, got %d", gotHeaderLength, len(c.header))
+		}
+		if gotLength != c.expectedLength {
+			t.Errorf("expected length %d, got %d", gotLength, c.expectedLength)
+		}
+	}
+}
+
 func TestDecode(t *testing.T) {
 	cases := []struct {
 		desc string
