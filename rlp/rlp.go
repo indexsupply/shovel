@@ -7,6 +7,8 @@ package rlp
 import (
 	"encoding/binary"
 	"errors"
+	"fmt"
+	"strings"
 )
 
 const (
@@ -26,6 +28,17 @@ const (
 type Item struct {
 	D []byte
 	L []*Item
+}
+
+func (i Item) String() string {
+	if i.D != nil {
+		return string(i.D)
+	}
+	var listStrings []string
+	for _, l := range i.L {
+		listStrings = append(listStrings, l.String())
+	}
+	return fmt.Sprintf("[%s]", strings.Join(listStrings, ", "))
 }
 
 var (
