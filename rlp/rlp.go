@@ -88,11 +88,10 @@ func encodeLength(t byte, l int) []byte {
 	)
 }
 
-// returns length of item including the header
-func decodeLength(t byte, input []byte) int {
+func decodeLength(t byte, input []byte) (int, int) {
 	n := input[0] - t
 	length, _ := binary.Uvarint(input[1 : n+1])
-	return int(n) + int(length)
+	return int(n + 1), int(length)
 }
 
 var (
@@ -101,40 +100,34 @@ var (
 	ErrTooFewBytes  = errors.New("input has fewer bytes than specified by header")
 )
 
-func Decode(input []byte) (*Item, int, error) {
+func Decode(input []byte) (*Item, error) {
 	if len(input) == 0 {
-		return nil, 0, ErrNoBytes
+		return nil, ErrNoBytes
 	}
 	switch {
 	case input[0] <= str1H:
 		if len(input) > 1 {
-			return nil, 0, ErrTooManyBytes
+			return nil, ErrTooManyBytes
 		}
-		return &Item{D: []byte{input[0]}}, 1, nil
+		return &Item{D: []byte{input[0]}}, nil
 	case input[0] <= str55H:
-		var (
-			i = 1
-			n = int(input[0] - str1H)
-		)
+		i, n := 1, int(input[0]-str55L)
 		switch {
-		case n > len(input):
-			return nil, 0, ErrTooManyBytes
-		case n < len(input)-1:
-			return nil, 0, ErrTooFewBytes
+		case len(input) < i+n:
+			return nil, ErrTooFewBytes
+		case len(input) > i+n:
+			return nil, ErrTooManyBytes
 		}
-		return &Item{D: input[i:n]}, n, nil
+		return &Item{D: input[i : i+n]}, nil
 	case input[0] <= strNH:
-		var (
-			i = int(1 + (input[0] - str55H))    //head length
-			n = 1 + decodeLength(str55H, input) // add 1 for header byte
-		)
+		i, n := decodeLength(str55H, input)
 		switch {
-		case n > len(input):
-			return nil, 0, ErrTooManyBytes
-		case n < len(input)-1:
-			return nil, 0, ErrTooFewBytes
+		case len(input) < i+n:
+			return nil, ErrTooFewBytes
+		case len(input) > i+n:
+			return nil, ErrTooManyBytes
 		}
-		return &Item{D: input[i:n]}, n, nil
+		return &Item{D: input[i : i+n]}, nil
 	default:
 		// The first byte indicates a list
 		// and if the first byte is >= 248 (listNL)
@@ -147,58 +140,48 @@ func Decode(input []byte) (*Item, int, error) {
 		var i, listSize int
 		switch {
 		case input[0] <= list55H:
-			i = 1
-			listSize = int(input[0] - list55L)
+			i, listSize = 1, int(input[0]-list55L)
 		case input[0] <= listNH:
-			i = 1 //header byte
-			i += int(input[0] - list55H)
-			listSize = decodeLength(list55H, input)
-			listSize -= int(input[0] - list55H) //subtract header
+			i, listSize = decodeLength(list55H, input)
 		}
 
 		switch {
-		case listSize < len(input[i:]):
-			return nil, 0, ErrTooManyBytes
-		case listSize > len(input[i:]):
-			return nil, 0, ErrTooFewBytes
+		case len(input[i:]) > listSize:
+			return nil, ErrTooManyBytes
+		case len(input[i:]) < listSize:
+			return nil, ErrTooFewBytes
 		}
 
-		var bytesRead int
 		item := &Item{L: []*Item{}}
 		for i < len(input) {
-			var n int
+			var headerSize, payloadSize int
 			switch {
 			case input[i] <= str1H:
-				// 1 byte string
-				n = 1
+				headerSize = 0
+				payloadSize = 1
 			case input[i] <= str55H:
-				// <= 55 byte string
-				n += 1 //header byte
-				n += int(input[i] - str55L)
+				headerSize = 1
+				payloadSize = int(input[i] - str55L)
 			case input[i] <= strNH:
-				// > 55 byte string
-				n += 1 //header byte
-				n += decodeLength(str55H, input[i:])
+				headerSize, payloadSize = decodeLength(str55H, input[i:])
 			case input[i] <= list55H:
-				n += 1 // header byte
-				n += int(input[i] - list55L)
+				headerSize = 1
+				payloadSize = int(input[i] - list55L)
 			default:
-				n += 1 //header byte
-				n += decodeLength(list55H, input[i:])
+				headerSize, payloadSize = decodeLength(list55H, input[i:])
 			}
 
-			if int(i+n) > len(input) {
-				return nil, bytesRead, ErrTooFewBytes
+			if int(i+headerSize+payloadSize) > len(input) {
+				return nil, ErrTooFewBytes
 			}
 
-			d, nb, err := Decode(input[i : i+n])
+			d, err := Decode(input[i : i+headerSize+payloadSize])
 			if err != nil {
-				return nil, nb, err
+				return nil, err
 			}
 			item.L = append(item.L, d)
-			i += n
-			bytesRead += nb
+			i += headerSize + payloadSize
 		}
-		return item, bytesRead, nil
+		return item, nil
 	}
 }

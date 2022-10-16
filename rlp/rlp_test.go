@@ -2,6 +2,7 @@ package rlp
 
 import (
 	"bytes"
+	"crypto/rand"
 	"encoding/binary"
 	"errors"
 	"reflect"
@@ -23,7 +24,7 @@ func FuzzEncode(f *testing.F) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		got, _, err := Decode(b)
+		got, err := Decode(b)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -48,6 +49,60 @@ func intTo2b(i uint16) []byte {
 	b := make([]byte, 2)
 	binary.BigEndian.PutUint16(b, i)
 	return b
+}
+
+func randBytes(n int) []byte {
+	res := make([]byte, n)
+	rand.Read(res)
+	return res
+}
+
+func TestDecode_Errors(t *testing.T) {
+	cases := []struct {
+		desc  string
+		input []byte
+		err   error
+	}{
+		{
+			"short string no error",
+			[]byte{byte(1)},
+			nil,
+		},
+		{
+			"long string. too many bytes",
+			append(
+				[]byte{
+					byte(str55H + 1),
+					byte(56),
+				},
+				randBytes(57)...,
+			),
+			ErrTooManyBytes,
+		},
+		{
+			"long string. too few bytes",
+			append(
+				[]byte{
+					byte(str55H + 1),
+					byte(56),
+				},
+				randBytes(55)...,
+			),
+			ErrTooFewBytes,
+		},
+	}
+	for _, tc := range cases {
+		_, err := Decode(tc.input)
+		if tc.err == nil {
+			if err != nil {
+				t.Errorf("expected nil error got: %v", err)
+			}
+		} else {
+			if !errors.Is(tc.err, err) {
+				t.Errorf("expected %v got %v", tc.err, err)
+			}
+		}
+	}
 }
 
 func TestDecode(t *testing.T) {
@@ -106,11 +161,11 @@ func TestDecode(t *testing.T) {
 	for _, tc := range cases {
 		b, err := Encode(tc.item)
 		if err != nil {
-			t.Fatal(err)
+			t.Error(err)
 		}
-		got, _, err := Decode(b)
+		got, err := Decode(b)
 		if err != nil {
-			t.Fatal(err)
+			t.Errorf("error %s: %s", tc.desc, err)
 		}
 		if !reflect.DeepEqual(tc.item, got) {
 			t.Errorf("%s\nwant:\n%# v\ngot:\n%# v\n", tc.desc, tc.item, got)
@@ -286,7 +341,7 @@ func TestEncode(t *testing.T) {
 		got, err := Encode(tc.item)
 		if err != nil {
 			if !errors.Is(err, tc.err) {
-				t.Fatalf("%s: want: %v got: %v", tc.desc, tc.err, err)
+				t.Errorf("%s: want: %v got: %v", tc.desc, tc.err, err)
 			}
 		}
 		if !bytes.Equal(tc.want, got) {
