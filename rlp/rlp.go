@@ -38,7 +38,7 @@ func (i Item) String() string {
 	for _, l := range i.L {
 		listStrings = append(listStrings, l.String())
 	}
-	return fmt.Sprintf("[%s]", strings.Join(listStrings, ", "))
+	return fmt.Sprintf("[%s]", strings.Join(listStrings, ","))
 }
 
 var (
