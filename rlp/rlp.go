@@ -88,11 +88,15 @@ func encodeLength(t byte, l int) []byte {
 	)
 }
 
-// Returns  two values representing the length of the
+// Returns two values representing the length of the
 // header and payload respectively.
 func decodeLength(t byte, input []byte) (int, int) {
 	n := input[0] - t
-	length, _ := binary.Uvarint(input[1 : n+1])
+	paddedBytes := make([]byte, 8)
+	// binary.BigEndian.Uint64 expects an 8 byte array so we have to left pad
+	// it in case the length is less. Big-endian format is used.
+	copy(paddedBytes[8-n:], input[1 : n+1])
+	length := binary.BigEndian.Uint64(paddedBytes)
 	return int(n + 1), int(length)
 }
 
