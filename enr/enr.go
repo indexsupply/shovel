@@ -9,25 +9,31 @@ import (
 	"github.com/indexsupply/lib/rlp"
 )
 
+// An Ethereum Node Record contains network information
+// about a node on the dsicv5 p2p network. The specification
+// is detailed in https://eips.ethereum.org/EIPS/eip-778.
 type ENR struct {
-	Signature []byte
-	Sequence  uint64
+	Signature []byte // Cryptographic signature of record contents
+	Sequence  uint64 // The sequence number. Nodes should increase the number whenever the record changes and republish the record.
 
-	ID        string
-	Secp256k1 []byte
+	ID        string // name of identity scheme, e.g. “v4”
+	Secp256k1 []byte // compressed secp256k1 public key, 33 bytes
 
-	Ip      [4]byte
-	TcpPort uint16
-	UdpPort uint16
+	Ip      [4]byte // IPv4 address
+	TcpPort uint16 // TCP port
+	UdpPort uint16 // UDP port
 
-	Ip6      [16]byte
-	Tcp6Port uint16
-	Udp6Port uint16
+	Ip6      [16]byte // IPv6 address
+	Tcp6Port uint16 // IPv6-specific TCP port. If omitted, same as TcpPort.
+	Udp6Port uint16 // IPv6-specific UDP port. If omitted, same as UdpPort.
 }
 
 const enrTextPrefix = "enr:"
 
-func FromTextEncoding(str string) (*ENR, error) {
+// Given a text encoding of an Ethereum Node Record, which is formatted
+// as the base-64 encoding of its RLP content prefixed by enr:, this
+// method decodes it into an ENR struct.
+func UnmarshalFromText(str string) (*ENR, error) {
 	if !strings.HasPrefix(str, enrTextPrefix) {
 		return nil, errors.New("Invalid prefix for ENR text encoding.")
 	}
@@ -118,6 +124,8 @@ func parseRLPEncoding(i *rlp.Item) ([]byte, uint64, map[string][]byte, error) {
 	return sig, seq, m, nil
 }
 
+// left pads the provided byte array to the wantedLength, in bytes, using 0s.
+// does nothing if b is already at the wanted length.
 func leftPad(b []byte, wantedLength int) []byte {
 	if len(b) >= wantedLength {
 		return b

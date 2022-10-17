@@ -6,11 +6,11 @@ import (
 	"testing"
 )
 
-func TestFromTextEncoding(t *testing.T) {
+func TestUnmarshalFromText(t *testing.T) {
 	// ENR Sample is from https://eips.ethereum.org/EIPS/eip-778
 	enrSample := "enr:-IS4QHCYrYZbAKWCBRlAy5zzaDZXJBGkcnh4MHcBFZntXNFrdvJjX04jRzjzCBOonrkTfj499SZuOh8R33Ls8RRcy5wBgmlkgnY0gmlwhH8AAAGJc2VjcDI1NmsxoQPKY0yuDUmstAHYpMa2_oxVtw0RW_QAdpzBQA8yWM0xOIN1ZHCCdl8"
 
-	enr, err := FromTextEncoding(enrSample)
+	enr, err := UnmarshalFromText(enrSample)
 	if err != nil {
 		t.Fatal(err)
 	}
