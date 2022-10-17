@@ -20,12 +20,12 @@ type ENR struct {
 	Secp256k1 []byte // compressed secp256k1 public key, 33 bytes
 
 	Ip      [4]byte // IPv4 address
-	TcpPort uint16 // TCP port
-	UdpPort uint16 // UDP port
+	TcpPort uint16  // TCP port
+	UdpPort uint16  // UDP port
 
 	Ip6      [16]byte // IPv6 address
-	Tcp6Port uint16 // IPv6-specific TCP port. If omitted, same as TcpPort.
-	Udp6Port uint16 // IPv6-specific UDP port. If omitted, same as UdpPort.
+	Tcp6Port uint16   // IPv6-specific TCP port. If omitted, same as TcpPort.
+	Udp6Port uint16   // IPv6-specific UDP port. If omitted, same as UdpPort.
 }
 
 const enrTextPrefix = "enr:"
