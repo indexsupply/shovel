@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/indexsupply/x/isxhash"
 	"github.com/indexsupply/x/isxsecp256k1"
@@ -35,6 +36,11 @@ type Record struct {
 	Ip6      net.IP
 	Tcp6Port uint16 // IPv6-specific TCP port. If omitted, same as TcpPort.
 	Udp6Port uint16 // IPv6-specific UDP port. If omitted, same as UdpPort.
+
+	SentPing     time.Time
+	SentPingHash [32]byte
+	ReceivedPong time.Time
+	ReceivedPing time.Time
 }
 
 func (r *Record) String() string {
