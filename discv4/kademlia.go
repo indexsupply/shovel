@@ -7,20 +7,21 @@ import (
 
 	"github.com/indexsupply/lib/enr"
 )
+
 const (
-	maxBucketSize = 16
-	addrByteSize = 256 // size in bytes of the node ID
-	bucketsCount = 20 // very rare we will ever encounter a node closer than log distance 20 away
+	maxBucketSize  = 16
+	addrByteSize   = 256 // size in bytes of the node ID
+	bucketsCount   = 20  // very rare we will ever encounter a node closer than log distance 20 away
 	minLogDistance = addrByteSize + 1 - bucketsCount
 )
 
 type kademliaTable struct {
 	selfNode *enr.ENR
-	buckets [bucketsCount]kBucket
+	buckets  [bucketsCount]kBucket
 }
 
 type bucketEntry struct {
-	node *enr.ENR
+	node     *enr.ENR
 	lastSeen time.Time
 }
 
@@ -28,8 +29,8 @@ type bucketEntry struct {
 // most recently seen (head) to least recently seen (tail). The size
 // of the list is at most maxBucketSize.
 type kBucket struct {
-	mu sync.Mutex
-	lru *list.List
+	mu         sync.Mutex // protects lru and entriesMap
+	lru        *list.List
 	entriesMap map[string]*list.Element
 }
 
@@ -58,14 +59,10 @@ func (bucket *kBucket) store(node *enr.ENR) {
 	}
 }
 
-func (bucket *kBucket) AllNodes() []*enr.ENR {
-
-}
-
 func newKademliaTable(selfNode *enr.ENR) *kademliaTable {
 	t := &kademliaTable{
 		selfNode: selfNode,
-		buckets : [bucketsCount]kBucket{},
+		buckets:  [bucketsCount]kBucket{},
 	}
 	// init lists
 	for i := 0; i < len(t.buckets); i++ {
@@ -81,9 +78,9 @@ func (kt *kademliaTable) Insert(node *enr.ENR) {
 	// In the unlikely event that the distance is closer than
 	// the mininum, put it in the closest bucket.
 	if distance < minLogDistance {
-		distance = minLogDistance 
+		distance = minLogDistance
 	}
-	kt.buckets[distance - minLogDistance].store(node)
+	kt.buckets[distance-minLogDistance].store(node)
 }
 
 // FindClosest returns the n closest nodes in the local table to target.
