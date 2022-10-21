@@ -31,10 +31,12 @@ type ENR struct {
 	Udp6Port uint16   // IPv6-specific UDP port. If omitted, same as UdpPort.
 }
 
+// Returns the address of the node, which is the keccak256 hash of its Secp256k1 key.
 func (enr ENR) NodeAddr() []byte {
 	return keccak(enr.Secp256k1)
 }
 
+// Returns the address of the node as a hex encoded string.
 func (enr ENR) NodeAddrHex() string {
 	return fmt.Sprintf("%x", enr.NodeAddr())
 }
