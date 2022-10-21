@@ -4,9 +4,12 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"strings"
+	"math/bits"
 
 	"github.com/indexsupply/lib/rlp"
+	"golang.org/x/crypto/sha3"
 )
 
 // An Ethereum Node Record contains network information
@@ -26,6 +29,38 @@ type ENR struct {
 	Ip6      [16]byte // IPv6 address
 	Tcp6Port uint16   // IPv6-specific TCP port. If omitted, same as TcpPort.
 	Udp6Port uint16   // IPv6-specific UDP port. If omitted, same as UdpPort.
+}
+
+func (enr ENR) NodeAddr() []byte {
+	return keccak(enr.Secp256k1)
+}
+
+func (enr ENR) NodeAddrHex() string {
+	return fmt.Sprintf("%x", enr.NodeAddr())
+}
+
+// computes the distance between two ENRs defined as 
+// log_2 (keccak256(n1) XOR keccak256(n2))
+func LogDistance(n1, n2 *ENR) int {
+	addr1 := n1.NodeAddr()
+	addr2 := n2.NodeAddr()
+
+	var xorResult uint8
+	distance := len(addr1)*8
+	for idx := 0; idx < len(addr1); idx++ {
+		xorResult = addr1[idx] ^ addr2[idx]
+		if xorResult != 0 {
+			return distance - bits.LeadingZeros8(xorResult)
+		}
+		distance -= 8
+	}
+	return distance
+}
+
+func keccak(d []byte) []byte {
+	h := sha3.NewLegacyKeccak256()
+	h.Write(d)
+	return h.Sum(nil)
 }
 
 const enrTextPrefix = "enr:"
