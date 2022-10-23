@@ -7,6 +7,8 @@ package rlp
 import (
 	"encoding/binary"
 	"errors"
+	"net/netip"
+	"time"
 )
 
 const (
@@ -16,6 +18,78 @@ const (
 	list55L, list55H byte = 192, 247
 	listNL, listNH   byte = 248, 255
 )
+
+func (i *Item) Append(items ...*Item) {
+	if len(items) <= 1 {
+		i.L = append(i.L, items[0])
+		return
+	}
+
+	i.L = append(i.L, &Item{
+		L: items,
+	})
+}
+
+func (i *Item) At(pos int) *Item {
+	if len(i.L) < pos {
+		return &Item{}
+	}
+	return i.L[pos]
+}
+
+var ErrNoDataAtitem = errors.New("requested item contains 0 bytes")
+
+func (i *Item) NetIPAddr() (netip.Addr, error) {
+	var a netip.Addr
+	if len(i.D) == 0 {
+		return a, ErrNoDataAtitem
+	}
+	a, _ = netip.AddrFromSlice(i.D)
+	return a, nil
+}
+
+func NewTime(t time.Time) *Item {
+	return NewUint64(uint64(t.Unix()))
+}
+
+func NewByte(b byte) *Item {
+	return &Item{D: []byte{b}}
+}
+
+func NewBytes(b []byte) *Item {
+	return &Item{D: b}
+}
+
+func NewUint64(n uint64) *Item {
+	buf := make([]byte, 8)
+	binary.BigEndian.PutUint64(buf[:], n)
+	return &Item{D: buf[4:8]}
+}
+
+func NewUint16(n uint16) *Item {
+	buf := make([]byte, 2)
+	binary.BigEndian.PutUint16(buf[:], n)
+	return &Item{D: buf[:2]}
+}
+
+func (i *Item) Uint16() (uint16, error) {
+	if len(i.D) == 0 {
+		return 0, ErrNoDataAtitem
+	}
+	return binary.BigEndian.Uint16(i.D), nil
+}
+
+func (i *Item) Hash() ([32]byte, error) {
+	var h [32]byte
+	if len(i.D) == 0 {
+		return h, ErrNoDataAtitem
+	}
+	if len(i.D) != 32 {
+		return h, errors.New("hash must be exactly 32 bytes")
+	}
+	copy(h[:], i.D)
+	return h, nil
+}
 
 // Instead of using standard data types and reflection
 // this package chooses to encode Items.
