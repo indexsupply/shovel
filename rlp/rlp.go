@@ -7,6 +7,7 @@ package rlp
 import (
 	"encoding/binary"
 	"errors"
+	"math/big"
 	"net/netip"
 	"time"
 )
@@ -19,109 +20,110 @@ const (
 	listNL, listNH   byte = 248, 255
 )
 
-func (i *Item) Append(items ...*Item) {
-	if len(items) <= 1 {
-		i.L = append(i.L, items[0])
-		return
+func List(items ...Item) Item {
+	if len(items) == 0 {
+		return Item{l: []Item{}}
 	}
 
-	i.L = append(i.L, &Item{
-		L: items,
-	})
-}
-
-func (i *Item) At(pos int) *Item {
-	if len(i.L) < pos {
-		return &Item{}
+	var it Item
+	for i := range items {
+		it.l = append(it.l, items[i])
 	}
-	return i.L[pos]
+	return it
 }
 
-var ErrNoDataAtitem = errors.New("requested item contains 0 bytes")
+func (i Item) At(pos int) Item {
+	if len(i.l) < pos {
+		return Item{}
+	}
+	return i.l[pos]
+}
 
-func (i *Item) NetIPAddr() (netip.Addr, error) {
+var errNoData = errors.New("requested item contains 0 bytes")
+
+func (i Item) NetIPAddr() (netip.Addr, error) {
 	var a netip.Addr
-	if len(i.D) == 0 {
-		return a, ErrNoDataAtitem
+	if len(i.d) == 0 {
+		return a, errNoData
 	}
-	a, _ = netip.AddrFromSlice(i.D)
+	a, _ = netip.AddrFromSlice(i.d)
 	return a, nil
 }
 
-func NewTime(t time.Time) *Item {
-	return NewUint64(uint64(t.Unix()))
+func Time(t time.Time) Item {
+	return Uint64(uint64(t.Unix()))
 }
 
-func NewByte(b byte) *Item {
-	return &Item{D: []byte{b}}
+func Byte(b byte) Item {
+	return Item{d: []byte{b}}
 }
 
-func NewBytes(b []byte) *Item {
-	return &Item{D: b}
+func Bytes(b []byte) Item {
+	return Item{d: b}
 }
 
-func NewUint64(n uint64) *Item {
+func String(s string) Item {
+	return Item{d: []byte(s)}
+}
+
+func Int(n int) Item {
+	bi := big.NewInt(int64(n))
+	return Item{d: bi.Bytes()}
+}
+
+func Uint64(n uint64) Item {
 	buf := make([]byte, 8)
 	binary.BigEndian.PutUint64(buf[:], n)
-	return &Item{D: buf[4:8]}
+	return Item{d: buf[4:8]}
 }
 
-func NewUint16(n uint16) *Item {
+func Uint16(n uint16) Item {
 	buf := make([]byte, 2)
 	binary.BigEndian.PutUint16(buf[:], n)
-	return &Item{D: buf[:2]}
+	return Item{d: buf[:2]}
 }
 
-func (i *Item) Uint16() (uint16, error) {
-	if len(i.D) == 0 {
-		return 0, ErrNoDataAtitem
+func (i Item) Uint16() (uint16, error) {
+	if len(i.d) == 0 {
+		return 0, errNoData
 	}
-	return binary.BigEndian.Uint16(i.D), nil
+	return binary.BigEndian.Uint16(i.d), nil
 }
 
-func (i *Item) Hash() ([32]byte, error) {
+func (i Item) Hash() ([32]byte, error) {
 	var h [32]byte
-	if len(i.D) == 0 {
-		return h, ErrNoDataAtitem
+	if len(i.d) == 0 {
+		return h, errNoData
 	}
-	if len(i.D) != 32 {
+	if len(i.d) != 32 {
 		return h, errors.New("hash must be exactly 32 bytes")
 	}
-	copy(h[:], i.D)
+	copy(h[:], i.d)
 	return h, nil
 }
 
 // Instead of using standard data types and reflection
 // this package chooses to encode Items.
-// Set D or L but not both.
-// L is a list of *Item so that arbitrarily nested lists
-// can be encoded.
-// D is the data payload for the item.
+// Set d or l but not both.
+// l is a list of Item for arbitrarily nested lists.
+// d is the data payload for the item.
 type Item struct {
-	D []byte
-	L []*Item
+	d []byte
+	l []Item
 }
 
-var (
-	ErrTooManyArgs = errors.New("must set D xor L")
-	ErrTooFewArgs  = errors.New("input Item is nil")
-)
-
-func Encode(input *Item) ([]byte, error) {
-	if input == nil {
-		return nil, ErrTooFewArgs
+func Encode(input Item) ([]byte, error) {
+	if input.d != nil && input.l != nil {
+		return nil, errors.New("must set d xor l")
 	}
-	if input.D != nil && input.L != nil {
-		return nil, ErrTooManyArgs
-	}
-	if input.D != nil {
-		switch n := len(input.D); {
-		case n == 1 && input.D[0] <= str1H:
-			return input.D, nil
+	if input.d != nil {
+		switch n := len(input.d); {
+		case n == 1 && input.d[0] <= str1H:
+			return input.d, nil
 		case n <= 55:
 			return append(
 				[]byte{str55L + byte(n)},
-				input.D...,
+				input.d...,
 			), nil
 		default:
 			lengthSize, length := encodeLength(uint64(len(input.D)))
@@ -129,13 +131,13 @@ func Encode(input *Item) ([]byte, error) {
 				[]byte{str55H + lengthSize},
 				length...,
 			)
-			return append(header, input.D...), nil
+			return append(header, input.d...), nil
 		}
 	}
 
 	var out []byte
-	for i := range input.L {
-		b, err := Encode(input.L[i])
+	for i := range input.l {
+		b, err := Encode(input.l[i])
 		if err != nil {
 			return nil, err
 		}
@@ -178,39 +180,39 @@ func decodeLength(t byte, input []byte) (int, int) {
 }
 
 var (
-	ErrNoBytes      = errors.New("input has no bytes")
-	ErrTooManyBytes = errors.New("input has more bytes than specified by outermost header")
-	ErrTooFewBytes  = errors.New("input has fewer bytes than specified by header")
+	errNoBytes      = errors.New("input has no bytes")
+	errTooManyBytes = errors.New("input has more bytes than specified by outermost header")
+	errTooFewBytes  = errors.New("input has fewer bytes than specified by header")
 )
 
-func Decode(input []byte) (*Item, error) {
+func Decode(input []byte) (Item, error) {
 	if len(input) == 0 {
-		return nil, ErrNoBytes
+		return Item{}, errNoBytes
 	}
 	switch {
 	case input[0] <= str1H:
 		if len(input) > 1 {
-			return nil, ErrTooManyBytes
+			return Item{}, errTooManyBytes
 		}
-		return &Item{D: []byte{input[0]}}, nil
+		return Item{d: []byte{input[0]}}, nil
 	case input[0] <= str55H:
 		i, n := 1, int(input[0]-str55L)
 		switch {
 		case len(input) < i+n:
-			return nil, ErrTooFewBytes
+			return Item{}, errTooFewBytes
 		case len(input) > i+n:
-			return nil, ErrTooManyBytes
+			return Item{}, errTooManyBytes
 		}
-		return &Item{D: input[i : i+n]}, nil
+		return Item{d: input[i : i+n]}, nil
 	case input[0] <= strNH:
 		i, n := decodeLength(str55H, input)
 		switch {
 		case len(input) < i+n:
-			return nil, ErrTooFewBytes
+			return Item{}, errTooFewBytes
 		case len(input) > i+n:
-			return nil, ErrTooManyBytes
+			return Item{}, errTooManyBytes
 		}
-		return &Item{D: input[i : i+n]}, nil
+		return Item{d: input[i : i+n]}, nil
 	default:
 		// The first byte indicates a list
 		// and if the first byte is >= 248 (listNL)
@@ -230,12 +232,12 @@ func Decode(input []byte) (*Item, error) {
 
 		switch {
 		case len(input[i:]) > listSize:
-			return nil, ErrTooManyBytes
+			return Item{}, errTooManyBytes
 		case len(input[i:]) < listSize:
-			return nil, ErrTooFewBytes
+			return Item{}, errTooFewBytes
 		}
 
-		item := &Item{L: []*Item{}}
+		item := Item{l: []Item{}}
 		for i < len(input) {
 			var headerSize, payloadSize int
 			switch {
@@ -255,14 +257,14 @@ func Decode(input []byte) (*Item, error) {
 			}
 
 			if int(i+headerSize+payloadSize) > len(input) {
-				return nil, ErrTooFewBytes
+				return Item{}, errTooFewBytes
 			}
 
 			d, err := Decode(input[i : i+headerSize+payloadSize])
 			if err != nil {
-				return nil, err
+				return Item{}, err
 			}
-			item.L = append(item.L, d)
+			item.l = append(item.l, d)
 			i += headerSize + payloadSize
 		}
 		return item, nil

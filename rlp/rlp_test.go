@@ -17,10 +17,11 @@ func FuzzEncode(f *testing.F) {
 	)
 	f.Add(numItems, payload)
 	f.Fuzz(func(t *testing.T, n uint64, d []byte) {
-		item := &Item{L: []*Item{}}
+		var items []Item
 		for i := 0; i < int(n); i++ {
-			item.L = append(item.L, &Item{D: d})
+			items = append(items, Bytes(d))
 		}
+		item := List(items...)
 		b, err := Encode(item)
 		if err != nil {
 			t.Fatal(err)
@@ -39,7 +40,7 @@ func BenchmarkEncode(b *testing.B) {
 	payload := []byte("hello world")
 	b.ReportAllocs()
 	for n := 0; n < b.N; n++ {
-		_, err := Encode(&Item{D: payload})
+		_, err := Encode(Bytes(payload))
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -78,7 +79,7 @@ func TestDecode_Errors(t *testing.T) {
 				},
 				randBytes(57)...,
 			),
-			ErrTooManyBytes,
+			errTooManyBytes,
 		},
 		{
 			"long string. too few bytes",
@@ -89,7 +90,7 @@ func TestDecode_Errors(t *testing.T) {
 				},
 				randBytes(55)...,
 			),
-			ErrTooFewBytes,
+			errTooFewBytes,
 		},
 	}
 	for _, tc := range cases {
@@ -201,54 +202,38 @@ func TestDecodeLength(t *testing.T) {
 func TestDecode(t *testing.T) {
 	cases := []struct {
 		desc string
-		item *Item
+		item Item
 	}{
 		{
 			"short string",
-			&Item{D: []byte("a")},
+			String("a"),
 		},
 		{
 			"long string",
-			&Item{D: []byte("Lorem ipsum dolor sit amet, consectetur adipisicing elit")},
+			String("Lorem ipsum dolor sit amet, consectetur adipisicing elit"),
 		},
 		{
 			"empty list",
-			&Item{L: []*Item{}},
+			List(),
 		},
 		{
 			"list of short strings",
-			&Item{
-				L: []*Item{
-					&Item{D: []byte("a")},
-					&Item{D: []byte("b")},
-				},
-			},
+			List(String("a"), String("b")),
 		},
 		{
 			"list of long strings",
-			&Item{
-				L: []*Item{
-					&Item{D: []byte("Lorem ipsum dolor sit amet, consectetur adipisicing elit")},
-					&Item{D: []byte("Porem ipsum dolor sit amet, consectetur adipisicing elit")},
-				},
-			},
+			List(
+				String("Lorem ipsum dolor sit amet, consectetur adipisicing elit"),
+				String("Porem ipsum dolor sit amet, consectetur adipisicing elit"),
+			),
 		},
 		{
 			"the set theoretical representation of three",
-			&Item{
-				L: []*Item{
-					&Item{L: []*Item{}},
-					&Item{L: []*Item{
-						&Item{L: []*Item{}},
-					}},
-					&Item{L: []*Item{
-						&Item{L: []*Item{}},
-						&Item{L: []*Item{
-							&Item{L: []*Item{}},
-						}},
-					}},
-				},
-			},
+			List(
+				List(),
+				List(List()),
+				List(List(), List(List())),
+			),
 		},
 	}
 	for _, tc := range cases {
@@ -269,49 +254,37 @@ func TestDecode(t *testing.T) {
 func TestEncode(t *testing.T) {
 	cases := []struct {
 		desc string
-		item *Item
+		item Item
 		want []byte
 		err  error
 	}{
 		{
-			"missing item",
-			nil,
-			[]byte{},
-			ErrTooFewArgs,
-		},
-		{
-			"setting L & D",
-			&Item{D: []byte{}, L: []*Item{}},
-			[]byte{},
-			ErrTooManyArgs,
-		},
-		{
 			"zero byte",
-			&Item{D: []byte{byte(0)}},
+			Byte(0),
 			[]byte{0x00},
 			nil,
 		},
 		{
 			"int 0",
-			&Item{D: []byte{}},
+			Int(0),
 			[]byte{0x80},
 			nil,
 		},
 		{
 			"int 1024",
-			&Item{D: intTo2b(1024)},
+			Int(1024),
 			[]byte{0x82, 0x04, 0x00},
 			nil,
 		},
 		{
 			"empty string",
-			&Item{D: []byte("")},
+			String(""),
 			[]byte{0x80},
 			nil,
 		},
 		{
 			"non-empty string",
-			&Item{D: []byte("Lorem ipsum dolor sit amet, consectetur adipisicing elit")},
+			String("Lorem ipsum dolor sit amet, consectetur adipisicing elit"),
 			[]byte{
 				0xB8,
 				0x38,
@@ -376,18 +349,13 @@ func TestEncode(t *testing.T) {
 		},
 		{
 			"empty list",
-			&Item{L: []*Item{}},
+			List(),
 			[]byte{0xc0},
 			nil,
 		},
 		{
 			"list of strings",
-			&Item{
-				L: []*Item{
-					&Item{D: []byte("cat")},
-					&Item{D: []byte("dog")},
-				},
-			},
+			List(String("cat"), String("dog")),
 			[]byte{
 				0xc8, // 200
 				0x83, // 131
@@ -403,20 +371,11 @@ func TestEncode(t *testing.T) {
 		},
 		{
 			"the set theoretical representation of three",
-			&Item{
-				L: []*Item{
-					&Item{L: []*Item{}},
-					&Item{L: []*Item{
-						&Item{L: []*Item{}},
-					}},
-					&Item{L: []*Item{
-						&Item{L: []*Item{}},
-						&Item{L: []*Item{
-							&Item{L: []*Item{}},
-						}},
-					}},
-				},
-			},
+			List(
+				List(),
+				List(List()),
+				List(List(), List(List())),
+			),
 			[]byte{
 				0xc7,
 				0xc0,
