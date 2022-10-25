@@ -4,9 +4,11 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/indexsupply/lib/rlp"
+	"golang.org/x/crypto/sha3"
 )
 
 // An Ethereum Node Record contains network information
@@ -26,6 +28,22 @@ type ENR struct {
 	Ip6      [16]byte // IPv6 address
 	Tcp6Port uint16   // IPv6-specific TCP port. If omitted, same as TcpPort.
 	Udp6Port uint16   // IPv6-specific UDP port. If omitted, same as UdpPort.
+}
+
+// Returns the address of the node, which is the keccak256 hash of its Secp256k1 key.
+func (enr ENR) NodeAddr() []byte {
+	return keccak(enr.Secp256k1)
+}
+
+// Returns the address of the node as a hex encoded string.
+func (enr ENR) NodeAddrHex() string {
+	return fmt.Sprintf("%x", enr.NodeAddr())
+}
+
+func keccak(d []byte) []byte {
+	h := sha3.NewLegacyKeccak256()
+	h.Write(d)
+	return h.Sum(nil)
 }
 
 const enrTextPrefix = "enr:"
