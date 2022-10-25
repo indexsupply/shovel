@@ -21,14 +21,8 @@ const (
 )
 
 func List(items ...Item) Item {
-	if len(items) == 0 {
-		return Item{l: []Item{}}
-	}
-
 	var it Item
-	for i := range items {
-		it.l = append(it.l, items[i])
-	}
+	it.l = append(it.l, items...)		
 	return it
 }
 
