@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"math/bits"
 
 	"github.com/indexsupply/lib/rlp"
 	"golang.org/x/crypto/sha3"
@@ -39,24 +38,6 @@ func (enr ENR) NodeAddr() []byte {
 // Returns the address of the node as a hex encoded string.
 func (enr ENR) NodeAddrHex() string {
 	return fmt.Sprintf("%x", enr.NodeAddr())
-}
-
-// computes the distance between two ENRs defined as 
-// log_2 (keccak256(n1) XOR keccak256(n2))
-func LogDistance(n1, n2 *ENR) int {
-	addr1 := n1.NodeAddr()
-	addr2 := n2.NodeAddr()
-
-	var xorResult uint8
-	distance := len(addr1)*8
-	for idx := 0; idx < len(addr1); idx++ {
-		xorResult = addr1[idx] ^ addr2[idx]
-		if xorResult != 0 {
-			return distance - bits.LeadingZeros8(xorResult)
-		}
-		distance -= 8
-	}
-	return distance
 }
 
 func keccak(d []byte) []byte {

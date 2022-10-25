@@ -1,7 +1,8 @@
-package discv4
+package kademlia
 
 import (
 	"container/list"
+	"math/bits"
 	"sort"
 	"sync"
 	"time"
@@ -16,7 +17,7 @@ const (
 	minLogDistance = addrByteSize + 1 - bucketsCount
 )
 
-type kademliaTable struct {
+type Table struct {
 	mu       sync.Mutex // protects buckets
 	selfNode *enr.ENR
 	buckets  [bucketsCount]kBucket
@@ -31,7 +32,7 @@ type bucketEntry struct {
 // most recently seen (head) to least recently seen (tail). The size
 // of the list is at most maxBucketSize.
 type kBucket struct {
-	lru        *list.List
+	lru        list.List
 	entriesMap map[string]*list.Element
 }
 
@@ -66,25 +67,21 @@ func (bucket *kBucket) store(node *enr.ENR) {
 	}
 }
 
-func newKademliaTable(selfNode *enr.ENR) *kademliaTable {
-	t := &kademliaTable{
+func New(selfNode *enr.ENR) *Table {
+	t := &Table{
 		selfNode: selfNode,
 		buckets:  [bucketsCount]kBucket{},
-	}
-	// init lists
-	for i := 0; i < len(t.buckets); i++ {
-		t.buckets[i].lru = list.New()
 	}
 	return t
 }
 
 // Inserts a node record into the Kademlia Table by putting it
 // in the appropriate k-bucket based on distance.
-func (kt *kademliaTable) Insert(node *enr.ENR) {
+func (kt *Table) Insert(node *enr.ENR) {
 	kt.mu.Lock()
 	defer kt.mu.Unlock()
 
-	distance := enr.LogDistance(kt.selfNode, node)
+	distance := logDistance(kt.selfNode, node)
 	// In the unlikely event that the distance is closer than
 	// the mininum, put it in the closest bucket.
 	if distance < minLogDistance {
@@ -96,7 +93,7 @@ func (kt *kademliaTable) Insert(node *enr.ENR) {
 // FindClosest returns the n closest nodes in the local table to target.
 // It does a full table scan since the actual algorithm to do this is quite complex
 // and the table is not expected to be that large.
-func (kt *kademliaTable) FindClosest(target *enr.ENR, count int) []*enr.ENR {
+func (kt *Table) FindClosest(target *enr.ENR, count int) []*enr.ENR {
 	kt.mu.Lock()
 	defer kt.mu.Unlock()
 
@@ -123,11 +120,29 @@ func (s *enrSorter) Len() int {
 }
 
 func (s *enrSorter) Less(i, j int) bool {
-	return enr.LogDistance(s.nodes[i], s.target) < enr.LogDistance(s.nodes[j], s.target)
+	return logDistance(s.nodes[i], s.target) < logDistance(s.nodes[j], s.target)
 }
 
 func (s *enrSorter) Swap(i, j int) {
 	temp := s.nodes[i]
 	s.nodes[i] = s.nodes[j]
 	s.nodes[j] = temp
+}
+
+// computes the distance between two ENRs defined as
+// log_2 (keccak256(n1) XOR keccak256(n2))
+func logDistance(n1, n2 *enr.ENR) int {
+	addr1 := n1.NodeAddr()
+	addr2 := n2.NodeAddr()
+
+	var xorResult uint8
+	distance := len(addr1) * 8
+	for idx := 0; idx < len(addr1); idx++ {
+		xorResult = addr1[idx] ^ addr2[idx]
+		if xorResult != 0 {
+			return distance - bits.LeadingZeros8(xorResult)
+		}
+		distance -= 8
+	}
+	return distance
 }
