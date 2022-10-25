@@ -22,11 +22,7 @@ func FuzzEncode(f *testing.F) {
 			items = append(items, Bytes(d))
 		}
 		item := List(items...)
-		b, err := Encode(item)
-		if err != nil {
-			t.Fatal(err)
-		}
-		got, err := Decode(b)
+		got, err := Decode(Encode(item))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -40,10 +36,7 @@ func BenchmarkEncode(b *testing.B) {
 	payload := []byte("hello world")
 	b.ReportAllocs()
 	for n := 0; n < b.N; n++ {
-		_, err := Encode(Bytes(payload))
-		if err != nil {
-			b.Fatal(err)
-		}
+		Encode(Bytes(payload))
 	}
 }
 
@@ -237,11 +230,7 @@ func TestDecode(t *testing.T) {
 		},
 	}
 	for _, tc := range cases {
-		b, err := Encode(tc.item)
-		if err != nil {
-			t.Error(err)
-		}
-		got, err := Decode(b)
+		got, err := Decode(Encode(tc.item))
 		if err != nil {
 			t.Errorf("error %s: %s", tc.desc, err)
 		}
@@ -256,31 +245,26 @@ func TestEncode(t *testing.T) {
 		desc string
 		item Item
 		want []byte
-		err  error
 	}{
 		{
 			"zero byte",
 			Byte(0),
 			[]byte{0x00},
-			nil,
 		},
 		{
 			"int 0",
 			Int(0),
 			[]byte{0x80},
-			nil,
 		},
 		{
 			"int 1024",
 			Int(1024),
 			[]byte{0x82, 0x04, 0x00},
-			nil,
 		},
 		{
 			"empty string",
 			String(""),
 			[]byte{0x80},
-			nil,
 		},
 		{
 			"non-empty string",
@@ -345,13 +329,11 @@ func TestEncode(t *testing.T) {
 				0x69,
 				0x74,
 			},
-			nil,
 		},
 		{
 			"empty list",
 			List(),
 			[]byte{0xc0},
-			nil,
 		},
 		{
 			"list of strings",
@@ -367,7 +349,6 @@ func TestEncode(t *testing.T) {
 				0x6f, // o
 				0x67, // g
 			},
-			nil,
 		},
 		{
 			"the set theoretical representation of three",
@@ -386,16 +367,10 @@ func TestEncode(t *testing.T) {
 				0xc1,
 				0xc0,
 			},
-			nil,
 		},
 	}
 	for _, tc := range cases {
-		got, err := Encode(tc.item)
-		if err != nil {
-			if !errors.Is(err, tc.err) {
-				t.Errorf("%s: want: %v got: %v", tc.desc, tc.err, err)
-			}
-		}
+		got := Encode(tc.item)
 		if !bytes.Equal(tc.want, got) {
 			t.Errorf("%s\nwant:\n%v\ngot:\n%v\n", tc.desc, tc.want, got)
 		}

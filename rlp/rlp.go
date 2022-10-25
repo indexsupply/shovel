@@ -21,9 +21,10 @@ const (
 )
 
 func List(items ...Item) Item {
-	var it Item
-	it.l = append(it.l, items...)		
-	return it
+	if items == nil {
+		items = []Item{}
+	}
+	return Item{l: items}
 }
 
 func (i Item) At(pos int) Item {
@@ -106,49 +107,45 @@ type Item struct {
 	l []Item
 }
 
-func Encode(input Item) ([]byte, error) {
+func Encode(input Item) []byte {
 	if input.d != nil && input.l != nil {
-		return nil, errors.New("must set d xor l")
+		panic("must set d xor l")
 	}
 	if input.d != nil {
 		switch n := len(input.d); {
 		case n == 1 && input.d[0] <= str1H:
-			return input.d, nil
+			return input.d
 		case n <= 55:
 			return append(
 				[]byte{str55L + byte(n)},
 				input.d...,
-			), nil
+			)
 		default:
 			lengthSize, length := encodeLength(uint64(len(input.D)))
 			header := append(
 				[]byte{str55H + lengthSize},
 				length...,
 			)
-			return append(header, input.d...), nil
+			return append(header, input.d...)
 		}
 	}
 
 	var out []byte
-	for i := range input.l {
-		b, err := Encode(input.l[i])
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, b...)
+	for _, l := range input.l {
+		out = append(out, Encode(l)...)
 	}
 	if len(out) <= 55 {
 		return append(
 			[]byte{list55L + byte(len(out))},
 			out...,
-		), nil
+		)
 	}
 	lengthSize, length := encodeLength(uint64(len(out)))
 	header := append(
 		[]byte{list55H + lengthSize},
 		length...,
 	)
-	return append(header, out...), nil
+	return append(header, out...)
 }
 
 func encodeLength(n uint64) (uint8, []byte) {
