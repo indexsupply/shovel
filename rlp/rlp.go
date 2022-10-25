@@ -7,6 +7,7 @@ package rlp
 import (
 	"encoding/binary"
 	"errors"
+	"math/bits"
 )
 
 const (
@@ -77,14 +78,15 @@ func Encode(input *Item) ([]byte, error) {
 	), nil
 }
 
-func encodeLength(t byte, l int) []byte {
-	// header must be <= 8 bytes
+func encodeLength(t byte, n int) []byte {
 	buf := make([]byte, 8)
-	// bytes needed to encode length
-	n := binary.PutUvarint(buf, uint64(l))
+	for i := 0; i < 8; i++ {
+		buf[i] = byte(n>>(64-((i+1)*8))) & 0xff
+	}
+	buf = buf[bits.LeadingZeros64(uint64(n))/8:] // remove leading zeros
 	return append(
-		[]byte{byte(uint8(t) + uint8(n))},
-		buf[:n]...,
+		[]byte{uint8(t) + uint8(len(buf))},
+		buf...,
 	)
 }
 
@@ -95,7 +97,7 @@ func decodeLength(t byte, input []byte) (int, int) {
 	paddedBytes := make([]byte, 8)
 	// binary.BigEndian.Uint64 expects an 8 byte array so we have to left pad
 	// it in case the length is less. Big-endian format is used.
-	copy(paddedBytes[8-n:], input[1 : n+1])
+	copy(paddedBytes[8-n:], input[1:n+1])
 	length := binary.BigEndian.Uint64(paddedBytes)
 	return int(n + 1), int(length)
 }
