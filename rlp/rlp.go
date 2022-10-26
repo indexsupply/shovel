@@ -54,6 +54,9 @@ func Byte(b byte) Item {
 }
 
 func Bytes(b []byte) Item {
+	if b == nil {
+		return Item{d: []byte{}}
+	}
 	return Item{d: b}
 }
 

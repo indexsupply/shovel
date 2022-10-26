@@ -198,6 +198,10 @@ func TestDecode(t *testing.T) {
 		item Item
 	}{
 		{
+			"empty bytes",
+			Bytes(nil),
+		},
+		{
 			"short string",
 			String("a"),
 		},
