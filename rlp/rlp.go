@@ -50,10 +50,12 @@ func Encode(input *Item) ([]byte, error) {
 				input.D...,
 			), nil
 		default:
-			return append(
-				encodeLength(str55H, len(input.D)),
-				input.D...,
-			), nil
+			lengthSize, length := encodeLength(uint64(len(input.D)))
+			header := append(
+				[]byte{str55H + lengthSize},
+				length...,
+			)
+			return append(header, input.D...), nil
 		}
 	}
 
@@ -71,26 +73,22 @@ func Encode(input *Item) ([]byte, error) {
 			out...,
 		), nil
 	}
-	return append(
-		encodeLength(list55H, len(out)),
-		out...,
-	), nil
+	lengthSize, length := encodeLength(uint64(len(out)))
+	header := append(
+		[]byte{list55H + lengthSize},
+		length...,
+	)
+	return append(header, out...), nil
 }
 
-func encodeLength(t byte, n int) []byte {
+func encodeLength(n uint64) (uint8, []byte) {
 	// Tommy's algorithm
-	if n < 1 {
-		panic("encodeLength only works for non negative integers")
-	}
 	var buf []byte
 	for i := n; i > 0; {
 		buf = append([]byte{byte(i & 0xff)}, buf...)
 		i = i >> 8
 	}
-	return append(
-		[]byte{uint8(t) + uint8(len(buf))},
-		buf...,
-	)
+	return uint8(len(buf)), buf
 }
 
 // Returns two values representing the length of the
