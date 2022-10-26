@@ -5,10 +5,29 @@ import (
 	"crypto/rand"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"math"
 	"reflect"
 	"testing"
 )
+
+func ExampleEncode() {
+	item := List(
+		String("foo"),
+		List(String("bar"), String("baz")),
+	)
+	item, _ = Decode(Encode(item))
+
+	var (
+		first, _  = item.At(0).String()
+		second, _ = item.At(1).At(0).String()
+		third, _  = item.At(1).At(1).String()
+	)
+	fmt.Println(first, second, third)
+
+	//Output:
+	// foo bar baz
+}
 
 func FuzzEncode(f *testing.F) {
 	var (

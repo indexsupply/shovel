@@ -88,6 +88,13 @@ func (i Item) Uint16() (uint16, error) {
 	return binary.BigEndian.Uint16(i.d), nil
 }
 
+func (i Item) String() (string, error) {
+	if len(i.d) == 0 {
+		return "", errNoData
+	}
+	return string(i.d), nil
+}
+
 func (i Item) Hash() ([32]byte, error) {
 	var h [32]byte
 	if len(i.d) == 0 {
