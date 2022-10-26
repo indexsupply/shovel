@@ -5,10 +5,29 @@ import (
 	"crypto/rand"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"math"
 	"reflect"
 	"testing"
 )
+
+func ExampleEncode() {
+	item := List(
+		String("foo"),
+		List(String("bar"), String("baz")),
+	)
+	item, _ = Decode(Encode(item))
+
+	var (
+		first, _  = item.At(0).String()
+		second, _ = item.At(1).At(0).String()
+		third, _  = item.At(1).At(1).String()
+	)
+	fmt.Println(first, second, third)
+
+	//Output:
+	// foo bar baz
+}
 
 func FuzzEncode(f *testing.F) {
 	var (
@@ -17,15 +36,12 @@ func FuzzEncode(f *testing.F) {
 	)
 	f.Add(numItems, payload)
 	f.Fuzz(func(t *testing.T, n uint64, d []byte) {
-		item := &Item{L: []*Item{}}
+		var items []Item
 		for i := 0; i < int(n); i++ {
-			item.L = append(item.L, &Item{D: d})
+			items = append(items, Bytes(d))
 		}
-		b, err := Encode(item)
-		if err != nil {
-			t.Fatal(err)
-		}
-		got, err := Decode(b)
+		item := List(items...)
+		got, err := Decode(Encode(item))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -39,10 +55,7 @@ func BenchmarkEncode(b *testing.B) {
 	payload := []byte("hello world")
 	b.ReportAllocs()
 	for n := 0; n < b.N; n++ {
-		_, err := Encode(&Item{D: payload})
-		if err != nil {
-			b.Fatal(err)
-		}
+		Encode(Bytes(payload))
 	}
 }
 
@@ -78,7 +91,7 @@ func TestDecode_Errors(t *testing.T) {
 				},
 				randBytes(57)...,
 			),
-			ErrTooManyBytes,
+			errTooManyBytes,
 		},
 		{
 			"long string. too few bytes",
@@ -89,7 +102,7 @@ func TestDecode_Errors(t *testing.T) {
 				},
 				randBytes(55)...,
 			),
-			ErrTooFewBytes,
+			errTooFewBytes,
 		},
 	}
 	for _, tc := range cases {
@@ -201,62 +214,46 @@ func TestDecodeLength(t *testing.T) {
 func TestDecode(t *testing.T) {
 	cases := []struct {
 		desc string
-		item *Item
+		item Item
 	}{
 		{
+			"empty bytes",
+			Bytes(nil),
+		},
+		{
 			"short string",
-			&Item{D: []byte("a")},
+			String("a"),
 		},
 		{
 			"long string",
-			&Item{D: []byte("Lorem ipsum dolor sit amet, consectetur adipisicing elit")},
+			String("Lorem ipsum dolor sit amet, consectetur adipisicing elit"),
 		},
 		{
 			"empty list",
-			&Item{L: []*Item{}},
+			List(),
 		},
 		{
 			"list of short strings",
-			&Item{
-				L: []*Item{
-					&Item{D: []byte("a")},
-					&Item{D: []byte("b")},
-				},
-			},
+			List(String("a"), String("b")),
 		},
 		{
 			"list of long strings",
-			&Item{
-				L: []*Item{
-					&Item{D: []byte("Lorem ipsum dolor sit amet, consectetur adipisicing elit")},
-					&Item{D: []byte("Porem ipsum dolor sit amet, consectetur adipisicing elit")},
-				},
-			},
+			List(
+				String("Lorem ipsum dolor sit amet, consectetur adipisicing elit"),
+				String("Porem ipsum dolor sit amet, consectetur adipisicing elit"),
+			),
 		},
 		{
 			"the set theoretical representation of three",
-			&Item{
-				L: []*Item{
-					&Item{L: []*Item{}},
-					&Item{L: []*Item{
-						&Item{L: []*Item{}},
-					}},
-					&Item{L: []*Item{
-						&Item{L: []*Item{}},
-						&Item{L: []*Item{
-							&Item{L: []*Item{}},
-						}},
-					}},
-				},
-			},
+			List(
+				List(),
+				List(List()),
+				List(List(), List(List())),
+			),
 		},
 	}
 	for _, tc := range cases {
-		b, err := Encode(tc.item)
-		if err != nil {
-			t.Error(err)
-		}
-		got, err := Decode(b)
+		got, err := Decode(Encode(tc.item))
 		if err != nil {
 			t.Errorf("error %s: %s", tc.desc, err)
 		}
@@ -269,49 +266,32 @@ func TestDecode(t *testing.T) {
 func TestEncode(t *testing.T) {
 	cases := []struct {
 		desc string
-		item *Item
+		item Item
 		want []byte
-		err  error
 	}{
 		{
-			"missing item",
-			nil,
-			[]byte{},
-			ErrTooFewArgs,
-		},
-		{
-			"setting L & D",
-			&Item{D: []byte{}, L: []*Item{}},
-			[]byte{},
-			ErrTooManyArgs,
-		},
-		{
 			"zero byte",
-			&Item{D: []byte{byte(0)}},
+			Byte(0),
 			[]byte{0x00},
-			nil,
 		},
 		{
 			"int 0",
-			&Item{D: []byte{}},
+			Int(0),
 			[]byte{0x80},
-			nil,
 		},
 		{
 			"int 1024",
-			&Item{D: intTo2b(1024)},
+			Int(1024),
 			[]byte{0x82, 0x04, 0x00},
-			nil,
 		},
 		{
 			"empty string",
-			&Item{D: []byte("")},
+			String(""),
 			[]byte{0x80},
-			nil,
 		},
 		{
 			"non-empty string",
-			&Item{D: []byte("Lorem ipsum dolor sit amet, consectetur adipisicing elit")},
+			String("Lorem ipsum dolor sit amet, consectetur adipisicing elit"),
 			[]byte{
 				0xB8,
 				0x38,
@@ -372,22 +352,15 @@ func TestEncode(t *testing.T) {
 				0x69,
 				0x74,
 			},
-			nil,
 		},
 		{
 			"empty list",
-			&Item{L: []*Item{}},
+			List(),
 			[]byte{0xc0},
-			nil,
 		},
 		{
 			"list of strings",
-			&Item{
-				L: []*Item{
-					&Item{D: []byte("cat")},
-					&Item{D: []byte("dog")},
-				},
-			},
+			List(String("cat"), String("dog")),
 			[]byte{
 				0xc8, // 200
 				0x83, // 131
@@ -399,24 +372,14 @@ func TestEncode(t *testing.T) {
 				0x6f, // o
 				0x67, // g
 			},
-			nil,
 		},
 		{
 			"the set theoretical representation of three",
-			&Item{
-				L: []*Item{
-					&Item{L: []*Item{}},
-					&Item{L: []*Item{
-						&Item{L: []*Item{}},
-					}},
-					&Item{L: []*Item{
-						&Item{L: []*Item{}},
-						&Item{L: []*Item{
-							&Item{L: []*Item{}},
-						}},
-					}},
-				},
-			},
+			List(
+				List(),
+				List(List()),
+				List(List(), List(List())),
+			),
 			[]byte{
 				0xc7,
 				0xc0,
@@ -427,16 +390,10 @@ func TestEncode(t *testing.T) {
 				0xc1,
 				0xc0,
 			},
-			nil,
 		},
 	}
 	for _, tc := range cases {
-		got, err := Encode(tc.item)
-		if err != nil {
-			if !errors.Is(err, tc.err) {
-				t.Errorf("%s: want: %v got: %v", tc.desc, tc.err, err)
-			}
-		}
+		got := Encode(tc.item)
 		if !bytes.Equal(tc.want, got) {
 			t.Errorf("%s\nwant:\n%v\ngot:\n%v\n", tc.desc, tc.want, got)
 		}
