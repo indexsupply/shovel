@@ -7,7 +7,6 @@ package rlp
 import (
 	"encoding/binary"
 	"errors"
-	"math/bits"
 )
 
 const (
@@ -79,11 +78,12 @@ func Encode(input *Item) ([]byte, error) {
 }
 
 func encodeLength(t byte, n int) []byte {
-	buf := make([]byte, 8)
-	for i := 0; i < 8; i++ {
-		buf[i] = byte(n>>(64-((i+1)*8))) & 0xff
+	// Tommy's algorithm
+	var buf []byte
+	for i := n; i > 0; {
+		buf = append([]byte{byte(i & 0xff)}, buf...)
+		i = i >> 8
 	}
-	buf = buf[bits.LeadingZeros64(uint64(n))/8:] // remove leading zeros
 	return append(
 		[]byte{uint8(t) + uint8(len(buf))},
 		buf...,
