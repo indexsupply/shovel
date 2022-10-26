@@ -124,7 +124,7 @@ func Encode(input Item) []byte {
 				input.d...,
 			)
 		default:
-			lengthSize, length := encodeLength(uint64(len(input.D)))
+			lengthSize, length := encodeLength(uint64(len(input.d)))
 			header := append(
 				[]byte{str55H + lengthSize},
 				length...,
