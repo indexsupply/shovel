@@ -85,7 +85,14 @@ func (i Item) Uint16() (uint16, error) {
 	if len(i.d) == 0 {
 		return 0, errNoData
 	}
-	return binary.BigEndian.Uint16(i.d), nil
+	return binary.BigEndian.Uint16(leftPad(i.d, 2)), nil
+}
+
+func (i Item) Uint64() (uint64, error) {
+	if len(i.d) == 0 {
+		return 0, errNoData
+	}
+	return binary.BigEndian.Uint64(leftPad(i.d, 8)), nil
 }
 
 func (i Item) String() (string, error) {
@@ -93,6 +100,25 @@ func (i Item) String() (string, error) {
 		return "", errNoData
 	}
 	return string(i.d), nil
+}
+
+func (i Item) Bytes() ([]byte, error) {
+	if len(i.d) == 0 {
+		return nil, errNoData
+	}
+	return i.d, nil
+}
+
+func (i Item) Bytes33() ([33]byte, error) {
+	var b [33]byte
+	if len(i.d) == 0 {
+		return b, errNoData
+	}
+	if len(i.d) != 33 {
+		return b, errors.New("must be exactly 33 bytes")
+	}
+	copy(b[:], i.d)
+	return b, nil
 }
 
 func (i Item) Hash() ([32]byte, error) {
@@ -105,6 +131,22 @@ func (i Item) Hash() ([32]byte, error) {
 	}
 	copy(h[:], i.d)
 	return h, nil
+}
+
+// left pads the provided byte array to the wantedLength, in bytes, using 0s.
+// does nothing if b is already at the wanted length.
+func leftPad(b []byte, wantedLength int) []byte {
+	if len(b) >= wantedLength {
+		return b
+	}
+	padded := make([]byte, wantedLength)
+	bytesNeeded := wantedLength - len(b)
+	copy(padded[bytesNeeded:], b)
+	return padded
+}
+
+func (i Item) List() []Item {
+	return i.l
 }
 
 // Instead of using standard data types and reflection

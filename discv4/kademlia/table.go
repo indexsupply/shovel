@@ -19,12 +19,12 @@ const (
 
 type Table struct {
 	mu       sync.Mutex // protects buckets
-	selfNode *enr.ENR
+	selfNode *enr.Record
 	buckets  [bucketsCount]kBucket
 }
 
 type bucketEntry struct {
-	node     *enr.ENR
+	node     *enr.Record
 	lastSeen time.Time
 }
 
@@ -37,8 +37,8 @@ type kBucket struct {
 }
 
 // nodes returns a slice of all the nodes (ENR) stored in this bucket.
-func (bucket *kBucket) nodes() []*enr.ENR {
-	var result []*enr.ENR
+func (bucket *kBucket) nodes() []*enr.Record {
+	var result []*enr.Record
 	for element := bucket.lru.Front(); element != nil; element = element.Next() {
 		result = append(result, element.Value.(*bucketEntry).node)
 	}
@@ -47,7 +47,7 @@ func (bucket *kBucket) nodes() []*enr.ENR {
 
 // Store inserts a node into this particular k-bucket. If the k-bucket is full,
 // then the least recently seen node is evicted.
-func (bucket *kBucket) store(node *enr.ENR) {
+func (bucket *kBucket) store(node *enr.REcord) {
 	if el, ok := bucket.entriesMap[node.NodeAddrHex()]; ok {
 		// cache hit; update
 		el.Value.(*bucketEntry).lastSeen = time.Now()
@@ -67,7 +67,7 @@ func (bucket *kBucket) store(node *enr.ENR) {
 	}
 }
 
-func New(selfNode *enr.ENR) *Table {
+func New(selfNode *enr.Record) *Table {
 	t := &Table{
 		selfNode: selfNode,
 		buckets:  [bucketsCount]kBucket{},
@@ -77,7 +77,7 @@ func New(selfNode *enr.ENR) *Table {
 
 // Inserts a node record into the Kademlia Table by putting it
 // in the appropriate k-bucket based on distance.
-func (kt *Table) Insert(node *enr.ENR) {
+func (kt *Table) Insert(node *enr.Record) {
 	kt.mu.Lock()
 	defer kt.mu.Unlock()
 
@@ -93,12 +93,12 @@ func (kt *Table) Insert(node *enr.ENR) {
 // FindClosest returns the n closest nodes in the local table to target.
 // It does a full table scan since the actual algorithm to do this is quite complex
 // and the table is not expected to be that large.
-func (kt *Table) FindClosest(target *enr.ENR, count int) []*enr.ENR {
+func (kt *Table) FindClosest(target *enr.Record, count int) []*enr.Record {
 	kt.mu.Lock()
 	defer kt.mu.Unlock()
 
 	s := &enrSorter{
-		nodes:  []*enr.ENR{},
+		nodes:  []*enr.Record{},
 		target: target,
 	}
 	for _, b := range kt.buckets {
@@ -111,8 +111,8 @@ func (kt *Table) FindClosest(target *enr.ENR, count int) []*enr.ENR {
 // Implement the sort.Interface for a slice of node records using
 // the xor distance metric from the target node as a way to compare.
 type enrSorter struct {
-	target *enr.ENR
-	nodes  []*enr.ENR
+	target *enr.Record
+	nodes  []*enr.Record
 }
 
 func (s *enrSorter) Len() int {
@@ -131,7 +131,7 @@ func (s *enrSorter) Swap(i, j int) {
 
 // computes the distance between two ENRs defined as
 // log_2 (keccak256(n1) XOR keccak256(n2))
-func logDistance(n1, n2 *enr.ENR) int {
+func logDistance(n1, n2 *enr.Record) int {
 	addr1 := n1.NodeAddr()
 	addr2 := n2.NodeAddr()
 
