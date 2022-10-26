@@ -79,6 +79,9 @@ func Encode(input *Item) ([]byte, error) {
 
 func encodeLength(t byte, n int) []byte {
 	// Tommy's algorithm
+	if n < 1 {
+		panic("encodeLength only works for non negative integers")
+	}
 	var buf []byte
 	for i := n; i > 0; {
 		buf = append([]byte{byte(i & 0xff)}, buf...)
