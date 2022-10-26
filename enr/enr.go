@@ -2,9 +2,9 @@ package enr
 
 import (
 	"encoding/base64"
-	"encoding/binary"
 	"errors"
 	"fmt"
+	"net/netip"
 	"strings"
 
 	"github.com/indexsupply/x/rlp"
@@ -14,29 +14,29 @@ import (
 // An Ethereum Node Record contains network information
 // about a node on the dsicv5 p2p network. The specification
 // is detailed in https://eips.ethereum.org/EIPS/eip-778.
-type ENR struct {
+type Record struct {
 	Signature []byte // Cryptographic signature of record contents
 	Sequence  uint64 // The sequence number. Nodes should increase the number whenever the record changes and republish the record.
 
-	ID        string // name of identity scheme, e.g. “v4”
-	Secp256k1 []byte // compressed secp256k1 public key, 33 bytes
+	ID        string   // name of identity scheme, e.g. “v4”
+	Secp256k1 [33]byte // compressed secp256k1 public key, 33 bytes
 
-	Ip      [4]byte // IPv4 address
-	TcpPort uint16  // TCP port
-	UdpPort uint16  // UDP port
+	Ip      netip.Addr
+	TcpPort uint16
+	UdpPort uint16
 
-	Ip6      [16]byte // IPv6 address
-	Tcp6Port uint16   // IPv6-specific TCP port. If omitted, same as TcpPort.
-	Udp6Port uint16   // IPv6-specific UDP port. If omitted, same as UdpPort.
+	Ip6      netip.Addr
+	Tcp6Port uint16 // IPv6-specific TCP port. If omitted, same as TcpPort.
+	Udp6Port uint16 // IPv6-specific UDP port. If omitted, same as UdpPort.
 }
 
 // Returns the address of the node, which is the keccak256 hash of its Secp256k1 key.
-func (enr ENR) NodeAddr() []byte {
-	return keccak(enr.Secp256k1)
+func (enr Record) NodeAddr() []byte {
+	return keccak(enr.Secp256k1[:])
 }
 
 // Returns the address of the node as a hex encoded string.
-func (enr ENR) NodeAddrHex() string {
+func (enr Record) NodeAddrHex() string {
 	return fmt.Sprintf("%x", enr.NodeAddr())
 }
 
@@ -46,111 +46,97 @@ func keccak(d []byte) []byte {
 	return h.Sum(nil)
 }
 
-const enrTextPrefix = "enr:"
-
 // Given a text encoding of an Ethereum Node Record, which is formatted
 // as the base-64 encoding of its RLP content prefixed by enr:, this
-// method decodes it into an ENR struct.
-func UnmarshalFromText(str string) (*ENR, error) {
+// method decodes it into an Record struct.
+func UnmarshalText(str string) (Record, error) {
+	const enrTextPrefix = "enr:"
 	if !strings.HasPrefix(str, enrTextPrefix) {
-		return nil, errors.New("Invalid prefix for ENR text encoding.")
+		return Record{}, errors.New("Invalid prefix for ENR text encoding.")
 	}
 
 	str = str[len(enrTextPrefix):]
 	b, err := base64.RawURLEncoding.DecodeString(str)
 	if err != nil {
-		return nil, err
+		return Record{}, err
 	}
 
 	item, err := rlp.Decode(b)
 	if err != nil {
-		return nil, err
+		return Record{}, err
 	}
 
-	sig, seq, m, err := parseRLPEncoding(item)
+	return decode(item)
+}
+
+func decode(item rlp.Item) (Record, error) {
+	var (
+		rec = Record{}
+		err error
+	)
+	rec.Signature, err = item.At(0).Bytes()
 	if err != nil {
-		return nil, err
+		return Record{}, errors.New("missing signature")
+	}
+	rec.Sequence, err = item.At(1).Uint64()
+	if err != nil {
+		return Record{}, errors.New("missing sequence")
 	}
 
-	var (
-		ip4 [4]byte
-		ip6 [16]byte
-	)
-	copy(ip4[:], m["ip"])
-	copy(ip6[:], m["ip6"])
-
-	return &ENR{
-		Signature: sig,
-		Sequence:  seq,
-		ID:        string(m["id"]),
-		Secp256k1: m["secp256k1"][:33],
-		Ip:        ip4,
-		Ip6:       ip6,
-		UdpPort:   binary.BigEndian.Uint16(leftPad(m["udp"], 2)),
-		TcpPort:   binary.BigEndian.Uint16(leftPad(m["tcp"], 2)),
-		Udp6Port:  binary.BigEndian.Uint16(leftPad(m["udp6"], 2)),
-		Tcp6Port:  binary.BigEndian.Uint16(leftPad(m["tcp6"], 2)),
-	}, nil
-}
-
-var (
-	ErrMissingENRKey    = errors.New("ENR is missing required key ID")
-	ErrMissingSignature = errors.New("ENR is missing a signature")
-	ErrMissingSequence  = errors.New("ENR is missing a sequence number")
-)
-
-// parseRLPEncoding returns a triple representing the signature,
-// sequence number, and a map of key-value pairs for the Node Record.
-// i must be the "root" RLP list that is in [signature, seq, k, v, ...] format
-// as specified in https://eips.ethereum.org/EIPS/eip-778.
-func parseRLPEncoding(i *rlp.Item) ([]byte, uint64, map[string][]byte, error) {
-	var (
-		sig []byte
-		seq uint64
-		m   map[string][]byte
-	)
-	switch listSize := len(i.L); {
-	case listSize < 1:
-		return sig, seq, m, ErrMissingSignature
-	case listSize < 2:
-		return sig, seq, m, ErrMissingSequence
-	case listSize < 4:
-		return sig, seq, m, ErrMissingENRKey
-	}
-	sig = i.L[0].D
-	// seq is expected to be a uint64 so we left pad to 8 bytes
-	s := i.L[1].D
-	seq = binary.BigEndian.Uint64(leftPad(s, 8))
-
-	m = make(map[string][]byte)
-	for idx := 2; idx < len(i.L); {
-		key := string(i.L[idx].D)
-		idx++
-		value := i.L[idx].D
-		idx++
-		m[key] = value
+	for i := 2; i < len(item.List()); i += 2 {
+		k, _ := item.At(i).String()
+		switch k {
+		case "id":
+			rec.ID, err = item.At(i + 1).String()
+			if err != nil {
+				return rec, err
+			}
+			if len(rec.ID) == 0 {
+				return rec, errors.New("missing id")
+			}
+		case "secp256k1":
+			rec.Secp256k1, err = item.At(i + 1).Bytes33()
+			if err != nil {
+				return rec, err
+			}
+		case "ip":
+			rec.Ip, err = item.At(i + 1).NetIPAddr()
+			if err != nil {
+				return rec, err
+			}
+			if !rec.Ip.Is4() {
+				return rec, errors.New("ip must be v4 ip")
+			}
+		case "ip6":
+			rec.Ip6, err = item.At(i + 1).NetIPAddr()
+			if err != nil {
+				return rec, err
+			}
+			if !rec.Ip.Is6() {
+				return rec, errors.New("ip6 must be v6 ip")
+			}
+		case "tcp":
+			rec.TcpPort, err = item.At(i + 1).Uint16()
+			if err != nil {
+				return rec, err
+			}
+		case "udp":
+			rec.UdpPort, err = item.At(i + 1).Uint16()
+			if err != nil {
+				return rec, err
+			}
+		case "tcp6":
+			rec.Tcp6Port, err = item.At(i + 1).Uint16()
+			if err != nil {
+				return rec, err
+			}
+		case "udp6":
+			rec.Udp6Port, err = item.At(i + 1).Uint16()
+			if err != nil {
+				return rec, err
+			}
+		}
 	}
 
-	// "id" must be present in the key-value map
-	if _, ok := m["id"]; !ok {
-		return sig, seq, m, ErrMissingENRKey
-	}
-	if secp256k1Value, ok := m["secp256k1"]; ok && len(secp256k1Value) != 33 {
-		return sig, seq, m, errors.New("If secp256k1 is present, it must be exactly 33 bytes long.")
-	}
-
-	return sig, seq, m, nil
-}
-
-// left pads the provided byte array to the wantedLength, in bytes, using 0s.
-// does nothing if b is already at the wanted length.
-func leftPad(b []byte, wantedLength int) []byte {
-	if len(b) >= wantedLength {
-		return b
-	}
-	padded := make([]byte, wantedLength)
-	bytesNeeded := wantedLength - len(b)
-	copy(padded[bytesNeeded:], b)
-
-	return padded
+	return rec, nil
 }
