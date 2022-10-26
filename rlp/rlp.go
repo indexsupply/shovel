@@ -50,10 +50,12 @@ func Encode(input *Item) ([]byte, error) {
 				input.D...,
 			), nil
 		default:
-			return append(
-				encodeLength(str55H, len(input.D)),
-				input.D...,
-			), nil
+			lengthSize, length := encodeLength(uint64(len(input.D)))
+			header := append(
+				[]byte{str55H + lengthSize},
+				length...,
+			)
+			return append(header, input.D...), nil
 		}
 	}
 
@@ -71,21 +73,22 @@ func Encode(input *Item) ([]byte, error) {
 			out...,
 		), nil
 	}
-	return append(
-		encodeLength(list55H, len(out)),
-		out...,
-	), nil
+	lengthSize, length := encodeLength(uint64(len(out)))
+	header := append(
+		[]byte{list55H + lengthSize},
+		length...,
+	)
+	return append(header, out...), nil
 }
 
-func encodeLength(t byte, l int) []byte {
-	// header must be <= 8 bytes
-	buf := make([]byte, 8)
-	// bytes needed to encode length
-	n := binary.PutUvarint(buf, uint64(l))
-	return append(
-		[]byte{byte(uint8(t) + uint8(n))},
-		buf[:n]...,
-	)
+func encodeLength(n uint64) (uint8, []byte) {
+	// Tommy's algorithm
+	var buf []byte
+	for i := n; i > 0; {
+		buf = append([]byte{byte(i & 0xff)}, buf...)
+		i = i >> 8
+	}
+	return uint8(len(buf)), buf
 }
 
 // Returns two values representing the length of the
@@ -95,7 +98,7 @@ func decodeLength(t byte, input []byte) (int, int) {
 	paddedBytes := make([]byte, 8)
 	// binary.BigEndian.Uint64 expects an 8 byte array so we have to left pad
 	// it in case the length is less. Big-endian format is used.
-	copy(paddedBytes[8-n:], input[1 : n+1])
+	copy(paddedBytes[8-n:], input[1:n+1])
 	length := binary.BigEndian.Uint64(paddedBytes)
 	return int(n + 1), int(length)
 }

@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/binary"
 	"errors"
+	"math"
 	"reflect"
 	"testing"
 )
@@ -105,40 +106,83 @@ func TestDecode_Errors(t *testing.T) {
 	}
 }
 
-func TestDecodeLength(t *testing.T) { 
+func TestEncodeLength(t *testing.T) {
 	cases := []struct {
-		t byte
-		header []byte
+		desc string
+		n    uint64
+		l    uint8
+		b    []byte
+	}{
+		{
+			"0",
+			0,
+			0,
+			[]byte{},
+		},
+		{
+			"1 byte",
+			1,
+			1,
+			[]byte{0x01},
+		},
+		{
+			"2 bytes",
+			256,
+			2,
+			[]byte{0x01, 0x00},
+		},
+		{
+			"max. 8 bytes",
+			math.MaxUint64,
+			8,
+			[]byte{0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff},
+		},
+	}
+	for _, tc := range cases {
+		lengthSize, length := encodeLength(tc.n)
+		if lengthSize != tc.l {
+			t.Errorf("%s: expected: %d got: %d", tc.desc, tc.l, lengthSize)
+		}
+		if !bytes.Equal(length, tc.b) {
+			t.Errorf("%s: expected: %x got: %x", tc.desc, tc.b, length)
+		}
+	}
+}
+
+func TestDecodeLength(t *testing.T) {
+	cases := []struct {
+		t              byte
+		header         []byte
 		expectedLength int
 	}{
 		// list more than 55 bytes, full 8 bytes needed for length
 		{
-			t: list55H,
-			header: []byte{0xff, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
+			t:              list55H,
+			header:         []byte{0xff, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
 			expectedLength: 1 << 56,
 		},
 		// list more than 55 bytes, but binary encoding of length only fits into one byte
 		{
-			t: list55H,
-			header: []byte{list55H + 1, 0xe2},
+			t:              list55H,
+			header:         []byte{list55H + 1, 0xe2},
 			expectedLength: 226, // e2 is 226 in decimal
 		},
 		// list more than 55 bytes, but binary encoding of length  fits into two bytes
 		{
-			t: list55H,
-			header: []byte{list55H + 2, 0x12, 0xab},
+			t:              list55H,
+			header:         []byte{list55H + 2, 0x12, 0xab},
 			expectedLength: 4779, // 12ab is 4779 in decimal
 		},
 		// string more than 55 bytes, but binary encoding of length fits into two bytes
 		{
-			t: str55H,
-			header: []byte{str55H + 2, 0x12, 0xab},
+			t:              str55H,
+			header:         []byte{str55H + 2, 0x12, 0xab},
 			expectedLength: 4779, // 12ab is 4779 in decimal
 		},
 		// string more than 55 bytes, but binary encoding of length fits into two bytes
 		{
-			t: str55H,
-			header: []byte{str55H + 2, 0x12, 0xab},
+			t:              str55H,
+			header:         []byte{str55H + 2, 0x12, 0xab},
 			expectedLength: 4779, // 12ab is 4779 in decimal
 		},
 	}
