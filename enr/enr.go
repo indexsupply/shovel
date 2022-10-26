@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/indexsupply/lib/rlp"
+	"github.com/indexsupply/x/rlp"
 	"golang.org/x/crypto/sha3"
 )
 

@@ -1,4 +1,4 @@
-module github.com/indexsupply/lib
+module github.com/indexsupply/x
 
 go 1.19
 
