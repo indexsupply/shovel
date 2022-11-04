@@ -272,7 +272,7 @@ func TestEncode(t *testing.T) {
 		{
 			"zero byte",
 			Byte(0),
-			[]byte{0x00},
+			[]byte{0x80},
 		},
 		{
 			"int 0",
