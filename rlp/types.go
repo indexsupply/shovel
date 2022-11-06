@@ -63,16 +63,34 @@ func (i Item) String() (string, error) {
 	return string(i.d), nil
 }
 
-func (i Item) Bytes33() ([33]byte, error) {
-	var b [33]byte
-	if len(i.d) == 0 {
-		return b, errNoData
+func Time(t time.Time) Item {
+	return Uint64(uint64(t.Unix()))
+}
+
+func (i Item) Time() (time.Time, error) {
+	var t time.Time
+	ts, err := i.Uint64()
+	if err != nil {
+		return t, err
 	}
-	if len(i.d) != 33 {
-		return b, errors.New("must be exactly 33 bytes")
+	return time.Unix(int64(ts), 0), nil
+}
+
+func (i Item) Secp256k1PublicKey() (*secp256k1.PublicKey, error) {
+	switch len(i.d) {
+	case 0:
+		return nil, errNoData
+	case 33:
+		var b [33]byte
+		copy(b[:], i.d)
+		return isxsecp256k1.DecodeCompressed(b)
+	case 64:
+		var b [64]byte
+		copy(b[:], i.d)
+		return isxsecp256k1.Decode(b)
+	default:
+		return nil, errors.New(fmt.Sprintf("secp256k1 pubkey must be 33 or 64 bytes. got: %d", len(i.d)))
 	}
-	copy(b[:], i.d)
-	return b, nil
 }
 
 func (i Item) Hash() ([32]byte, error) {
@@ -96,27 +114,6 @@ func (i Item) IP() (net.IP, error) {
 	default:
 		return nil, errors.New(fmt.Sprintf("ip must be 4 or 16 bytes. got: %d", len(i.d)))
 	}
-}
-
-func (i Item) Secp256k1PublicKey() (*secp256k1.PublicKey, error) {
-	switch len(i.d) {
-	case 0:
-		return nil, errNoData
-	case 33:
-		var b [33]byte
-		copy(b[:], i.d)
-		return isxsecp256k1.DecodeCompressed(b)
-	case 64:
-		var b [64]byte
-		copy(b[:], i.d)
-		return isxsecp256k1.Decode(b)
-	default:
-		return nil, errors.New(fmt.Sprintf("secp256k1 pubkey must be 33 or 64 bytes. got: %d", len(i.d)))
-	}
-}
-
-func Time(t time.Time) Item {
-	return Uint64(uint64(t.Unix()))
 }
 
 func Byte(b byte) Item {

@@ -17,10 +17,22 @@ const (
 	minLogDistance = addrByteSize + 1 - bucketsCount
 )
 
+func New(r *enr.Record) *Table {
+	t := new(Table)
+	t.self = r
+	for i := 0; i < bucketsCount; i++ {
+		t.buckets[i] = &kBucket{
+			lru:     list.List{},
+			entries: map[[32]byte]*list.Element{},
+		}
+	}
+	return t
+}
+
 type Table struct {
-	mu       sync.Mutex // protects buckets
-	selfNode *enr.Record
-	buckets  [bucketsCount]kBucket
+	mu      sync.Mutex // protects buckets
+	buckets [bucketsCount]*kBucket
+	self    *enr.Record
 }
 
 type bucketEntry struct {
@@ -32,8 +44,8 @@ type bucketEntry struct {
 // most recently seen (head) to least recently seen (tail). The size
 // of the list is at most maxBucketSize.
 type kBucket struct {
-	lru        list.List
-	entriesMap map[[32]byte]*list.Element
+	lru     list.List
+	entries map[[32]byte]*list.Element
 }
 
 // nodes returns a slice of all the nodes (ENR) stored in this bucket.
@@ -48,7 +60,7 @@ func (bucket *kBucket) nodes() []*enr.Record {
 // Store inserts a node into this particular k-bucket. If the k-bucket is full,
 // then the least recently seen node is evicted.
 func (bucket *kBucket) store(node *enr.Record) {
-	if el, ok := bucket.entriesMap[node.ID()]; ok {
+	if el, ok := bucket.entries[node.ID()]; ok {
 		// cache hit; update
 		el.Value.(*bucketEntry).lastSeen = time.Now()
 		el.Value.(*bucketEntry).node = node
@@ -57,22 +69,14 @@ func (bucket *kBucket) store(node *enr.Record) {
 	}
 
 	newEntry := bucket.lru.PushFront(&bucketEntry{node: node, lastSeen: time.Now()})
-	bucket.entriesMap[node.ID()] = newEntry
+	bucket.entries[node.ID()] = newEntry
 
 	if bucket.lru.Len() > maxBucketSize {
 		// evict least recently seen
 		last := bucket.lru.Back()
 		bucket.lru.Remove(last)
-		delete(bucket.entriesMap, last.Value.(*bucketEntry).node.ID())
+		delete(bucket.entries, last.Value.(*bucketEntry).node.ID())
 	}
-}
-
-func New(selfNode *enr.Record) *Table {
-	t := &Table{
-		selfNode: selfNode,
-		buckets:  [bucketsCount]kBucket{},
-	}
-	return t
 }
 
 // Inserts a node record into the Kademlia Table by putting it
@@ -81,7 +85,7 @@ func (kt *Table) Insert(node *enr.Record) {
 	kt.mu.Lock()
 	defer kt.mu.Unlock()
 
-	distance := logDistance(kt.selfNode, node)
+	distance := logDistance(kt.self.ID(), node.ID())
 	// In the unlikely event that the distance is closer than
 	// the mininum, put it in the closest bucket.
 	if distance < minLogDistance {
@@ -93,7 +97,7 @@ func (kt *Table) Insert(node *enr.Record) {
 // FindClosest returns the n closest nodes in the local table to target.
 // It does a full table scan since the actual algorithm to do this is quite complex
 // and the table is not expected to be that large.
-func (kt *Table) FindClosest(target *enr.Record, count int) []*enr.Record {
+func (kt *Table) FindClosest(target [32]byte, count int) []*enr.Record {
 	kt.mu.Lock()
 	defer kt.mu.Unlock()
 
@@ -105,13 +109,16 @@ func (kt *Table) FindClosest(target *enr.Record, count int) []*enr.Record {
 		s.nodes = append(s.nodes, b.nodes()...)
 	}
 	sort.Sort(s)
+	if len(s.nodes) < count {
+		count = len(s.nodes)
+	}
 	return s.nodes[:count]
 }
 
 // Implement the sort.Interface for a slice of node records using
 // the xor distance metric from the target node as a way to compare.
 type enrSorter struct {
-	target *enr.Record
+	target [32]byte
 	nodes  []*enr.Record
 }
 
@@ -120,7 +127,9 @@ func (s *enrSorter) Len() int {
 }
 
 func (s *enrSorter) Less(i, j int) bool {
-	return logDistance(s.nodes[i], s.target) < logDistance(s.nodes[j], s.target)
+	a := logDistance(s.nodes[i].ID(), s.target)
+	b := logDistance(s.nodes[j].ID(), s.target)
+	return a < b
 }
 
 func (s *enrSorter) Swap(i, j int) {
@@ -131,14 +140,11 @@ func (s *enrSorter) Swap(i, j int) {
 
 // computes the distance between two ENRs defined as
 // log_2 (keccak256(n1) XOR keccak256(n2))
-func logDistance(n1, n2 *enr.Record) int {
-	addr1 := n1.ID()
-	addr2 := n2.ID()
-
+func logDistance(h1, h2 [32]byte) int {
 	var xorResult uint8
-	distance := len(addr1) * 8
-	for idx := 0; idx < len(addr1); idx++ {
-		xorResult = addr1[idx] ^ addr2[idx]
+	distance := len(h1) * 8
+	for idx := 0; idx < len(h1); idx++ {
+		xorResult = h1[idx] ^ h2[idx]
 		if xorResult != 0 {
 			return distance - bits.LeadingZeros8(xorResult)
 		}
