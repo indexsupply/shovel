@@ -33,7 +33,7 @@ type bucketEntry struct {
 // of the list is at most maxBucketSize.
 type kBucket struct {
 	lru        list.List
-	entriesMap map[string]*list.Element
+	entriesMap map[[32]byte]*list.Element
 }
 
 // nodes returns a slice of all the nodes (ENR) stored in this bucket.
@@ -47,8 +47,8 @@ func (bucket *kBucket) nodes() []*enr.Record {
 
 // Store inserts a node into this particular k-bucket. If the k-bucket is full,
 // then the least recently seen node is evicted.
-func (bucket *kBucket) store(node *enr.REcord) {
-	if el, ok := bucket.entriesMap[node.NodeAddrHex()]; ok {
+func (bucket *kBucket) store(node *enr.Record) {
+	if el, ok := bucket.entriesMap[node.ID()]; ok {
 		// cache hit; update
 		el.Value.(*bucketEntry).lastSeen = time.Now()
 		el.Value.(*bucketEntry).node = node
@@ -57,13 +57,13 @@ func (bucket *kBucket) store(node *enr.REcord) {
 	}
 
 	newEntry := bucket.lru.PushFront(&bucketEntry{node: node, lastSeen: time.Now()})
-	bucket.entriesMap[node.NodeAddrHex()] = newEntry
+	bucket.entriesMap[node.ID()] = newEntry
 
 	if bucket.lru.Len() > maxBucketSize {
 		// evict least recently seen
 		last := bucket.lru.Back()
 		bucket.lru.Remove(last)
-		delete(bucket.entriesMap, last.Value.(*bucketEntry).node.NodeAddrHex())
+		delete(bucket.entriesMap, last.Value.(*bucketEntry).node.ID())
 	}
 }
 
@@ -132,8 +132,8 @@ func (s *enrSorter) Swap(i, j int) {
 // computes the distance between two ENRs defined as
 // log_2 (keccak256(n1) XOR keccak256(n2))
 func logDistance(n1, n2 *enr.Record) int {
-	addr1 := n1.NodeAddr()
-	addr2 := n2.NodeAddr()
+	addr1 := n1.ID()
+	addr2 := n2.ID()
 
 	var xorResult uint8
 	distance := len(addr1) * 8
