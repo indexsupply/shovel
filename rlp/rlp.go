@@ -59,7 +59,7 @@ func Encode(input Item) []byte {
 				input.d...,
 			)
 		default:
-			lengthSize, length := encodeLength(uint64(len(input.d)))
+			lengthSize, length := encodeUint(uint64(len(input.d)))
 			header := append(
 				[]byte{str55H + lengthSize},
 				length...,
@@ -78,7 +78,7 @@ func Encode(input Item) []byte {
 			out...,
 		)
 	}
-	lengthSize, length := encodeLength(uint64(len(out)))
+	lengthSize, length := encodeUint(uint64(len(out)))
 	header := append(
 		[]byte{list55H + lengthSize},
 		length...,
@@ -86,7 +86,7 @@ func Encode(input Item) []byte {
 	return append(header, out...)
 }
 
-func encodeLength(n uint64) (uint8, []byte) {
+func encodeUint(n uint64) (uint8, []byte) {
 	// Tommy's algorithm
 	var buf []byte
 	for i := n; i > 0; {

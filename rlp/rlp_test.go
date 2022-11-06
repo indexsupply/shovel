@@ -119,7 +119,7 @@ func TestDecode_Errors(t *testing.T) {
 	}
 }
 
-func TestEncodeLength(t *testing.T) {
+func TestEncodeUint(t *testing.T) {
 	cases := []struct {
 		desc string
 		n    uint64
@@ -152,7 +152,7 @@ func TestEncodeLength(t *testing.T) {
 		},
 	}
 	for _, tc := range cases {
-		lengthSize, length := encodeLength(tc.n)
+		lengthSize, length := encodeUint(tc.n)
 		if lengthSize != tc.l {
 			t.Errorf("%s: expected: %d got: %d", tc.desc, tc.l, lengthSize)
 		}
