@@ -17,8 +17,9 @@ const (
 	minLogDistance = addrByteSize + 1 - bucketsCount
 )
 
-func New() *Table {
+func New(r *enr.Record) *Table {
 	t := new(Table)
+	t.self = r
 	for i := 0; i < bucketsCount; i++ {
 		t.buckets[i] = &kBucket{
 			lru:     list.List{},
@@ -31,6 +32,7 @@ func New() *Table {
 type Table struct {
 	mu      sync.Mutex // protects buckets
 	buckets [bucketsCount]*kBucket
+	self    *enr.Record
 }
 
 type bucketEntry struct {
@@ -79,11 +81,11 @@ func (bucket *kBucket) store(node *enr.Record) {
 
 // Inserts a node record into the Kademlia Table by putting it
 // in the appropriate k-bucket based on distance.
-func (kt *Table) Insert(self, node *enr.Record) {
+func (kt *Table) Insert(node *enr.Record) {
 	kt.mu.Lock()
 	defer kt.mu.Unlock()
 
-	distance := logDistance(self.ID(), node.ID())
+	distance := logDistance(kt.self.ID(), node.ID())
 	// In the unlikely event that the distance is closer than
 	// the mininum, put it in the closest bucket.
 	if distance < minLogDistance {

@@ -62,7 +62,7 @@ func New(
 		prv:    prv,
 		self:   self,
 		peers:  map[[32]byte]*enr.Record{},
-		ktable: kademlia.New(),
+		ktable: kademlia.New(self),
 	}
 }
 
@@ -277,7 +277,7 @@ func (p process) handlePing(req *enr.Record, packet []byte) error {
 	}
 	peer.ReceivedPing = time.Now()
 	if !peer.ReceivedPing.IsZero() && !peer.ReceivedPong.IsZero() {
-		p.ktable.Insert(p.self, peer)
+		p.ktable.Insert(peer)
 	}
 	p.writeMut.Unlock()
 
@@ -315,7 +315,7 @@ func (p process) handlePong(req *enr.Record, packet []byte) error {
 
 	peer.ReceivedPong = time.Now()
 	if !peer.ReceivedPing.IsZero() && !peer.ReceivedPong.IsZero() {
-		p.ktable.Insert(p.self, peer)
+		p.ktable.Insert(peer)
 	}
 	return nil
 }
