@@ -9,9 +9,4 @@ require (
 	golang.org/x/xerrors v0.0.0-20220907171357-04be3eba64a2
 )
 
-require (
-	github.com/ecies/go v1.0.1 // indirect
-	github.com/fomichev/secp256k1 v0.0.0-20180413221153-00116ff8c62f // indirect
-	github.com/pkg/errors v0.8.1 // indirect
-	golang.org/x/sys v0.1.0 // indirect
-)
+require golang.org/x/sys v0.1.0 // indirect
