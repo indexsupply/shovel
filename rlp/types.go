@@ -3,8 +3,13 @@ package rlp
 import (
 	"encoding/binary"
 	"errors"
-	"net/netip"
+	"fmt"
+	"net"
 	"time"
+
+	"github.com/indexsupply/x/isxsecp256k1"
+
+	"github.com/decred/dcrd/dcrec/secp256k1/v4"
 )
 
 var errNoData = errors.New("requested item contains 0 bytes")
@@ -82,13 +87,32 @@ func (i Item) Hash() ([32]byte, error) {
 	return h, nil
 }
 
-func (i Item) NetIPAddr() (netip.Addr, error) {
-	var a netip.Addr
-	if len(i.d) == 0 {
-		return a, errNoData
+func (i Item) IP() (net.IP, error) {
+	switch len(i.d) {
+	case 0:
+		return nil, errNoData
+	case 4, 16:
+		return net.IP(i.d), nil
+	default:
+		return nil, errors.New(fmt.Sprintf("ip must be 4 or 16 bytes. got: %d", len(i.d)))
 	}
-	a, _ = netip.AddrFromSlice(i.d)
-	return a, nil
+}
+
+func (i Item) Secp256k1PublicKey() (*secp256k1.PublicKey, error) {
+	switch len(i.d) {
+	case 0:
+		return nil, errNoData
+	case 33:
+		var b [33]byte
+		copy(b[:], i.d)
+		return isxsecp256k1.DecodeCompressed(b)
+	case 64:
+		var b [64]byte
+		copy(b[:], i.d)
+		return isxsecp256k1.Decode(b)
+	default:
+		return nil, errors.New(fmt.Sprintf("secp256k1 pubkey must be 33 or 64 bytes. got: %d", len(i.d)))
+	}
 }
 
 func Time(t time.Time) Item {
