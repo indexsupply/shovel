@@ -3,7 +3,6 @@ package rlp
 import (
 	"encoding/binary"
 	"errors"
-	"math/big"
 	"net/netip"
 	"time"
 )
@@ -25,9 +24,8 @@ func (i Item) Bytes() ([]byte, error) {
 }
 
 func Uint16(n uint16) Item {
-	buf := make([]byte, 2)
-	binary.BigEndian.PutUint16(buf[:], n)
-	return Item{d: buf[:2]}
+	_, b := encodeUint(uint64(n))
+	return Item{d: b}
 }
 
 func (i Item) Uint16() (uint16, error) {
@@ -38,9 +36,8 @@ func (i Item) Uint16() (uint16, error) {
 }
 
 func Uint64(n uint64) Item {
-	buf := make([]byte, 8)
-	binary.BigEndian.PutUint64(buf[:], n)
-	return Item{d: buf[4:8]}
+	_, b := encodeUint(n)
+	return Item{d: b}
 }
 
 func (i Item) Uint64() (uint64, error) {
@@ -106,8 +103,8 @@ func Byte(b byte) Item {
 }
 
 func Int(n int) Item {
-	bi := big.NewInt(int64(n))
-	return Item{d: bi.Bytes()}
+	_, b := encodeUint(uint64(n))
+	return Item{d: b}
 }
 
 // left pads the provided byte array to the wantedLength, in bytes, using 0s.
