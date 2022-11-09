@@ -106,7 +106,7 @@ func Decrypt(prvKey *secp256k1.PrivateKey, ciphertext []byte) ([]byte, error) {
 }
 
 // Modified NIST SP 800-56: Concatenation Key Derivation Function.
-// This function avoids the incrementing the counter, and therefore
+// This function avoids incrementing the counter, and therefore
 // looping, since:
 // reps = ceil(keydatalen / hashlen)
 // and keydatalen = 32 and hashlen = 32
