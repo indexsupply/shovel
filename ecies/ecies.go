@@ -1,4 +1,4 @@
-package isxecies
+package ecies
 
 import (
 	"bytes"
