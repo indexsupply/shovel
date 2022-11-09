@@ -1,5 +1,5 @@
 // Provides ECIES implementation using:
-// sha256 hashing , secp256k1 curves, and aes ctr encryption.
+// sha256 hashing , secp256k1 curves, and aes 128 ctr (16 byte key) encryption.
 //
 // Code in this package was built from the following 2 docs:
 // 1. https://csrc.nist.gov/CSRC/media/Publications/sp/800-56a/archive/2006-05-03/documents/sp800-56-draft-jul2005.pdf
