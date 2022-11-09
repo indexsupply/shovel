@@ -1,3 +1,5 @@
+// Provides ECIES implementation using:
+// sha256 hashing , secp256k1 curves, and aes ctr encryption.
 package ecies
 
 import (
