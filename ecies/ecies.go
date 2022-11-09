@@ -36,8 +36,8 @@ func Encrypt(destPubKey *secp256k1.PublicKey, msg []byte) ([]byte, error) {
 	var (
 		s  = secp256k1.GenerateSharedSecret(r, destPubKey)
 		k  = kdf(s[:])
-		ke = k[:32]
-		km = sha256.Sum256(k[32:])
+		ke = k[:16]
+		km = sha256.Sum256(k[16:])
 	)
 
 	iv := make([]byte, aes.BlockSize)
@@ -87,8 +87,8 @@ func Decrypt(prvKey *secp256k1.PrivateKey, ciphertext []byte) ([]byte, error) {
 	var (
 		s  = secp256k1.GenerateSharedSecret(prvKey, r)
 		k  = kdf(s[:])
-		ke = k[:32]
-		km = sha256.Sum256(k[32:])
+		ke = k[:16]
+		km = sha256.Sum256(k[16:])
 	)
 
 	mac := hmac.New(sha256.New, km[:])
