@@ -1,84 +1,120 @@
 package ecies
 
 import (
-	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
-	"encoding/binary"
+	"crypto/subtle"
+	"errors"
 
 	"github.com/decred/dcrd/dcrec/secp256k1/v4"
 )
 
-// Overhead is the length in bytes of the ECIES message *excluding* the ciphertext length.
-// It is 65 (uncompressed public key) + 16 (IV) + 32 (MAC).
-const Overhead = 113
-
-// Implements ECIES encrypt:
-// The encrypted message is of the form R || iv || AES-encrypt(ke, msg) || HMAC(km, c | macShared)
-// Where ke and km are derived using NIST Special Publication 800-56A Concatenation
-// on the derived shared secret. The shared secret should be generated using a random point on
-// the secp256k1 curve and the receiver's public key.
-// Optional params kdfShared and macShared are as inputs into the KDF and HMAC operations, respectively.
-func Encrypt(pubkey *secp256k1.PublicKey, msg, kdfShared, macShared []byte) ([]byte, error) {
-	var ct bytes.Buffer
-	ek, err := secp256k1.GeneratePrivateKey()
+// Encrypts msg to destPubKey using the following construction:
+//
+// r = random number (private key)
+// R = r * G (public key)
+// S = Px where (Px, Py) = r * KB
+// kE || kM = KDF(S, 32)
+// iv = random initialization vector
+// c = c = AES(kE, iv , m)
+// d = MAC(sha256(kM), iv || c)
+// msg = R || iv || c || d
+//
+// For more details, see the ECIES Encryption docs defined by Eth's DevP2P:
+// https://github.com/ethereum/devp2p/blob/master/rlpx.md#ecies-encryption
+func Encrypt(destPubKey *secp256k1.PublicKey, msg []byte) ([]byte, error) {
+	r, err := secp256k1.GeneratePrivateKey()
 	if err != nil {
 		return nil, err
 	}
-	ct.Write(ek.PubKey().SerializeUncompressed())
 
-	sharedSecret := secp256k1.GenerateSharedSecret(ek, pubkey)
-	// Use NIST Special Publication 800-56A Concatenation KDF
-	ke, km := deriveKeys(sharedSecret[:], kdfShared)
-
-	// AES Encrypt
-	c, err := aes.NewCipher(ke)
-	if err != nil {
-		return nil, err
-	}
+	var (
+		s  = secp256k1.GenerateSharedSecret(r, destPubKey)
+		k  = kdf(s[:])
+		ke = k[:32]
+		km = sha256.Sum256(k[32:])
+	)
 
 	iv := make([]byte, aes.BlockSize)
 	rand.Read(iv)
-	ct.Write(iv)
 
-	ctr := cipher.NewCTR(c, iv)
-	ciphertext := make([]byte, len(msg))
-	ctr.XORKeyStream(ciphertext[:], msg)
-	ct.Write(ciphertext)
+	block, err := aes.NewCipher(ke)
+	if err != nil {
+		return nil, err
+	}
+	c := make([]byte, len(msg))
+	cipher.NewCTR(block, iv).XORKeyStream(c, msg)
 
-	// Assemble MAC tag
+	mac := hmac.New(sha256.New, km[:])
+	mac.Write(c)
+	d := mac.Sum(nil)
 
-	mac := hmac.New(sha256.New, km)
-	mac.Write(ciphertext)
-	mac.Write(macShared)
-	tag := mac.Sum(nil)
-	ct.Write(tag)
-
-	return ct.Bytes(), nil
+	var res []byte
+	res = append(res, r.PubKey().SerializeCompressed()...)
+	res = append(res, iv...)
+	res = append(res, c...)
+	res = append(res, d...)
+	return res, nil
 }
 
-// deriveKeys returns the encryption and mac keys from z (shared key)
-// and optional shared information s.
-func deriveKeys(z, s []byte) (ke, km []byte) {
-	kdLen := 2 * 16
-	counterBytes := make([]byte, 4)
-	hash := sha256.New()
-	k := make([]byte, 0, (kdLen + hash.Size() - (kdLen % hash.Size())))
-	for counter := uint32(1); len(k) < kdLen; counter++ {
-		binary.BigEndian.PutUint32(counterBytes, counter)
-		hash.Reset()
-		hash.Write(counterBytes)
-		hash.Write(z)
-		hash.Write(nil)
-		k = hash.Sum(k)
+// Decrypts ciphertext using prvKey using the following construction:
+//
+// ciphertext = R || iv || c || d
+// S = Px where (Px, Py) = kB * R
+// kE || kM = KDF(S, 32)
+// d == MAC(sha256(kM), iv || c)
+// msg = AES(kE, iv || c)
+func Decrypt(prvKey *secp256k1.PrivateKey, ciphertext []byte) ([]byte, error) {
+	const (
+		pubKeyLen = 33
+		ivLen     = 16
+		macSize   = 32
+	)
+	var (
+		msgStart = pubKeyLen + ivLen
+		msgEnd   = len(ciphertext) - macSize
+	)
+
+	r, err := secp256k1.ParsePubKey(ciphertext[:pubKeyLen])
+	if err != nil {
+		return nil, err
 	}
-	ke = k[:16]
-	km = k[16:]
-	hash.Reset()
-	hash.Write(km)
-	km = hash.Sum(km[:0])
-	return
+	var (
+		s  = secp256k1.GenerateSharedSecret(prvKey, r)
+		k  = kdf(s[:])
+		ke = k[:32]
+		km = sha256.Sum256(k[32:])
+	)
+
+	mac := hmac.New(sha256.New, km[:])
+	mac.Write(ciphertext[msgStart:msgEnd])
+	if subtle.ConstantTimeCompare(ciphertext[msgEnd:], mac.Sum(nil)) != 1 {
+		return nil, errors.New("invalid hmac")
+	}
+
+	block, err := aes.NewCipher(ke)
+	if err != nil {
+		return nil, err
+	}
+	iv := ciphertext[pubKeyLen : pubKeyLen+ivLen]
+	msg := make([]byte, len(ciphertext[msgStart:msgEnd]))
+	cipher.NewCTR(block, iv).XORKeyStream(msg, ciphertext[msgStart:msgEnd])
+	return msg, nil
+}
+
+// Modified NIST SP 800-56: Concatenation Key Derivation Function.
+// This function avoids the incrementing the counter, and therefore
+// looping, since:
+// reps = ceil(keydatalen / hashlen)
+// and keydatalen = 32 and hashlen = 32
+// therefore reps is always 1
+func kdf(z []byte) []byte {
+	h := sha256.New()
+	h.Write([]byte{0, 0, 0, 1})
+	h.Write(z)
+	h.Write([]byte{})
+	return h.Sum(nil)
 }
