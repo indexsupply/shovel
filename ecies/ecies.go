@@ -35,7 +35,7 @@ func Encrypt(destPubKey *secp256k1.PublicKey, msg []byte) ([]byte, error) {
 
 	var (
 		s  = secp256k1.GenerateSharedSecret(r, destPubKey)
-		k  = kdf(s[:])
+		k  = kdf(s)
 		ke = k[:16]
 		km = sha256.Sum256(k[16:])
 	)
@@ -75,6 +75,9 @@ func Decrypt(prvKey *secp256k1.PrivateKey, ciphertext []byte) ([]byte, error) {
 		ivLen     = 16
 		macSize   = 32
 	)
+	if len(ciphertext) <= pubKeyLen+ivLen+macSize {
+		return nil, errors.New("ciphertext is too small")
+	}
 	var (
 		msgStart = pubKeyLen + ivLen
 		msgEnd   = len(ciphertext) - macSize
@@ -86,7 +89,7 @@ func Decrypt(prvKey *secp256k1.PrivateKey, ciphertext []byte) ([]byte, error) {
 	}
 	var (
 		s  = secp256k1.GenerateSharedSecret(prvKey, r)
-		k  = kdf(s[:])
+		k  = kdf(s)
 		ke = k[:16]
 		km = sha256.Sum256(k[16:])
 	)
