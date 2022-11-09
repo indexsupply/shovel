@@ -113,10 +113,10 @@ func Decrypt(prvKey *secp256k1.PrivateKey, ciphertext []byte) ([]byte, error) {
 // reps = ceil(keydatalen / hashlen)
 // and keydatalen = 32 and hashlen = 32
 // therefore reps is always 1
-func kdf(z []byte) []byte {
+func kdf(z []byte) [32]byte {
 	h := sha256.New()
 	h.Write([]byte{0, 0, 0, 1})
 	h.Write(z)
 	h.Write([]byte{})
-	return h.Sum(nil)
+	return *(*[32]byte)(h.Sum(nil))
 }
