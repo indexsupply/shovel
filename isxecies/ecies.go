@@ -60,7 +60,7 @@ func Encrypt(pubkey *secp256k1.PublicKey, msg, kdfShared, macShared []byte) ([]b
 
 // deriveKeys returns the encryption and mac keys from z (shared key)
 // and optional shared information s.
-func deriveKeys(z, s []byte) ([]byte, []byte) {
+func deriveKeys(z, s []byte) (ke, km []byte) {
 	kdLen := 2 * 16
 	counterBytes := make([]byte, 4)
 	hash := sha256.New()
@@ -70,13 +70,13 @@ func deriveKeys(z, s []byte) ([]byte, []byte) {
 		hash.Reset()
 		hash.Write(counterBytes)
 		hash.Write(z)
-		hash.Write(s)
+		hash.Write(nil)
 		k = hash.Sum(k)
 	}
-	Ke := k[:16]
-	Km := k[16:]
+	ke = k[:16]
+	km = k[16:]
 	hash.Reset()
-	hash.Write(Km)
-	Km = hash.Sum(Km[:0])
-	return Ke, Km
+	hash.Write(km)
+	km = hash.Sum(km[:0])
+	return
 }
