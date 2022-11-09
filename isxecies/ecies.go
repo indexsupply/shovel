@@ -15,11 +15,12 @@ import (
 const Overhead = 113
 
 // Implements ECIES encrypt:
-// The encrypted message is of the form R || iv || AES-encrypt(msg, ke) || HMAC(ciphertext, km)
+// The encrypted message is of the form R || iv || AES-encrypt(ke, msg) || HMAC(km, c | macShared)
 // Where ke and km are derived using NIST Special Publication 800-56A Concatenation
 // on the derived shared secret. The shared secret should be generated using a random point on
 // the secp256k1 curve and the receiver's public key.
-func Encrypt(pubkey *secp256k1.PublicKey, msg, shared []byte) ([]byte, error) {
+// Optional params kdfShared and macShared are as inputs into the KDF and HMAC operations, respectively.
+func Encrypt(pubkey *secp256k1.PublicKey, msg, kdfShared, macShared []byte) ([]byte, error) {
 	var ct bytes.Buffer
 	ek, err := secp256k1.GeneratePrivateKey()
 	if err != nil {
@@ -29,7 +30,7 @@ func Encrypt(pubkey *secp256k1.PublicKey, msg, shared []byte) ([]byte, error) {
 
 	sharedSecret := secp256k1.GenerateSharedSecret(ek, pubkey)
 	// Use NIST Special Publication 800-56A Concatenation KDF
-	ke, km := deriveKeys(sharedSecret[:])
+	ke, km := deriveKeys(sharedSecret[:], kdfShared)
 
 	// AES Encrypt
 	c, err := aes.NewCipher(ke)
@@ -50,7 +51,7 @@ func Encrypt(pubkey *secp256k1.PublicKey, msg, shared []byte) ([]byte, error) {
 
 	mac := hmac.New(sha256.New, km)
 	mac.Write(ciphertext)
-	mac.Write(shared)
+	mac.Write(macShared)
 	tag := mac.Sum(nil)
 	ct.Write(tag)
 
@@ -58,7 +59,8 @@ func Encrypt(pubkey *secp256k1.PublicKey, msg, shared []byte) ([]byte, error) {
 }
 
 // deriveKeys returns the encryption and mac keys from z (shared key)
-func deriveKeys(z []byte) ([]byte, []byte) {
+// and optional shared information s.
+func deriveKeys(z, s []byte) ([]byte, []byte) {
 	kdLen := 2 * 16
 	counterBytes := make([]byte, 4)
 	hash := sha256.New()
@@ -68,7 +70,7 @@ func deriveKeys(z []byte) ([]byte, []byte) {
 		hash.Reset()
 		hash.Write(counterBytes)
 		hash.Write(z)
-		hash.Write(nil) // shared secret not used
+		hash.Write(s)
 		k = hash.Sum(k)
 	}
 	Ke := k[:16]
