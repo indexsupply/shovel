@@ -12,6 +12,8 @@ import (
 	"github.com/decred/dcrd/dcrec/secp256k1/v4"
 )
 
+// Overhead is the length in bytes of the ECIES message *excluding* the ciphertext length.
+// It is 65 (uncompressed public key) + 16 (IV) + 32 (MAC).
 const Overhead = 113
 
 // Implements ECIES encrypt:
