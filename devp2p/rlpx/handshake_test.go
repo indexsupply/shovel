@@ -9,7 +9,7 @@ import (
 	"github.com/decred/dcrd/dcrec/secp256k1/v4"
 
 	"github.com/indexsupply/x/enr"
-	"github.com/indexsupply/x/ecies"
+	_ "github.com/indexsupply/x/ecies"
 	"github.com/indexsupply/x/tc"
 )
 
@@ -52,18 +52,27 @@ func TestSendAuth(t *testing.T) {
 	}
 	authMsg, err := h.createAuthMsg()
 	tc.NoErr(t, err)
+	components := authMsg.List()
+	if len(components) != 5 {
+		t.Errorf("expected 5 parts in RLP list, got %d", len(components))
+	}
+	b0, _ := components[0].Bytes()
+	b1, _ := components[1].Bytes()
+	b2, _ := components[2].Bytes()
+	b3, _ := components[3].Bytes()
+	authMsgBytes := append(append(append(append(b0, b1...), b2...), b3...), []byte{0}...)
 
 	expectedAuthMsg := decodeHexString(t, tv["auth_plaintext"])[65:]
-	if !bytes.Equal(authMsg[65:], expectedAuthMsg) {
-		t.Errorf("createAuthMsg: got %v, which does not equal expected %v\n", authMsg[65:], expectedAuthMsg)
+	if !bytes.Equal(authMsgBytes[65:], expectedAuthMsg) {
+		t.Errorf("createAuthMsg: got %v, which does not equal expected %v\n", authMsgBytes, expectedAuthMsg)
 	}
 
-	fmt.Printf("plain text: %x\n", authMsg)
+	fmt.Printf("plain text: %x\n", authMsgBytes)
 	tc.NoErr(t, err)
-	cipher, err := ecies.Encrypt(recPrvKey.PubKey(), authMsg)
-	tc.NoErr(t, err)
-	fmt.Printf("Ciphertext length: %d\n", len(cipher))
-	fmt.Printf("Ciphertext: %x\n", cipher)
+	// cipher, err := ecies.Encrypt(recPrvKey.PubKey(), authMsg, nil)
+	// tc.NoErr(t, err)
+	// fmt.Printf("Ciphertext length: %d\n", len(cipher))
+	// fmt.Printf("Ciphertext: %x\n", cipher)
 }
 
 func decodeHexString(t *testing.T, s string) []byte {

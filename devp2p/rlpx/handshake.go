@@ -90,7 +90,7 @@ func (h *handshake) seal(body rlp.Item) ([]byte, error) {
 
 	prefix := make([]byte, 2) // prefix is length of the body
 	binary.BigEndian.PutUint16(prefix, uint16(len(encBody)+ecies.Overhead))
-	encrypted, err := ecies.Encrypt(h.to.PublicKey, encBody)
+	encrypted, err := ecies.Encrypt(h.to.PublicKey, encBody, prefix)
 	return append(prefix, encrypted...), err
 }
 
