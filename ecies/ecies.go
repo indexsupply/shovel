@@ -31,12 +31,11 @@ const Overhead = 113
 // kE || kM = KDF(S, 32)
 // iv = random initialization vector
 // c = AES(kE, iv , m)
-// d = MAC(sha256(kM), iv || c)
+// d = MAC(sha256(kM), iv || c || shared)
 // msg = R || iv || c || d
-//
 // For more details, see the ECIES Encryption docs defined by Eth's DevP2P:
 // https://github.com/ethereum/devp2p/blob/master/rlpx.md#ecies-encryption
-func Encrypt(destPubKey *secp256k1.PublicKey, msg []byte) ([]byte, error) {
+func Encrypt(destPubKey *secp256k1.PublicKey, msg, shared []byte) ([]byte, error) {
 	r, err := secp256k1.GeneratePrivateKey()
 	if err != nil {
 		return nil, err
@@ -62,6 +61,7 @@ func Encrypt(destPubKey *secp256k1.PublicKey, msg []byte) ([]byte, error) {
 	mac := hmac.New(sha256.New, km[:])
 	mac.Write(iv)
 	mac.Write(c)
+	mac.Write(shared)
 	d := mac.Sum(nil)
 
 	var res []byte
@@ -77,9 +77,9 @@ func Encrypt(destPubKey *secp256k1.PublicKey, msg []byte) ([]byte, error) {
 // ciphertext = R || iv || c || d
 // S = Px where (Px, Py) = kB * R
 // kE || kM = KDF(S, 32)
-// d == MAC(sha256(kM), iv || c)
+// d == MAC(sha256(kM), iv || c || shared)
 // msg = AES(kE, iv || c)
-func Decrypt(prvKey *secp256k1.PrivateKey, ciphertext []byte) ([]byte, error) {
+func Decrypt(prvKey *secp256k1.PrivateKey, ciphertext, shared []byte) ([]byte, error) {
 	const (
 		pubKeyLen = 65
 		ivLen     = 16
@@ -106,6 +106,7 @@ func Decrypt(prvKey *secp256k1.PrivateKey, ciphertext []byte) ([]byte, error) {
 
 	mac := hmac.New(sha256.New, km[:])
 	mac.Write(ciphertext[pubKeyLen:msgEnd]) // iv || c
+	mac.Write(shared)
 	if subtle.ConstantTimeCompare(ciphertext[msgEnd:], mac.Sum(nil)) != 1 {
 		return nil, errors.New("invalid hmac")
 	}
