@@ -25,7 +25,7 @@ import (
 // S = Px where (Px, Py) = r * KB
 // kE || kM = KDF(S, 32)
 // iv = random initialization vector
-// c = c = AES(kE, iv , m)
+// c = AES(kE, iv , m)
 // d = MAC(sha256(kM), iv || c)
 // msg = R || iv || c || d
 //
