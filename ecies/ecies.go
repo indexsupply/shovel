@@ -55,11 +55,12 @@ func Encrypt(destPubKey *secp256k1.PublicKey, msg []byte) ([]byte, error) {
 	cipher.NewCTR(block, iv).XORKeyStream(c, msg)
 
 	mac := hmac.New(sha256.New, km[:])
+	mac.Write(iv)
 	mac.Write(c)
 	d := mac.Sum(nil)
 
 	var res []byte
-	res = append(res, r.PubKey().SerializeCompressed()...)
+	res = append(res, r.PubKey().SerializeUncompressed()...)
 	res = append(res, iv...)
 	res = append(res, c...)
 	res = append(res, d...)
@@ -75,7 +76,7 @@ func Encrypt(destPubKey *secp256k1.PublicKey, msg []byte) ([]byte, error) {
 // msg = AES(kE, iv || c)
 func Decrypt(prvKey *secp256k1.PrivateKey, ciphertext []byte) ([]byte, error) {
 	const (
-		pubKeyLen = 33
+		pubKeyLen = 65
 		ivLen     = 16
 		macSize   = 32
 	)
@@ -99,7 +100,7 @@ func Decrypt(prvKey *secp256k1.PrivateKey, ciphertext []byte) ([]byte, error) {
 	)
 
 	mac := hmac.New(sha256.New, km[:])
-	mac.Write(ciphertext[msgStart:msgEnd])
+	mac.Write(ciphertext[pubKeyLen:msgEnd]) // iv || c
 	if subtle.ConstantTimeCompare(ciphertext[msgEnd:], mac.Sum(nil)) != 1 {
 		return nil, errors.New("invalid hmac")
 	}
