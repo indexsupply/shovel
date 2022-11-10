@@ -9,7 +9,7 @@ import (
 	"github.com/decred/dcrd/dcrec/secp256k1/v4"
 
 	"github.com/indexsupply/x/enr"
-	"github.com/indexsupply/x/isxecies"
+	"github.com/indexsupply/x/ecies"
 	"github.com/indexsupply/x/tc"
 )
 
@@ -60,7 +60,7 @@ func TestSendAuth(t *testing.T) {
 
 	fmt.Printf("plain text: %x\n", authMsg)
 	tc.NoErr(t, err)
-	cipher, err := isxecies.Encrypt(recPrvKey.PubKey(), authMsg, nil)
+	cipher, err := ecies.Encrypt(recPrvKey.PubKey(), authMsg)
 	tc.NoErr(t, err)
 	fmt.Printf("Ciphertext length: %d\n", len(cipher))
 	fmt.Printf("Ciphertext: %x\n", cipher)

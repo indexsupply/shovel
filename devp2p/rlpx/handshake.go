@@ -10,7 +10,7 @@ import (
 	"github.com/decred/dcrd/dcrec/secp256k1/v4"
 
 	"github.com/indexsupply/x/enr"
-	"github.com/indexsupply/x/isxecies"
+	"github.com/indexsupply/x/ecies"
 	"github.com/indexsupply/x/isxhash"
 	"github.com/indexsupply/x/isxsecp256k1"
 	"github.com/indexsupply/x/rlp"
@@ -74,7 +74,6 @@ func (h *handshake) createAuthMsg() (rlp.Item, error) {
 	hashedEphPubKey := isxhash.Keccak(ephPubKey[:])
 	rawPubKey := isxsecp256k1.Encode(h.pk.PubKey())
 	// Auth Body = [Sig, Raw Pub Key, Nonce, Version]
-	// return append(append(append(append(sig[:], hashedEphPubKey[:]...), rawPubKey[:]...), h.initNonce[:]...), byte(0)), nil
 	return rlp.List(
 		rlp.Bytes(sig[:]),
 		rlp.Bytes(hashedEphPubKey),
@@ -90,8 +89,8 @@ func (h *handshake) seal(body rlp.Item) ([]byte, error) {
 	encBody = append(encBody, make([]byte, mrand.Intn(100)+100)...)
 
 	prefix := make([]byte, 2) // prefix is length of the body
-	binary.BigEndian.PutUint16(prefix, uint16(len(encBody)+isxecies.Overhead))
-	encrypted, err := isxecies.Encrypt(h.to.PublicKey, encBody, prefix)
+	binary.BigEndian.PutUint16(prefix, uint16(len(encBody)+ecies.Overhead))
+	encrypted, err := ecies.Encrypt(h.to.PublicKey, encBody)
 	return append(prefix, encrypted...), err
 }
 
