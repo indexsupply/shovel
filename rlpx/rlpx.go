@@ -11,20 +11,15 @@ import (
 	"hash"
 	"net"
 
+	"github.com/decred/dcrd/dcrec/secp256k1/v4"
+	"golang.org/x/crypto/sha3"
+
 	"github.com/indexsupply/x/bint"
 	"github.com/indexsupply/x/enr"
 	"github.com/indexsupply/x/isxerrors"
+	"github.com/indexsupply/x/isxhash"
 	"github.com/indexsupply/x/rlp"
-	"golang.org/x/crypto/sha3"
 )
-
-type session struct {
-	Verbose bool
-
-	conn          *net.TCPConn
-	local, remote *enr.Record
-	ig, eg        *mstate
-}
 
 type mstate struct {
 	block  cipher.Block
@@ -85,17 +80,56 @@ func (ms *mstate) frame(fct []byte) []byte {
 	return ms.hash.Sum(nil)[:16]
 }
 
+type session struct {
+	Verbose bool
+
+	conn          *net.TCPConn
+	local, remote *enr.Record
+	ig, eg        *mstate
+}
+
 func (s *session) log(format string, args ...any) {
 	if s.Verbose {
 		fmt.Printf(format, args...)
 	}
 }
 
-func New(ke, km []byte) (*session, error) {
+type handshake struct {
+	initiator bool
+
+	auth, ack []byte
+
+	nonce     []byte
+	initNonce []byte
+
+	localPrvKey    *secp256k1.PrivateKey
+	localEphPrvKey *secp256k1.PrivateKey
+
+	remotePubKey    *secp256k1.PublicKey
+	remoteEphPubKey *secp256k1.PublicKey
+}
+
+func New(hs *handshake) (*session, error) {
 	var (
 		err error
 		s   = new(session)
 	)
+
+	ephKey := secp256k1.GenerateSharedSecret(
+		hs.localEphPrvKey,
+		hs.remoteEphPubKey,
+	)
+	sharedSecret := isxhash.Keccak(append(
+		ephKey,
+		isxhash.Keccak(append(
+			hs.nonce,
+			hs.initNonce...,
+		))...,
+	))
+
+	ke := isxhash.Keccak(append(ephKey, sharedSecret...))
+	km := isxhash.Keccak(append(ephKey, ke...))
+
 	s.ig, err = newmstate(ke, km)
 	if err != nil {
 		return nil, err
@@ -104,6 +138,29 @@ func New(ke, km []byte) (*session, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	var inonce, rnonce [16]byte
+	for i := 0; i < 16; i++ {
+		inonce[i] = km[i] ^ hs.initNonce[i]
+		rnonce[i] = km[i] ^ hs.nonce[i]
+	}
+
+	if hs.initiator {
+		s.ig.hash = sha3.NewLegacyKeccak256()
+		s.ig.hash.Write(inonce[:])
+		s.ig.hash.Write(hs.ack)
+		s.eg.hash = sha3.NewLegacyKeccak256()
+		s.eg.hash.Write(rnonce[:])
+		s.eg.hash.Write(hs.auth)
+	} else {
+		s.eg.hash = sha3.NewLegacyKeccak256()
+		s.eg.hash.Write(inonce[:])
+		s.eg.hash.Write(hs.ack)
+		s.ig.hash = sha3.NewLegacyKeccak256()
+		s.ig.hash.Write(rnonce[:])
+		s.ig.hash.Write(hs.auth)
+	}
+
 	return s, nil
 }
 
