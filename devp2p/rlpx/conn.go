@@ -15,7 +15,7 @@ type Conn struct {
 }
 
 func (c *Conn) Listen() error {
-	var buf []byte
+	buf := make([]byte, 1024)
 	_, err := c.tcpConn.Read(buf)
 	if err != nil {
 		return err
