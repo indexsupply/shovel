@@ -8,7 +8,6 @@ import (
 
 	"github.com/decred/dcrd/dcrec/secp256k1/v4"
 
-	"github.com/indexsupply/x/enr"
 	_ "github.com/indexsupply/x/ecies"
 	"github.com/indexsupply/x/tc"
 )
@@ -40,15 +39,17 @@ func TestSendAuth(t *testing.T) {
 	if len(initNonce) != 32 {
 		t.Errorf("initNonce is not 32 bytes")
 	}
-	var nonce [32]byte
+	nonce := make([]byte, 32)
 	copy(nonce[:], initNonce)
 	recPrvKey := secp256k1.PrivKeyFromBytes(decodeHexString(t, tv["receiver_private_key"]))
+	recEphPrvKey := secp256k1.PrivKeyFromBytes(decodeHexString(t, tv["receiver_ephemeral_private_key"]))
 	h := &handshake{
-		isInitiator: true,
-		to:          &enr.Record{PublicKey: recPrvKey.PubKey()},
-		pk:          initPrvKey,
-		ephPrvKey:   initEphPrvKey,
-		initNonce:   nonce,
+		isInitiator:     true,
+		remotePubKey:    recPrvKey.PubKey(),
+		localPrvKey:     initPrvKey,
+		localEphPrvKey:  initEphPrvKey,
+		remoteEphPubKey: recEphPrvKey.PubKey(),
+		initNonce:       nonce,
 	}
 	authMsg, err := h.createAuthMsg()
 	tc.NoErr(t, err)
