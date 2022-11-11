@@ -13,18 +13,16 @@ import (
 	"github.com/indexsupply/x/enr"
 	"github.com/indexsupply/x/isxerrors"
 	"github.com/indexsupply/x/rlp"
-
-	"github.com/decred/dcrd/dcrec/secp256k1/v4"
 )
 
 type session struct {
 	Verbose bool
 
-	self *enr.Record
-	peer *enr.Record
-	conn *net.TCPConn
+	local  *enr.Record
+	remote *enr.Record
+	conn   *net.TCPConn
 
-	ke, km *secp256k1.PrivateKey
+	ke, km []byte
 }
 
 func (s *session) log(format string, args ...any) {
@@ -41,8 +39,8 @@ func (s *session) Hello() error {
 			rlp.String("p2p"),
 			rlp.Int(5),
 		),
-		rlp.Uint16(s.self.TcpPort),
-		rlp.Secp256k1PublicKey(s.self.PublicKey),
+		rlp.Uint16(s.local.TcpPort),
+		rlp.Secp256k1PublicKey(s.local.PublicKey),
 	))
 	return isxerrors.Errorf("writing hello msg: %w", err)
 }
@@ -62,26 +60,19 @@ func (s *session) Disconnect() {
 func (s *session) handleDisconnect() {
 }
 
+// Assembles item into an RLPx frame and writes it to
+// the session's TCP connection.
 func (s *session) write(id byte, item rlp.Item) error {
-	b, err := s.frame(id, rlp.Encode(item))
-	if err != nil {
-		return isxerrors.Errorf("creating frame: %w", err)
-	}
-	n, err := s.conn.Write(b)
-	s.log(">%x (%d)", id, n)
-	return isxerrors.Errorf("tcp write: %w", err)
-}
-
-func (s *session) frame(msgID byte, data []byte) ([]byte, error) {
-	frameSize, n := bint.Encode(uint64(len(data) + 1)) //include msgID
+	data := rlp.Encode(item)
+	frameSize, n := bint.Encode(uint64(len(data) + 1)) //include id
 	if n > 3 {
-		return nil, errors.New("data is too large")
+		return errors.New("data is too large")
 	}
 
 	iv := make([]byte, 16) // 0 iv for ephemeral key
-	block, err := aes.NewCipher(s.ke.Serialize())
+	block, err := aes.NewCipher(s.ke)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	// header only contains size since:
@@ -93,26 +84,29 @@ func (s *session) frame(msgID byte, data []byte) ([]byte, error) {
 	cipher.NewCTR(block, iv).XORKeyStream(hct, header)
 
 	var hm []byte
-	mac := hmac.New(sha256.New, s.km.Serialize())
+	mac := hmac.New(sha256.New, s.km)
 	mac.Write(header)
 	hm = mac.Sum(nil)
 
 	//TODO(ryan): ensure len(frame) % 16 == 0
-	var frame []byte
-	frame = append(frame, rlp.Encode(rlp.Byte(msgID))...)
-	frame = append(frame, data...)
-	fct := make([]byte, len(frame))
-	cipher.NewCTR(block, iv).XORKeyStream(fct, frame)
+	var frameData []byte
+	frameData = append(frameData, rlp.Encode(rlp.Byte(id))...)
+	frameData = append(frameData, data...)
+	fct := make([]byte, len(frameData))
+	cipher.NewCTR(block, iv).XORKeyStream(fct, frameData)
 
 	var fm []byte
 	mac.Reset()
-	mac.Write(frame)
+	mac.Write(fct)
 	fm = mac.Sum(nil)
 
-	var f []byte
-	f = append(f, hct...)
-	f = append(f, hm...)
-	f = append(f, fct...)
-	f = append(f, fm...)
-	return f, nil
+	var frame []byte
+	frame = append(frame, hct...)
+	frame = append(frame, hm...)
+	frame = append(frame, fct...)
+	frame = append(frame, fm...)
+
+	m, err := s.conn.Write(frame)
+	s.log(">%x (%d)", id, m)
+	return isxerrors.Errorf("write frame: %w", err)
 }
