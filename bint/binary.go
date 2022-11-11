@@ -12,3 +12,12 @@ func Encode(n uint64) ([]byte, uint8) {
 	}
 	return buf, uint8(len(buf))
 }
+
+func Decode(b []byte) uint64 {
+	var n uint64
+	for i := range b {
+		n = n << 8
+		n += uint64(b[i])
+	}
+	return n
+}

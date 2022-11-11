@@ -5,6 +5,7 @@ package rlpx
 import (
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/hmac"
 	"errors"
 	"fmt"
 	"hash"
@@ -14,22 +15,74 @@ import (
 	"github.com/indexsupply/x/enr"
 	"github.com/indexsupply/x/isxerrors"
 	"github.com/indexsupply/x/rlp"
+	"golang.org/x/crypto/sha3"
 )
 
 type session struct {
 	Verbose bool
 
-	conn *net.TCPConn
+	conn          *net.TCPConn
+	local, remote *enr.Record
+	ig, eg        *mstate
+}
 
-	local  *enr.Record
-	remote *enr.Record
+type mstate struct {
+	block  cipher.Block
+	hash   hash.Hash
+	stream cipher.Stream
+}
 
-	ke       []byte
-	keStream cipher.Stream
+func newmstate(ke, km []byte) (*mstate, error) {
+	eb, err := aes.NewCipher(ke)
+	if err != nil {
+		return nil, err
+	}
+	es := cipher.NewCTR(eb, make([]byte, 16))
 
-	km         []byte
-	kmBlock    cipher.Block
-	imac, emac hash.Hash
+	mb, err := aes.NewCipher(km)
+	if err != nil {
+		return nil, err
+	}
+	h := sha3.NewLegacyKeccak256()
+	return &mstate{
+		hash:   h,
+		block:  mb,
+		stream: es,
+	}, nil
+}
+
+// updates s.emac (egress mac) using the following devp2p construction:
+//
+// header-mac-seed = aes(mac-secret, keccak256.digest(egress-mac)[:16]) ^ header-ciphertext
+// egress-mac = keccak256.update(egress-mac, header-mac-seed)
+// header-mac = keccak256.digest(egress-mac)[:16]
+func (ms *mstate) header(h []byte) []byte {
+	prev := ms.hash.Sum(nil)
+	dest := make([]byte, 16)
+	ms.block.Encrypt(dest, prev[:16])
+	for i := range dest {
+		dest[i] ^= h[i]
+	}
+	ms.hash.Write(dest)
+	return ms.hash.Sum(nil)[:16]
+}
+
+// updates s.emac (egress mac) using the following devp2p construction:
+//
+// egress-mac = keccak256.update(egress-mac, frame-ciphertext)
+// frame-mac-seed = aes(mac-secret, keccak256.digest(egress-mac)[:16]) ^ keccak256.digest(egress-mac)[:16]
+// egress-mac = keccak256.update(egress-mac, frame-mac-seed)
+// frame-mac = keccak256.digest(egress-mac)[:16]
+func (ms *mstate) frame(fct []byte) []byte {
+	ms.hash.Write(fct)
+	prev := ms.hash.Sum(nil)
+	dest := make([]byte, 16)
+	ms.block.Encrypt(dest, prev[:16])
+	for i := range dest {
+		dest[i] ^= prev[i]
+	}
+	ms.hash.Write(dest)
+	return ms.hash.Sum(nil)[:16]
 }
 
 func (s *session) log(format string, args ...any) {
@@ -39,57 +92,40 @@ func (s *session) log(format string, args ...any) {
 }
 
 func New(ke, km []byte) (*session, error) {
-	s := new(session)
-
-	s.ke = ke
-	keblock, err := aes.NewCipher(s.ke)
+	var (
+		err error
+		s   = new(session)
+	)
+	s.ig, err = newmstate(ke, km)
 	if err != nil {
 		return nil, err
 	}
-	iv := make([]byte, 16) // 0 iv for ephemeral key
-	s.keStream = cipher.NewCTR(keblock, iv)
-
-	s.km = km
-	s.kmBlock, err = aes.NewCipher(s.km)
+	s.eg, err = newmstate(ke, km)
 	if err != nil {
 		return nil, err
 	}
-
 	return s, nil
 }
 
-// updates s.emac (egress mac) using the following devp2p construction:
-//
-// header-mac-seed = aes(mac-secret, keccak256.digest(egress-mac)[:16]) ^ header-ciphertext
-// egress-mac = keccak256.update(egress-mac, header-mac-seed)
-// header-mac = keccak256.digest(egress-mac)[:16]
-func (s *session) egressHeaderMac(header []byte) []byte {
-	prev := s.emac.Sum(nil)
-	dest := make([]byte, 16)
-	s.kmBlock.Encrypt(dest, prev[:16])
-	for i := range dest {
-		dest[i] ^= header[i]
+func (s *session) read(buf []byte) ([]byte, error) {
+	if len(buf) < 32 {
+		return nil, errors.New("buf too small for 32byte header")
 	}
-	s.emac.Write(dest)
-	return s.emac.Sum(nil)[:16]
-}
-
-// updates s.emac (egress mac) using the following devp2p construction:
-//
-// egress-mac = keccak256.update(egress-mac, frame-ciphertext)
-// frame-mac-seed = aes(mac-secret, keccak256.digest(egress-mac)[:16]) ^ keccak256.digest(egress-mac)[:16]
-// egress-mac = keccak256.update(egress-mac, frame-mac-seed)
-// frame-mac = keccak256.digest(egress-mac)[:16]
-func (s *session) egressFrameMac(fct []byte) []byte {
-	s.emac.Write(fct)
-	prev := s.emac.Sum(nil)
-	dest := make([]byte, 16)
-	s.kmBlock.Encrypt(dest, prev[:16])
-	for i := range dest {
-		dest[i] ^= prev[i]
+	if !hmac.Equal(s.ig.header(buf[:16]), buf[16:32]) {
+		return nil, errors.New("invalid header mac")
 	}
-	s.emac.Write(dest)
-	return s.emac.Sum(nil)[:16]
+	s.ig.stream.XORKeyStream(buf[:16], buf[:16])
+	var (
+		frameSize = bint.Decode(buf[0:3])
+		frameEnd  = 32 + (16 - frameSize%16)
+		frame     = buf[32:frameEnd]
+		frameMac  = buf[frameEnd : frameEnd+16]
+	)
+	if !hmac.Equal(s.ig.frame(frame), frameMac) {
+		return nil, errors.New("invalid frame mac")
+	}
+	s.ig.stream.XORKeyStream(frame, frame)
+	return frame[:frameSize], nil
 }
 
 // Assembles item into an RLPx frame and writes it to
@@ -111,8 +147,8 @@ func (s *session) write(id byte, item rlp.Item) error {
 	)
 	copy(header[:], frameSize)
 	headerCiphertext = make([]byte, len(header))
-	s.keStream.XORKeyStream(headerCiphertext, header)
-	headerMac = s.egressHeaderMac(headerCiphertext)
+	s.eg.stream.XORKeyStream(headerCiphertext, header)
+	headerMac = s.eg.header(headerCiphertext)
 
 	//TODO(ryan): ensure len(frame) % 16 == 0
 	var (
@@ -123,8 +159,8 @@ func (s *session) write(id byte, item rlp.Item) error {
 	frameData = append(frameData, rlp.Encode(rlp.Byte(id))...)
 	frameData = append(frameData, data...)
 	frameCiphertext = make([]byte, len(frameData))
-	s.keStream.XORKeyStream(frameCiphertext, frameData)
-	frameMac = s.egressFrameMac(frameCiphertext)
+	s.eg.stream.XORKeyStream(frameCiphertext, frameData)
+	frameMac = s.eg.frame(frameCiphertext)
 
 	var frame []byte
 	frame = append(frame, header...)
@@ -164,8 +200,4 @@ func (s *session) Disconnect() {
 }
 
 func (s *session) handleDisconnect() {
-}
-
-func (s *session) read(frame []byte) error {
-	return nil
 }
