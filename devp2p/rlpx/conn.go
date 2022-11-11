@@ -14,6 +14,17 @@ type Conn struct {
 	tcpConn *net.TCPConn
 }
 
+func (c *Conn) Listen() error {
+	var buf []byte
+	_, err := c.tcpConn.Read(buf)
+	if err != nil {
+		return err
+	}
+
+	err = c.h.handleAckMsg(buf)
+	return err
+}
+
 func Dial(pk *secp256k1.PrivateKey, to *enr.Record) (*Conn, error) {
 	tcp, err := net.DialTCP("tcp", nil, to.TCPAddr())
 	if err != nil {
@@ -21,4 +32,8 @@ func Dial(pk *secp256k1.PrivateKey, to *enr.Record) (*Conn, error) {
 	}
 	h, err := newHandshake(pk, to)
 	return &Conn{h: h, tcpConn: tcp}, err
+}
+
+func (c *Conn) Handshake() error {
+	return c.h.sendAuth(c.tcpConn)
 }

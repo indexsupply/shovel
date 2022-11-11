@@ -6,18 +6,19 @@ import (
 	"fmt"
 	mrand "math/rand"
 	"net"
+	"errors"
 
 	"github.com/decred/dcrd/dcrec/secp256k1/v4"
 
 	"github.com/indexsupply/x/ecies"
 	"github.com/indexsupply/x/enr"
-	"github.com/indexsupply/x/isxhash"
 	"github.com/indexsupply/x/isxsecp256k1"
 	"github.com/indexsupply/x/rlp"
 )
 
 const (
 	authVersion = 4
+	prefixLength = 2
 )
 
 type handshake struct {
@@ -38,7 +39,6 @@ func newHandshake(localPrvKey *secp256k1.PrivateKey, to *enr.Record) (*handshake
 	return h, nil
 }
 
-// func (h *handshake) sendAuth(conn net.TCPConn) ([]byte, error) {
 func (h *handshake) createAuthMsg() (rlp.Item, error) {
 	var err error
 	// initialize random nonce
@@ -69,17 +69,46 @@ func (h *handshake) createAuthMsg() (rlp.Item, error) {
 		return rlp.Bytes(nil), err
 	}
 
-	ephPubKey := isxsecp256k1.Encode(h.localEphPrvKey.PubKey())
-	hashedEphPubKey := isxhash.Keccak(ephPubKey[:])
 	rawPubKey := isxsecp256k1.Encode(h.localPrvKey.PubKey())
 	// Auth Body = [Sig, Raw Pub Key, Nonce, Version]
 	return rlp.List(
 		rlp.Bytes(sig[:]),
-		rlp.Bytes(hashedEphPubKey),
 		rlp.Bytes(rawPubKey[:]),
 		rlp.Bytes(h.initNonce),
 		rlp.Int(authVersion),
 	), nil
+}
+
+func (h *handshake) handleAckMsg(sealedAck []byte) error { 
+	ackPacket, err := h.unseal(sealedAck)
+	if err != nil{
+		fmt.Println("err: ", err)
+		return err
+	}
+	h.remotePubKey, err = ackPacket.At(0).Secp256k1PublicKey()
+	fmt.Println("h.remotePubKey: ", h.remotePubKey)
+	return err
+}
+
+func (h *handshake) unseal(b []byte) (rlp.Item, error) { 
+	if len(b) <= 2 + ecies.Overhead {
+		return rlp.Bytes(nil), errors.New("message must be at least 2 + ecies overhead bytes long")
+	}
+	fmt.Println("ack msg: ", b)
+	prefix := b[:prefixLength] // first two bytes are the size
+	size := binary.BigEndian.Uint16(prefix)
+	fmt.Println("ack msg size: ", size)
+
+	encBody := b[prefixLength:prefixLength+size]
+	fmt.Println("enc body: ", encBody)
+	fmt.Println("enc body size: ", len(encBody))
+
+	plainBody, err := ecies.Decrypt(h.localPrvKey, encBody, prefix)
+	fmt.Println("plain body: ", plainBody)
+	if err != nil {
+		return rlp.Bytes(nil), err
+	}
+	return rlp.Decode(plainBody)
 }
 
 func (h *handshake) seal(body rlp.Item) ([]byte, error) {
@@ -87,23 +116,13 @@ func (h *handshake) seal(body rlp.Item) ([]byte, error) {
 	// pad with random data. needs at least 100 bytes to make it indistinguishable from pre-eip-8 handshakes
 	encBody = append(encBody, make([]byte, mrand.Intn(100)+100)...)
 
-	prefix := make([]byte, 2) // prefix is length of the body
+	prefix := make([]byte, prefixLength) // prefix is length of the ciphertext + overhead
 	binary.BigEndian.PutUint16(prefix, uint16(len(encBody)+ecies.Overhead))
 	encrypted, err := ecies.Encrypt(h.remotePubKey, encBody, prefix)
 	return append(prefix, encrypted...), err
 }
 
-func (h *handshake) Listen(conn net.TCPConn) error {
-	var buf []byte
-	_, err := conn.Read(buf)
-	if err != nil {
-		return err
-	}
-	fmt.Println(buf)
-	return nil
-}
-
-func (h *handshake) SendAuth(conn net.TCPConn) error {
+func (h *handshake) sendAuth(conn *net.TCPConn) error {
 	auth, err := h.createAuthMsg()
 	if err != nil {
 		return err

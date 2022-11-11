@@ -53,15 +53,11 @@ func TestSendAuth(t *testing.T) {
 	}
 	authMsg, err := h.createAuthMsg()
 	tc.NoErr(t, err)
-	components := authMsg.List()
-	if len(components) != 5 {
-		t.Errorf("expected 5 parts in RLP list, got %d", len(components))
-	}
-	b0, _ := components[0].Bytes()
-	b1, _ := components[1].Bytes()
-	b2, _ := components[2].Bytes()
-	b3, _ := components[3].Bytes()
-	authMsgBytes := append(append(append(append(b0, b1...), b2...), b3...), []byte{0}...)
+	components := authMsg
+	b0, _ := components.At(0).Bytes()
+	b1, _ := components.At(1).Bytes()
+	b2, _ := components.At(2).Bytes()
+	authMsgBytes := append(append(append(append(b0, b1...), b2...)), []byte{0}...)
 
 	expectedAuthMsg := decodeHexString(t, tv["auth_plaintext"])[65:]
 	if !bytes.Equal(authMsgBytes[65:], expectedAuthMsg) {
