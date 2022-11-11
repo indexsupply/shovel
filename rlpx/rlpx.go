@@ -1,3 +1,5 @@
+// Implements the RLPx protocol. Code is based off the devp2p spec defined here:
+// https://github.com/ethereum/devp2p/blob/master/rlpx.md
 package rlpx
 
 import (
@@ -56,6 +58,11 @@ func New(ke, km []byte) (*session, error) {
 	return s, nil
 }
 
+// updates s.emac (egress mac) using the following devp2p construction:
+//
+// header-mac-seed = aes(mac-secret, keccak256.digest(egress-mac)[:16]) ^ header-ciphertext
+// egress-mac = keccak256.update(egress-mac, header-mac-seed)
+// header-mac = keccak256.digest(egress-mac)[:16]
 func (s *session) egressHeaderMac(header []byte) []byte {
 	prev := s.emac.Sum(nil)
 	dest := make([]byte, 16)
@@ -67,6 +74,12 @@ func (s *session) egressHeaderMac(header []byte) []byte {
 	return s.emac.Sum(nil)[:16]
 }
 
+// updates s.emac (egress mac) using the following devp2p construction:
+//
+// egress-mac = keccak256.update(egress-mac, frame-ciphertext)
+// frame-mac-seed = aes(mac-secret, keccak256.digest(egress-mac)[:16]) ^ keccak256.digest(egress-mac)[:16]
+// egress-mac = keccak256.update(egress-mac, frame-mac-seed)
+// frame-mac = keccak256.digest(egress-mac)[:16]
 func (s *session) egressFrameMac(fct []byte) []byte {
 	s.emac.Write(fct)
 	prev := s.emac.Sum(nil)
