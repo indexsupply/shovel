@@ -27,14 +27,14 @@ type mstate struct {
 	stream cipher.Stream
 }
 
-func newmstate(ke, km []byte) (*mstate, error) {
-	eb, err := aes.NewCipher(ke)
+func newmstate(aesSecret, macSecret []byte) (*mstate, error) {
+	eb, err := aes.NewCipher(aesSecret)
 	if err != nil {
 		return nil, err
 	}
 	es := cipher.NewCTR(eb, make([]byte, 16))
 
-	mb, err := aes.NewCipher(km)
+	mb, err := aes.NewCipher(macSecret)
 	if err != nil {
 		return nil, err
 	}
@@ -111,7 +111,6 @@ func New(conn net.Conn, hs *handshake) (*session, error) {
 	//shared-secret = keccak256(ephemeral-key || keccak256(nonce || initiator-nonce))
 	//aes-secret = keccak256(ephemeral-key || shared-secret)
 	//mac-secret = keccak256(ephemeral-key || aes-secret)
-
 	ephKey := secp256k1.GenerateSharedSecret(
 		hs.localEphPrvKey,
 		hs.remoteEphPubKey,
@@ -123,27 +122,26 @@ func New(conn net.Conn, hs *handshake) (*session, error) {
 			hs.initNonce[:]...,
 		))...,
 	))
-
-	ke := isxhash.Keccak(append(ephKey, sharedSecret...))
-	km := isxhash.Keccak(append(ephKey, ke...))
+	aesSecret := isxhash.Keccak(append(ephKey, sharedSecret...))
+	macSecret := isxhash.Keccak(append(ephKey, aesSecret...))
 
 	var (
 		s   = &session{conn: conn}
 		err error
 	)
-	s.ig, err = newmstate(ke, km)
+	s.ig, err = newmstate(aesSecret, macSecret)
 	if err != nil {
 		return nil, err
 	}
-	s.eg, err = newmstate(ke, km)
+	s.eg, err = newmstate(aesSecret, macSecret)
 	if err != nil {
 		return nil, err
 	}
 
 	var inonce, rnonce [16]byte
 	for i := 0; i < 16; i++ {
-		inonce[i] = km[i] ^ hs.initNonce[i]
-		rnonce[i] = km[i] ^ hs.respNonce[i]
+		inonce[i] = macSecret[i] ^ hs.initNonce[i]
+		rnonce[i] = macSecret[i] ^ hs.respNonce[i]
 	}
 
 	if hs.initiator {
