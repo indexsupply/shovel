@@ -106,7 +106,11 @@ type handshake struct {
 }
 
 func New(conn net.Conn, hs *handshake) (*session, error) {
-	s := &session{conn: conn}
+	//static-shared-secret = ecdh.agree(privkey, remote-pubk)
+	//ephemeral-key = ecdh.agree(ephemeral-privkey, remote-ephemeral-pubk)
+	//shared-secret = keccak256(ephemeral-key || keccak256(nonce || initiator-nonce))
+	//aes-secret = keccak256(ephemeral-key || shared-secret)
+	//mac-secret = keccak256(ephemeral-key || aes-secret)
 
 	ephKey := secp256k1.GenerateSharedSecret(
 		hs.localEphPrvKey,
@@ -123,8 +127,10 @@ func New(conn net.Conn, hs *handshake) (*session, error) {
 	ke := isxhash.Keccak(append(ephKey, sharedSecret...))
 	km := isxhash.Keccak(append(ephKey, ke...))
 
-	var err error
-
+	var (
+		s   = &session{conn: conn}
+		err error
+	)
 	s.ig, err = newmstate(ke, km)
 	if err != nil {
 		return nil, err
@@ -143,12 +149,12 @@ func New(conn net.Conn, hs *handshake) (*session, error) {
 	if hs.initiator {
 		//egress-mac = keccak256.init((mac-secret ^ recipient-nonce) || auth)
 		//ingress-mac = keccak256.init((mac-secret ^ initiator-nonce) || ack)
-		s.ig.hash = sha3.NewLegacyKeccak256()
-		s.ig.hash.Write(inonce[:])
-		s.ig.hash.Write(hs.ack)
 		s.eg.hash = sha3.NewLegacyKeccak256()
 		s.eg.hash.Write(rnonce[:])
 		s.eg.hash.Write(hs.auth)
+		s.ig.hash = sha3.NewLegacyKeccak256()
+		s.ig.hash.Write(inonce[:])
+		s.ig.hash.Write(hs.ack)
 	} else {
 		//egress-mac = keccak256.init((mac-secret ^ initiator-nonce) || ack)
 		//ingress-mac = keccak256.init((mac-secret ^ recipient-nonce) || auth)
