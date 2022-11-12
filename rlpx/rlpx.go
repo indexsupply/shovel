@@ -46,7 +46,7 @@ func newmstate(ke, km []byte) (*mstate, error) {
 	}, nil
 }
 
-// updates s.emac (egress mac) using the following devp2p construction:
+// updates hash using the following devp2p construction:
 //
 // header-mac-seed = aes(mac-secret, keccak256.digest(egress-mac)[:16]) ^ header-ciphertext
 // egress-mac = keccak256.update(egress-mac, header-mac-seed)
@@ -62,7 +62,7 @@ func (ms *mstate) header(h []byte) []byte {
 	return ms.hash.Sum(nil)[:16]
 }
 
-// updates s.emac (egress mac) using the following devp2p construction:
+// updates hash using the following devp2p construction:
 //
 // egress-mac = keccak256.update(egress-mac, frame-ciphertext)
 // frame-mac-seed = aes(mac-secret, keccak256.digest(egress-mac)[:16]) ^ keccak256.digest(egress-mac)[:16]
@@ -83,7 +83,7 @@ func (ms *mstate) frame(fct []byte) []byte {
 type session struct {
 	Verbose bool
 
-	conn          *net.TCPConn
+	conn          net.Conn
 	local, remote *enr.Record
 	ig, eg        *mstate
 }
@@ -97,23 +97,16 @@ func (s *session) log(format string, args ...any) {
 type handshake struct {
 	initiator bool
 
-	auth, ack []byte
+	local, remote        *enr.Record
+	auth, ack            []byte
+	initNonce, respNonce [16]byte
 
-	nonce     []byte
-	initNonce []byte
-
-	localPrvKey    *secp256k1.PrivateKey
-	localEphPrvKey *secp256k1.PrivateKey
-
-	remotePubKey    *secp256k1.PublicKey
+	localEphPrvKey  *secp256k1.PrivateKey
 	remoteEphPubKey *secp256k1.PublicKey
 }
 
-func New(hs *handshake) (*session, error) {
-	var (
-		err error
-		s   = new(session)
-	)
+func New(conn net.Conn, hs *handshake) (*session, error) {
+	s := &session{conn: conn}
 
 	ephKey := secp256k1.GenerateSharedSecret(
 		hs.localEphPrvKey,
@@ -122,13 +115,15 @@ func New(hs *handshake) (*session, error) {
 	sharedSecret := isxhash.Keccak(append(
 		ephKey,
 		isxhash.Keccak(append(
-			hs.nonce,
-			hs.initNonce...,
+			hs.respNonce[:],
+			hs.initNonce[:]...,
 		))...,
 	))
 
 	ke := isxhash.Keccak(append(ephKey, sharedSecret...))
 	km := isxhash.Keccak(append(ephKey, ke...))
+
+	var err error
 
 	s.ig, err = newmstate(ke, km)
 	if err != nil {
@@ -142,10 +137,12 @@ func New(hs *handshake) (*session, error) {
 	var inonce, rnonce [16]byte
 	for i := 0; i < 16; i++ {
 		inonce[i] = km[i] ^ hs.initNonce[i]
-		rnonce[i] = km[i] ^ hs.nonce[i]
+		rnonce[i] = km[i] ^ hs.respNonce[i]
 	}
 
 	if hs.initiator {
+		//egress-mac = keccak256.init((mac-secret ^ recipient-nonce) || auth)
+		//ingress-mac = keccak256.init((mac-secret ^ initiator-nonce) || ack)
 		s.ig.hash = sha3.NewLegacyKeccak256()
 		s.ig.hash.Write(inonce[:])
 		s.ig.hash.Write(hs.ack)
@@ -153,6 +150,8 @@ func New(hs *handshake) (*session, error) {
 		s.eg.hash.Write(rnonce[:])
 		s.eg.hash.Write(hs.auth)
 	} else {
+		//egress-mac = keccak256.init((mac-secret ^ initiator-nonce) || ack)
+		//ingress-mac = keccak256.init((mac-secret ^ recipient-nonce) || auth)
 		s.eg.hash = sha3.NewLegacyKeccak256()
 		s.eg.hash.Write(inonce[:])
 		s.eg.hash.Write(hs.ack)
@@ -173,8 +172,8 @@ func (s *session) read(buf []byte) ([]byte, error) {
 	}
 	s.ig.stream.XORKeyStream(buf[:16], buf[:16])
 	var (
-		frameSize = bint.Decode(buf[0:3])
-		frameEnd  = 32 + (16 - frameSize%16)
+		frameSize = bint.Decode(buf[:3])
+		frameEnd  = 32 + 16
 		frame     = buf[32:frameEnd]
 		frameMac  = buf[frameEnd : frameEnd+16]
 	)
@@ -187,9 +186,8 @@ func (s *session) read(buf []byte) ([]byte, error) {
 
 // Assembles item into an RLPx frame and writes it to
 // the session's TCP connection.
-func (s *session) write(id byte, item rlp.Item) error {
-	data := rlp.Encode(item)
-	frameSize, n := bint.Encode(uint64(len(data) + 1)) //include id
+func (s *session) write(id byte, data []byte) error {
+	frameSize, n := bint.Encode(nil, uint64(len(data)+1)) //include id
 	if n > 3 {
 		return errors.New("data is too large")
 	}
@@ -209,7 +207,7 @@ func (s *session) write(id byte, item rlp.Item) error {
 
 	//TODO(ryan): ensure len(frame) % 16 == 0
 	var (
-		frameData       []byte
+		frameData       = make([]byte, 14)
 		frameCiphertext []byte
 		frameMac        []byte
 	)
@@ -220,7 +218,7 @@ func (s *session) write(id byte, item rlp.Item) error {
 	frameMac = s.eg.frame(frameCiphertext)
 
 	var frame []byte
-	frame = append(frame, header...)
+	frame = append(frame, headerCiphertext...)
 	frame = append(frame, headerMac...)
 	frame = append(frame, frameCiphertext...)
 	frame = append(frame, frameMac...)
@@ -231,7 +229,7 @@ func (s *session) write(id byte, item rlp.Item) error {
 }
 
 func (s *session) Hello() error {
-	err := s.write(0x00, rlp.List(
+	err := s.write(0x00, rlp.Encode(rlp.List(
 		rlp.Int(5),
 		rlp.String("indexsupply/0"),
 		rlp.List(
@@ -240,7 +238,7 @@ func (s *session) Hello() error {
 		),
 		rlp.Uint16(s.local.TcpPort),
 		rlp.Secp256k1PublicKey(s.local.PublicKey),
-	))
+	)))
 	return isxerrors.Errorf("writing hello msg: %w", err)
 }
 
