@@ -156,13 +156,12 @@ func Decode(input []byte) (Item, error) {
 			i, listSize = decodeLength(list55H, input)
 		}
 
-		_ = listSize
-		// switch {
-		// case len(input[i:]) > listSize:
-		// 	return Item{}, errTooManyBytes
-		// case len(input[i:]) < listSize:
-		// 	return Item{}, errTooFewBytes
-		// }
+		switch {
+		case len(input[i:]) > listSize:
+			return Item{}, errTooManyBytes
+		case len(input[i:]) < listSize:
+			return Item{}, errTooFewBytes
+		}
 
 		item := Item{l: []Item{}}
 		for i < len(input) {
