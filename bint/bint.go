@@ -28,7 +28,11 @@ func size(n uint64) (s uint8) {
 
 // Decodes big-endian byte array into a uint64
 // left-padded zero bytes are ignored.
+// Panics if len(b) > 8
 func Decode(b []byte) uint64 {
+	if len(b) > 8 {
+		panic("bint: unable to decode > 8 bytes into uint64")
+	}
 	var n uint64
 	for i := 0; i < len(b); i++ {
 		n = n << 8
