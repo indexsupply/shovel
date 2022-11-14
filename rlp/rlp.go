@@ -93,7 +93,8 @@ func encodeLength(n int) ([]byte, uint8) {
 	if n == 0 {
 		return []byte{}, 0
 	}
-	return bint.Encode(nil, uint64(n))
+	b := bint.Encode(nil, uint64(n))
+	return b, uint8(len(b))
 }
 
 // Returns two values representing the length of the

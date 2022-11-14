@@ -30,8 +30,7 @@ func (i Item) Bytes() ([]byte, error) {
 }
 
 func Uint16(n uint16) Item {
-	b, _ := bint.Encode(nil, uint64(n))
-	return Item{d: b}
+	return Item{d: bint.Encode(nil, uint64(n))}
 }
 
 func (i Item) Uint16() (uint16, error) {
@@ -42,8 +41,7 @@ func (i Item) Uint16() (uint16, error) {
 }
 
 func Uint64(n uint64) Item {
-	b, _ := bint.Encode(nil, n)
-	return Item{d: b}
+	return Item{d: bint.Encode(nil, n)}
 }
 
 func (i Item) Uint64() (uint64, error) {
@@ -125,8 +123,7 @@ func Byte(b byte) Item {
 }
 
 func Int(n int) Item {
-	b, _ := bint.Encode(nil, uint64(n))
-	return Item{d: b}
+	return Item{d: bint.Encode(nil, uint64(n))}
 }
 
 // left pads the provided byte array to the wantedLength, in bytes, using 0s.
