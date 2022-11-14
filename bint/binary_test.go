@@ -38,6 +38,20 @@ func TestDecode_0(t *testing.T) {
 	}
 }
 
+func TestDecode_Overflow(t *testing.T) {
+	var b []byte
+	for i := 0; i < 10; i++ {
+		b = append(b, 0xff)
+	}
+	defer func() {
+		err := recover()
+		if err == nil {
+			t.Error("epected overflow to panic")
+		}
+	}()
+	Decode(b)
+}
+
 func TestDecode_Pad(t *testing.T) {
 	got := Decode([]byte{0x00, 0x00, 0x01, 0x00})
 	exp := uint64(256)
