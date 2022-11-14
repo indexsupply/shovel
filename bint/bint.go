@@ -8,7 +8,7 @@ func Encode(b []byte, n uint64) ([]byte, uint8) {
 	if b == nil {
 		b = make([]byte, size(n))
 	}
-	for i := uint64(0); n > 0; i++ {
+	for i := len(b) - 1; n > 0; i-- {
 		b[i] = byte(n & 0xff)
 		n = n >> 8
 	}
