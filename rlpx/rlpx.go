@@ -192,10 +192,7 @@ func (s *session) read(buf []byte) ([]byte, error) {
 // the session's TCP connection.
 func (s *session) write(id byte, data []byte) error {
 	frameSize := make([]byte, 3)
-	_, n := bint.Encode(frameSize, uint64(len(data)+1)) //include id
-	if n > 3 {
-		return errors.New("data is too large")
-	}
+	bint.Encode(frameSize, uint64(len(data)+1)) //include id
 
 	// header only contains size since:
 	// header-data = [capability-id, context-id]
