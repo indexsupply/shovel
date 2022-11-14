@@ -69,13 +69,14 @@ func TestEncodeBuf(t *testing.T) {
 }
 
 func TestEncodeBuf_Pad(t *testing.T) {
-	b := make([]byte, 4)
+	got := make([]byte, 4)
 	i := uint64(1<<16 - 1)
-	_, n := Encode(b[:], i)
+	_, n := Encode(got[:], i)
 	if n != 4 {
-		t.Errorf("expected %d to use 2 bytes. got: %d", i, n)
+		t.Errorf("expected %d to use 4 bytes. got: %d", i, n)
 	}
-	if !bytes.Equal(b, []byte{0xff, 0xff, 0x00, 0x00}) {
-		t.Errorf("expected %d to be encoded as: ffff got: %x", i, b)
+	exp := []byte{0x00, 0x00, 0xff, 0xff}
+	if !bytes.Equal(exp, got) {
+		t.Errorf("expected %d to be %x got: %x:", i, exp, got)
 	}
 }
