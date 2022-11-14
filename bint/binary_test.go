@@ -6,7 +6,7 @@ import (
 )
 
 func TestDecode(t *testing.T) {
-	var cases = []uint8{0, 8, 16, 32, 64}
+	var cases = []uint8{8, 16, 32, 64}
 	for _, e := range cases {
 		i := uint64(1<<e - 1)
 		b, n := Encode(nil, i)
@@ -17,6 +17,30 @@ func TestDecode(t *testing.T) {
 		if got != i {
 			t.Errorf("expected %d got: %d", i, got)
 		}
+	}
+}
+
+func TestDecode_0(t *testing.T) {
+	b, n := Encode(nil, 0)
+	if n != 1 {
+		t.Errorf("expected 0 to be 1 byte got: %d", n)
+	}
+	if b[0] != 0 {
+		t.Errorf("expected 0 to encode to 0x00 bot: %x", b[0])
+	}
+
+	got := Decode(b)
+	exp := uint64(0)
+	if exp != got {
+		t.Errorf("expected: %d got: %d", exp, got)
+	}
+}
+
+func TestDecode_Pad(t *testing.T) {
+	got := Decode([]byte{0x00, 0x00, 0x01, 0x00})
+	exp := uint64(256)
+	if exp != got {
+		t.Errorf("expected: %d got: %d", exp, got)
 	}
 }
 

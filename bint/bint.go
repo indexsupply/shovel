@@ -1,3 +1,4 @@
+// big endian, uint64 binary encoding/decoding
 package bint
 
 // Encodes a uint64 into a big-endian byte slice
@@ -7,9 +8,6 @@ func Encode(b []byte, n uint64) ([]byte, uint8) {
 	if b == nil {
 		b = make([]byte, size(n))
 	}
-	if n == 0 {
-		return b, 0
-	}
 	for i := uint64(0); n > 0; i++ {
 		b[i] = byte(n & 0xff)
 		n = n >> 8
@@ -17,20 +15,22 @@ func Encode(b []byte, n uint64) ([]byte, uint8) {
 	return b, uint8(len(b))
 }
 
-func size(n uint64) uint8 {
-	var s uint8
+func size(n uint64) (s uint8) {
+	if n == 0 {
+		return 1
+	}
 	for n > 0 {
 		n = n >> 8
 		s++
 	}
-	return s
+	return
 }
 
 // Decodes big-endian byte array into a uint64
-// Right-padded zero bytes are ignored.
+// left-padded zero bytes are ignored.
 func Decode(b []byte) uint64 {
 	var n uint64
-	for i := 0; i < len(b) && b[i] != 0; i++ {
+	for i := 0; i < len(b); i++ {
 		n = n << 8
 		n += uint64(b[i])
 	}
