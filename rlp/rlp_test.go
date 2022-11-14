@@ -6,7 +6,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"math"
 	"reflect"
 	"testing"
 )
@@ -115,49 +114,6 @@ func TestDecode_Errors(t *testing.T) {
 			if !errors.Is(tc.err, err) {
 				t.Errorf("expected %v got %v", tc.err, err)
 			}
-		}
-	}
-}
-
-func TestEncodeUint(t *testing.T) {
-	cases := []struct {
-		desc string
-		n    uint64
-		l    uint8
-		b    []byte
-	}{
-		{
-			"0",
-			0,
-			0,
-			[]byte{},
-		},
-		{
-			"1 byte",
-			1,
-			1,
-			[]byte{0x01},
-		},
-		{
-			"2 bytes",
-			256,
-			2,
-			[]byte{0x01, 0x00},
-		},
-		{
-			"max. 8 bytes",
-			math.MaxUint64,
-			8,
-			[]byte{0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff},
-		},
-	}
-	for _, tc := range cases {
-		lengthSize, length := encodeUint(tc.n)
-		if lengthSize != tc.l {
-			t.Errorf("%s: expected: %d got: %d", tc.desc, tc.l, lengthSize)
-		}
-		if !bytes.Equal(length, tc.b) {
-			t.Errorf("%s: expected: %x got: %x", tc.desc, tc.b, length)
 		}
 	}
 }
