@@ -191,7 +191,8 @@ func (s *session) read(buf []byte) ([]byte, error) {
 // Assembles item into an RLPx frame and writes it to
 // the session's TCP connection.
 func (s *session) write(id byte, data []byte) error {
-	frameSize, n := bint.Encode(nil, uint64(len(data)+1)) //include id
+	frameSize := make([]byte, 3)
+	_, n := bint.Encode(frameSize, uint64(len(data)+1)) //include id
 	if n > 3 {
 		return errors.New("data is too large")
 	}
