@@ -5,8 +5,9 @@
 package rlp
 
 import (
-	"encoding/binary"
 	"errors"
+
+	"github.com/indexsupply/x/bint"
 )
 
 const (
@@ -51,6 +52,8 @@ func Encode(input Item) []byte {
 	}
 	if input.d != nil {
 		switch n := len(input.d); {
+		case n == 1 && input.d[0] == 0:
+			return []byte{0x80}
 		case n == 1 && input.d[0] <= str1H:
 			return input.d
 		case n <= 55:
@@ -59,7 +62,7 @@ func Encode(input Item) []byte {
 				input.d...,
 			)
 		default:
-			lengthSize, length := encodeUint(uint64(len(input.d)))
+			length, lengthSize := encodeLength(len(input.d))
 			header := append(
 				[]byte{str55H + lengthSize},
 				length...,
@@ -78,7 +81,7 @@ func Encode(input Item) []byte {
 			out...,
 		)
 	}
-	lengthSize, length := encodeUint(uint64(len(out)))
+	length, lengthSize := encodeLength(len(out))
 	header := append(
 		[]byte{list55H + lengthSize},
 		length...,
@@ -86,29 +89,20 @@ func Encode(input Item) []byte {
 	return append(header, out...)
 }
 
-func encodeUint(n uint64) (uint8, []byte) {
+func encodeLength(n int) ([]byte, uint8) {
 	if n == 0 {
-		return 0, []byte{}
+		return []byte{}, 0
 	}
-	// Tommy's algorithm
-	var buf []byte
-	for i := n; i > 0; {
-		buf = append([]byte{byte(i & 0xff)}, buf...)
-		i = i >> 8
-	}
-	return uint8(len(buf)), buf
+	b := bint.Encode(nil, uint64(n))
+	return b, uint8(len(b))
 }
 
 // Returns two values representing the length of the
 // header and payload respectively.
 func decodeLength(t byte, input []byte) (int, int) {
-	n := input[0] - t
-	paddedBytes := make([]byte, 8)
-	// binary.BigEndian.Uint64 expects an 8 byte array so we have to left pad
-	// it in case the length is less. Big-endian format is used.
-	copy(paddedBytes[8-n:], input[1:n+1])
-	length := binary.BigEndian.Uint64(paddedBytes)
-	return int(n + 1), int(length)
+	n := (input[0] - t) + 1 //add 1 byte for length size (input[0])
+	l := bint.Decode(input[1:n])
+	return int(n), int(l)
 }
 
 var (

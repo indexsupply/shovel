@@ -7,6 +7,7 @@ import (
 	"net"
 	"time"
 
+	"github.com/indexsupply/x/bint"
 	"github.com/indexsupply/x/isxsecp256k1"
 
 	"github.com/decred/dcrd/dcrec/secp256k1/v4"
@@ -29,8 +30,7 @@ func (i Item) Bytes() ([]byte, error) {
 }
 
 func Uint16(n uint16) Item {
-	_, b := encodeUint(uint64(n))
-	return Item{d: b}
+	return Item{d: bint.Encode(nil, uint64(n))}
 }
 
 func (i Item) Uint16() (uint16, error) {
@@ -41,8 +41,7 @@ func (i Item) Uint16() (uint16, error) {
 }
 
 func Uint64(n uint64) Item {
-	_, b := encodeUint(n)
-	return Item{d: b}
+	return Item{d: bint.Encode(nil, n)}
 }
 
 func (i Item) Uint64() (uint64, error) {
@@ -124,8 +123,7 @@ func Byte(b byte) Item {
 }
 
 func Int(n int) Item {
-	_, b := encodeUint(uint64(n))
-	return Item{d: b}
+	return Item{d: bint.Encode(nil, uint64(n))}
 }
 
 // left pads the provided byte array to the wantedLength, in bytes, using 0s.
