@@ -40,7 +40,7 @@ func TestDecode_0(t *testing.T) {
 
 func TestDecode_Overflow(t *testing.T) {
 	var b []byte
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 9; i++ {
 		b = append(b, 0xff)
 	}
 	defer func() {
