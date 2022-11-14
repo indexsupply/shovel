@@ -3,7 +3,6 @@ package rlpx
 import (
 	"crypto/rand"
 	"encoding/binary"
-	"fmt"
 	mrand "math/rand"
 	"net"
 	"errors"
@@ -28,6 +27,7 @@ type handshake struct {
 	remotePubKey    *secp256k1.PublicKey
 	remoteEphPubKey *secp256k1.PublicKey
 	initNonce       []byte
+	receiverNonce   []byte
 }
 
 func newHandshake(localPrvKey *secp256k1.PrivateKey, to *enr.Record) (*handshake, error) {
@@ -82,11 +82,18 @@ func (h *handshake) createAuthMsg() (rlp.Item, error) {
 func (h *handshake) handleAckMsg(sealedAck []byte) error { 
 	ackPacket, err := h.unseal(sealedAck)
 	if err != nil{
-		fmt.Println("err: ", err)
 		return err
 	}
-	h.remotePubKey, err = ackPacket.At(0).Secp256k1PublicKey()
-	fmt.Println("h.remotePubKey: ", h.remotePubKey)
+	remotePubKey, err := ackPacket.At(0).Secp256k1PublicKey()
+	if err != nil {
+		return err
+	}
+	remoteNonce, err := ackPacket.At(1).Bytes()
+	if err != nil {
+		return err
+	}
+	h.remotePubKey = remotePubKey
+	h.receiverNonce = remoteNonce
 	return err
 }
 
@@ -94,17 +101,12 @@ func (h *handshake) unseal(b []byte) (rlp.Item, error) {
 	if len(b) <= 2 + ecies.Overhead {
 		return rlp.Bytes(nil), errors.New("message must be at least 2 + ecies overhead bytes long")
 	}
-	fmt.Println("ack msg: ", b)
 	prefix := b[:prefixLength] // first two bytes are the size
 	size := binary.BigEndian.Uint16(prefix)
-	fmt.Println("ack msg size: ", size)
 
 	encBody := b[prefixLength:prefixLength+size]
-	fmt.Println("enc body: ", encBody)
-	fmt.Println("enc body size: ", len(encBody))
 
 	plainBody, err := ecies.Decrypt(h.localPrvKey, encBody, prefix)
-	fmt.Println("plain body: ", plainBody)
 	if err != nil {
 		return rlp.Bytes(nil), err
 	}
