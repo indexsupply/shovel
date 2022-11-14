@@ -91,3 +91,16 @@ func TestEncodeBuf_Pad(t *testing.T) {
 		t.Errorf("expected %d to be %x got: %x:", i, exp, got)
 	}
 }
+
+func TestEncodeBuf_TooSmall(t *testing.T) {
+	defer func() {
+		err := recover()
+		if err == nil {
+			t.Error("should have panicked")
+		}
+		if err != "bint: supplied slice is too small for input" {
+			t.Errorf("unexpected panic: %s", err)
+		}
+	}()
+	Encode(make([]byte, 1), 256)
+}

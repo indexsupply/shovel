@@ -5,8 +5,12 @@ package bint
 // To avoid an allocation, or to have a padded result,
 // supply an initialized value for b -otherwise use nil.
 func Encode(b []byte, n uint64) []byte {
+	s := size(n)
 	if b == nil {
-		b = make([]byte, size(n))
+		b = make([]byte, s)
+	}
+	if int(s) > len(b) {
+		panic("bint: supplied slice is too small for input")
 	}
 	for i := len(b) - 1; n > 0; i-- {
 		b[i] = byte(n & 0xff)
