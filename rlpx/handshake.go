@@ -46,14 +46,14 @@ func (h *handshake) createAuthMsg() (rlp.Item, error) {
 		h.initNonce = make([]byte, 32)
 		_, err := rand.Read(h.initNonce[:])
 		if err != nil {
-			return rlp.Bytes(nil), err
+			return rlp.Item{}, err
 		}
 	}
 	// Generate ephemeral ECDH key
 	if h.localEphPrvKey == nil {
 		h.localEphPrvKey, err = secp256k1.GeneratePrivateKey()
 		if err != nil {
-			return rlp.Bytes(nil), err
+			return rlp.Item{}, err
 		}
 	}
 	// Create shared secret using ephemeral key and remote pub key
@@ -66,7 +66,7 @@ func (h *handshake) createAuthMsg() (rlp.Item, error) {
 	// Sig = Sign(Ephemeral Private Key, Shared Secret ^ Nonce)
 	sig, err := isxsecp256k1.Sign(h.localEphPrvKey, signedPayload)
 	if err != nil {
-		return rlp.Bytes(nil), err
+		return rlp.Item{}, err
 	}
 
 	rawPubKey := isxsecp256k1.Encode(h.localPrvKey.PubKey())
@@ -99,7 +99,7 @@ func (h *handshake) handleAckMsg(sealedAck []byte) error {
 
 func (h *handshake) unseal(b []byte) (rlp.Item, error) {
 	if len(b) <= 2+ecies.Overhead {
-		return rlp.Bytes(nil), errors.New("message must be at least 2 + ecies overhead bytes long")
+		return rlp.Item{}, errors.New("message must be at least 2 + ecies overhead bytes long")
 	}
 	prefix := b[:prefixLength] // first two bytes are the size
 	size := bint.Decode(prefix)
@@ -108,7 +108,7 @@ func (h *handshake) unseal(b []byte) (rlp.Item, error) {
 
 	plainBody, err := ecies.Decrypt(h.localPrvKey, encBody, prefix)
 	if err != nil {
-		return rlp.Bytes(nil), err
+		return rlp.Item{}, err
 	}
 	return rlp.Decode(plainBody)
 }
