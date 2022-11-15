@@ -39,6 +39,16 @@ func newHandshake(localPrvKey *secp256k1.PrivateKey, to *enr.Record) (*handshake
 	return h, nil
 }
 
+// createAuthMsg assembles an Auth message according to the following:
+//
+// iv = initiator nonce (randomly generated)
+// eph-k = ephemeral secp256k1 public key (randomly generated)
+// pub-k = own ENR public key
+// shared-secret = shared secret on secp256k1 curve derived from own private key and receiver's pub key
+// sig-payload = shared-secret ^ iv
+// sig = signature using the ephemeral key: Sign(eph-k, sig-payload)
+// vsn = auth version (which is 4)
+// msg = sig || pub-k || iv || vsn
 func (h *handshake) createAuthMsg() (rlp.Item, error) {
 	var err error
 	// initialize random nonce
@@ -135,21 +145,23 @@ func (h *handshake) sendAck(conn net.Conn) error {
 	return err
 }
 
+// handleAckMsg unseals an ack message received over the wire
+// and parses the remote pub key and 
 func (h *handshake) handleAckMsg(sealedAck []byte) error {
 	ackPacket, err := h.unseal(sealedAck)
 	if err != nil {
 		return err
 	}
-	remotePubKey, err := ackPacket.At(0).Secp256k1PublicKey()
+	pk, err := ackPacket.At(0).Secp256k1PublicKey()
 	if err != nil {
 		return err
 	}
-	remoteNonce, err := ackPacket.At(1).Bytes()
+	iv, err := ackPacket.At(1).Bytes()
 	if err != nil {
 		return err
 	}
-	h.remotePubKey = remotePubKey
-	h.receiverNonce = remoteNonce
+	h.remoteEphPubKey = pk
+	h.receiverNonce = iv
 	return err
 }
 
