@@ -4,6 +4,7 @@ package bint
 // Encodes a uint64 into a big-endian byte slice
 // To avoid an allocation, or to have a padded result,
 // supply an initialized value for b -otherwise use nil.
+// Panics when provided slice is too small for n.
 func Encode(b []byte, n uint64) []byte {
 	s := size(n)
 	if b == nil {
