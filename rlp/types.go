@@ -75,6 +75,12 @@ func (i Item) Time() (time.Time, error) {
 	return time.Unix(int64(ts), 0), nil
 }
 
+// Encodes uncompressed secpk256k1 public key, without hashing it.
+func Secp256k1RawPublicKey(pubkey *secp256k1.PublicKey) Item {
+	keyBytes := isxsecp256k1.Encode(pubkey)
+	return Bytes(keyBytes[:])
+}
+
 func (i Item) Secp256k1PublicKey() (*secp256k1.PublicKey, error) {
 	switch len(i.d) {
 	case 0:
