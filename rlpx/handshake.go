@@ -91,6 +91,12 @@ func (h *handshake) sendAuth(conn net.Conn) error {
 	return err
 }
 
+// createAckMsg assembles the Ack response to an Auth message under the following construction:
+// iv = receiver's nonce (randomly generated)
+// eph-k = receiver's ephemeral key on the secp256k1 curve (chosen at random)
+// vsn = version (which equals 4)
+// msg = eph-k || iv || vsn
+// For more details, see https://eips.ethereum.org/EIPS/eip-8#specification
 func (h *handshake) createAckMsg() (rlp.Item, error) {
 	var err error
 	if h.isInitiator {
