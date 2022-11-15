@@ -3,9 +3,9 @@ package rlpx
 import (
 	"crypto/rand"
 	"encoding/binary"
+	"errors"
 	mrand "math/rand"
 	"net"
-	"errors"
 
 	"github.com/decred/dcrd/dcrec/secp256k1/v4"
 
@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	authVersion = 4
+	authVersion  = 4
 	prefixLength = 2
 )
 
@@ -79,9 +79,9 @@ func (h *handshake) createAuthMsg() (rlp.Item, error) {
 	), nil
 }
 
-func (h *handshake) handleAckMsg(sealedAck []byte) error { 
+func (h *handshake) handleAckMsg(sealedAck []byte) error {
 	ackPacket, err := h.unseal(sealedAck)
-	if err != nil{
+	if err != nil {
 		return err
 	}
 	remotePubKey, err := ackPacket.At(0).Secp256k1PublicKey()
@@ -97,14 +97,14 @@ func (h *handshake) handleAckMsg(sealedAck []byte) error {
 	return err
 }
 
-func (h *handshake) unseal(b []byte) (rlp.Item, error) { 
-	if len(b) <= 2 + ecies.Overhead {
+func (h *handshake) unseal(b []byte) (rlp.Item, error) {
+	if len(b) <= 2+ecies.Overhead {
 		return rlp.Bytes(nil), errors.New("message must be at least 2 + ecies overhead bytes long")
 	}
 	prefix := b[:prefixLength] // first two bytes are the size
 	size := binary.BigEndian.Uint16(prefix)
 
-	encBody := b[prefixLength:prefixLength+size]
+	encBody := b[prefixLength : prefixLength+size]
 
 	plainBody, err := ecies.Decrypt(h.localPrvKey, encBody, prefix)
 	if err != nil {
@@ -124,7 +124,7 @@ func (h *handshake) seal(body rlp.Item) ([]byte, error) {
 	return append(prefix, encrypted...), err
 }
 
-func (h *handshake) sendAuth(conn *net.TCPConn) error {
+func (h *handshake) sendAuth(conn net.Conn) error {
 	auth, err := h.createAuthMsg()
 	if err != nil {
 		return err
