@@ -2,13 +2,13 @@ package rlpx
 
 import (
 	"crypto/rand"
-	"encoding/binary"
 	"errors"
 	mrand "math/rand"
 	"net"
 
 	"github.com/decred/dcrd/dcrec/secp256k1/v4"
 
+	"github.com/indexsupply/x/bint"
 	"github.com/indexsupply/x/ecies"
 	"github.com/indexsupply/x/enr"
 	"github.com/indexsupply/x/isxsecp256k1"
@@ -102,7 +102,7 @@ func (h *handshake) unseal(b []byte) (rlp.Item, error) {
 		return rlp.Bytes(nil), errors.New("message must be at least 2 + ecies overhead bytes long")
 	}
 	prefix := b[:prefixLength] // first two bytes are the size
-	size := binary.BigEndian.Uint16(prefix)
+	size := bint.Decode(prefix)
 
 	encBody := b[prefixLength : prefixLength+size]
 
@@ -119,7 +119,7 @@ func (h *handshake) seal(body rlp.Item) ([]byte, error) {
 	encBody = append(encBody, make([]byte, mrand.Intn(100)+100)...)
 
 	prefix := make([]byte, prefixLength) // prefix is length of the ciphertext + overhead
-	binary.BigEndian.PutUint16(prefix, uint16(len(encBody)+ecies.Overhead))
+	bint.Encode(prefix, uint64(len(encBody)+ecies.Overhead))
 	encrypted, err := ecies.Encrypt(h.remotePubKey, encBody, prefix)
 	return append(prefix, encrypted...), err
 }
