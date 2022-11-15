@@ -60,6 +60,13 @@ func (r Record) UDPAddr() *net.UDPAddr {
 	}
 }
 
+func (r Record) TCPAddr() *net.TCPAddr {
+	return &net.TCPAddr{
+		IP:   r.Ip,
+		Port: int(r.TcpPort),
+	}
+}
+
 func ParseV4(s string) (*Record, error) {
 	nurl, err := url.Parse(s)
 	if err != nil {
