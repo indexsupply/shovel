@@ -75,6 +75,12 @@ func (i Item) Time() (time.Time, error) {
 	return time.Unix(int64(ts), 0), nil
 }
 
+// RLP Item for an uncompressed secpk256k1 public key, without hashing it.
+func Secp256k1RawPublicKey(pubkey *secp256k1.PublicKey) Item {
+	b := isxsecp256k1.Encode(pubkey)
+	return Bytes(b[:])
+}
+
 func (i Item) Secp256k1PublicKey() (*secp256k1.PublicKey, error) {
 	switch len(i.d) {
 	case 0:

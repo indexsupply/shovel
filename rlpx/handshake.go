@@ -69,14 +69,70 @@ func (h *handshake) createAuthMsg() (rlp.Item, error) {
 		return rlp.Item{}, err
 	}
 
-	rawPubKey := isxsecp256k1.Encode(h.localPrvKey.PubKey())
 	// Auth Body = [Sig, Raw Pub Key, Nonce, Version]
 	return rlp.List(
 		rlp.Bytes(sig[:]),
-		rlp.Bytes(rawPubKey[:]),
+		rlp.Secp256k1RawPublicKey(h.localPrvKey.PubKey()),
 		rlp.Bytes(h.initNonce),
 		rlp.Int(authVersion),
 	), nil
+}
+
+func (h *handshake) sendAuth(conn net.Conn) error {
+	auth, err := h.createAuthMsg()
+	if err != nil {
+		return err
+	}
+	b, err := h.seal(auth)
+	if err != nil {
+		return err
+	}
+	_, err = conn.Write(b)
+	return err
+}
+
+// createAckMsg assembles the Ack response to an Auth message under the following construction:
+// iv = receiver's nonce (randomly generated)
+// eph-k = receiver's ephemeral key on the secp256k1 curve (chosen at random)
+// vsn = version (which equals 4)
+// msg = eph-k || iv || vsn
+// For more details, see https://eips.ethereum.org/EIPS/eip-8#specification
+func (h *handshake) createAckMsg() (rlp.Item, error) {
+	var err error
+	if h.isInitiator {
+		return rlp.Item{}, errors.New("cannot send ack message when you are the initiator")
+	}
+	if h.receiverNonce != nil {
+		_, err = rand.Read(h.receiverNonce[:])
+		if err != nil {
+			return rlp.Item{}, err
+		}
+	}
+	// Generate ephemeral ECDH key
+	if h.localEphPrvKey == nil {
+		h.localEphPrvKey, err = secp256k1.GeneratePrivateKey()
+		if err != nil {
+			return rlp.Item{}, err
+		}
+	}
+	return rlp.List(
+		rlp.Secp256k1RawPublicKey(h.localEphPrvKey.PubKey()),
+		rlp.Bytes(h.receiverNonce),
+		rlp.Int(authVersion),
+	), nil
+}
+
+func (h *handshake) sendAck(conn net.Conn) error {
+	ack, err := h.createAckMsg()
+	if err != nil {
+		return err
+	}
+	b, err := h.seal(ack)
+	if err != nil {
+		return err
+	}
+	_, err = conn.Write(b)
+	return err
 }
 
 func (h *handshake) handleAckMsg(sealedAck []byte) error {
@@ -122,17 +178,4 @@ func (h *handshake) seal(body rlp.Item) ([]byte, error) {
 	bint.Encode(prefix, uint64(len(encBody)+ecies.Overhead))
 	encrypted, err := ecies.Encrypt(h.remotePubKey, encBody, prefix)
 	return append(prefix, encrypted...), err
-}
-
-func (h *handshake) sendAuth(conn net.Conn) error {
-	auth, err := h.createAuthMsg()
-	if err != nil {
-		return err
-	}
-	b, err := h.seal(auth)
-	if err != nil {
-		return err
-	}
-	_, err = conn.Write(b)
-	return err
 }
