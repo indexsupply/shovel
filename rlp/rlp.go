@@ -106,9 +106,8 @@ func decodeLength(t byte, input []byte) (int, int) {
 }
 
 var (
-	errNoBytes      = errors.New("input has no bytes")
-	errTooManyBytes = errors.New("input has more bytes than specified by outermost header")
-	errTooFewBytes  = errors.New("input has fewer bytes than specified by header")
+	errNoBytes     = errors.New("input has no bytes")
+	errTooFewBytes = errors.New("input has fewer bytes than specified by header")
 )
 
 func Decode(input []byte) (Item, error) {
@@ -117,26 +116,17 @@ func Decode(input []byte) (Item, error) {
 	}
 	switch {
 	case input[0] <= str1H:
-		if len(input) > 1 {
-			return Item{}, errTooManyBytes
-		}
 		return Item{d: []byte{input[0]}}, nil
 	case input[0] <= str55H:
 		i, n := 1, int(input[0]-str55L)
-		switch {
-		case len(input) < i+n:
+		if len(input) < i+n {
 			return Item{}, errTooFewBytes
-		case len(input) > i+n:
-			return Item{}, errTooManyBytes
 		}
 		return Item{d: input[i : i+n]}, nil
 	case input[0] <= strNH:
 		i, n := decodeLength(str55H, input)
-		switch {
-		case len(input) < i+n:
+		if len(input) < i+n {
 			return Item{}, errTooFewBytes
-		case len(input) > i+n:
-			return Item{}, errTooManyBytes
 		}
 		return Item{d: input[i : i+n]}, nil
 	default:
@@ -157,10 +147,15 @@ func Decode(input []byte) (Item, error) {
 		}
 
 		switch {
-		case len(input[i:]) > listSize:
-			return Item{}, errTooManyBytes
 		case len(input[i:]) < listSize:
 			return Item{}, errTooFewBytes
+		case len(input[i:]) > listSize:
+			// It's possible that the input contains
+			// more bytes that is specified by the
+			// header's length. In this case, instead
+			// of returning an error, we simply remove
+			// the extra bytes.
+			input = input[:i+listSize]
 		}
 
 		item := Item{l: []Item{}}

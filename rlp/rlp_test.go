@@ -3,11 +3,12 @@ package rlp
 import (
 	"bytes"
 	"crypto/rand"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"reflect"
 	"testing"
+
+	"github.com/indexsupply/x/tc"
 )
 
 func ExampleEncode() {
@@ -58,16 +59,22 @@ func BenchmarkEncode(b *testing.B) {
 	}
 }
 
-func intTo2b(i uint16) []byte {
-	b := make([]byte, 2)
-	binary.BigEndian.PutUint16(b, i)
-	return b
-}
-
 func randBytes(n int) []byte {
 	res := make([]byte, n)
 	rand.Read(res)
 	return res
+}
+
+func TestDecode_Padding(t *testing.T) {
+	exp := []byte{0x01, 0x00}
+	b := Encode(Bytes(exp))
+	i, err := Decode(append(b, exp...))
+	tc.NoErr(t, err)
+	got, err := i.Bytes()
+	tc.NoErr(t, err)
+	if !bytes.Equal(exp, got) {
+		t.Errorf("expected: %x got: %x", exp, got)
+	}
 }
 
 func TestDecode_Errors(t *testing.T) {
@@ -80,17 +87,6 @@ func TestDecode_Errors(t *testing.T) {
 			"short string no error",
 			[]byte{byte(1)},
 			nil,
-		},
-		{
-			"long string. too many bytes",
-			append(
-				[]byte{
-					byte(str55H + 1),
-					byte(56),
-				},
-				randBytes(57)...,
-			),
-			errTooManyBytes,
 		},
 		{
 			"long string. too few bytes",
