@@ -3,7 +3,6 @@ package rlp
 import (
 	"bytes"
 	"crypto/rand"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"reflect"
@@ -58,12 +57,6 @@ func BenchmarkEncode(b *testing.B) {
 	}
 }
 
-func intTo2b(i uint16) []byte {
-	b := make([]byte, 2)
-	binary.BigEndian.PutUint16(b, i)
-	return b
-}
-
 func randBytes(n int) []byte {
 	res := make([]byte, n)
 	rand.Read(res)
@@ -80,17 +73,6 @@ func TestDecode_Errors(t *testing.T) {
 			"short string no error",
 			[]byte{byte(1)},
 			nil,
-		},
-		{
-			"long string. too many bytes",
-			append(
-				[]byte{
-					byte(str55H + 1),
-					byte(56),
-				},
-				randBytes(57)...,
-			),
-			errTooManyBytes,
 		},
 		{
 			"long string. too few bytes",
