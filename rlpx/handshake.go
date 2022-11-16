@@ -66,10 +66,8 @@ func (h *handshake) createAuthMsg() (rlp.Item, error) {
 			return rlp.Item{}, err
 		}
 	}
-	// Create shared secret using ephemeral key and remote pub key
-	payload := signaturePayload(h.localPrvKey, h.remotePubKey, h.initNonce)
 	// Sig = Sign(Ephemeral Private Key, Shared Secret ^ Nonce)
-	sig, err := isxsecp256k1.Sign(h.localEphPrvKey, payload)
+	sig, err := isxsecp256k1.Sign(h.localEphPrvKey, signaturePayload(h.localPrvKey, h.remotePubKey, h.initNonce))
 	if err != nil {
 		return rlp.Item{}, err
 	}
