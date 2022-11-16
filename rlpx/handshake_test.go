@@ -32,6 +32,9 @@ func TestHandshake(t *testing.T) {
 		tc.NoErr(t, err)
 		err = rh.handleAuthMsg(sealedAuth[:br], recConn)
 		tc.NoErr(t, err)
+		if rh.isInitiator {
+			t.Errorf("isInitiator should be false, got true")
+		}
 		// ensure that the nonce, remote pub key and remote ephemeral pub key are set
 		if isxsecp256k1.Encode(rh.remotePubKey) != isxsecp256k1.Encode(ih.localPrvKey.PubKey()) {
 			t.Errorf("initiator pub keys do not match: receiver got %x. expected %x", isxsecp256k1.Encode(rh.remotePubKey), isxsecp256k1.Encode(ih.localPrvKey.PubKey()))
@@ -92,7 +95,6 @@ func setupHandshakes(t *testing.T, tv map[string]string) (ih, rh *handshake) {
 		initNonce:      inonce,
 	}
 	rh = &handshake{
-		isInitiator:    false,
 		remotePubKey:   initPrvKey.PubKey(),
 		localPrvKey:    recPrvKey,
 		localEphPrvKey: recEphPrvKey,
