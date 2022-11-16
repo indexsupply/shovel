@@ -8,8 +8,8 @@ import (
 
 	"github.com/decred/dcrd/dcrec/secp256k1/v4"
 
-	"github.com/indexsupply/x/isxsecp256k1"
 	"github.com/indexsupply/x/enr"
+	"github.com/indexsupply/x/isxsecp256k1"
 	"github.com/indexsupply/x/tc"
 )
 
