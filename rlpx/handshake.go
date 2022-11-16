@@ -3,7 +3,7 @@ package rlpx
 import (
 	"crypto/rand"
 	"errors"
-	mrand "math/rand"
+	// mrand "math/rand"
 	"net"
 
 	"github.com/decred/dcrd/dcrec/secp256k1/v4"
@@ -67,14 +67,9 @@ func (h *handshake) createAuthMsg() (rlp.Item, error) {
 		}
 	}
 	// Create shared secret using ephemeral key and remote pub key
-	var sharedSecretBytes [32]byte
-	copy(sharedSecretBytes[:], secp256k1.GenerateSharedSecret(h.localPrvKey, h.remotePubKey))
-	var signedPayload [32]byte
-	for i := 0; i < 32; i++ {
-		signedPayload[i] = sharedSecretBytes[i] ^ h.initNonce[i]
-	}
+	payload := signaturePayload(h.localPrvKey, h.remotePubKey, h.initNonce)
 	// Sig = Sign(Ephemeral Private Key, Shared Secret ^ Nonce)
-	sig, err := isxsecp256k1.Sign(h.localEphPrvKey, signedPayload)
+	sig, err := isxsecp256k1.Sign(h.localEphPrvKey, payload)
 	if err != nil {
 		return rlp.Item{}, err
 	}
@@ -145,8 +140,43 @@ func (h *handshake) sendAck(conn net.Conn) error {
 	return err
 }
 
+func (h *handshake) handleAuthMsg(sealedAuth []byte, conn net.Conn) error {
+	h.isInitiator = false
+	authPacket, err := h.unseal(sealedAuth)
+	if err != nil {
+		return err
+	}
+	rpk, err := authPacket.At(1).Secp256k1PublicKey()
+	if err != nil {
+		return err
+	}
+	iv, err := authPacket.At(2).Bytes()
+	if err != nil {
+		return err
+	}
+	sig, err := authPacket.At(0).Bytes()
+	if err != nil {
+		return err
+	}
+	if len(sig) != 65 {
+		return errors.New("auth signature is not 65 bytes")
+	}
+	var sigBytes [65]byte
+	copy(sigBytes[:], sig)
+	// Recover the signature
+	ephPk, err := isxsecp256k1.Recover(sigBytes, signaturePayload(h.localPrvKey, h.remotePubKey, iv))
+	if err != nil {
+		return err
+	}
+	h.remotePubKey = rpk
+	h.remoteEphPubKey = ephPk
+	h.initNonce = iv
+	// send the ack
+	return h.sendAck(conn)
+}
+
 // handleAckMsg unseals an ack message received over the wire
-// and parses the remote pub key and 
+// and parses the remote pub key and
 func (h *handshake) handleAckMsg(sealedAck []byte) error {
 	ackPacket, err := h.unseal(sealedAck)
 	if err != nil {
@@ -166,6 +196,9 @@ func (h *handshake) handleAckMsg(sealedAck []byte) error {
 }
 
 func (h *handshake) unseal(b []byte) (rlp.Item, error) {
+	if h.localPrvKey == nil {
+		return rlp.Item{}, errors.New("unable to decrypt, missing local private key")
+	}
 	if len(b) <= 2+ecies.Overhead {
 		return rlp.Item{}, errors.New("message must be at least 2 + ecies overhead bytes long")
 	}
@@ -182,12 +215,29 @@ func (h *handshake) unseal(b []byte) (rlp.Item, error) {
 }
 
 func (h *handshake) seal(body rlp.Item) ([]byte, error) {
+	if h.remotePubKey == nil {
+		return nil, errors.New("unable to encrypt, missing remote pub key")
+	}
 	encBody := rlp.Encode(body)
 	// pad with random data. needs at least 100 bytes to make it indistinguishable from pre-eip-8 handshakes
-	encBody = append(encBody, make([]byte, mrand.Intn(100)+100)...)
+	// encBody = append(encBody, make([]byte, mrand.Intn(100)+100)...)
 
 	prefix := make([]byte, prefixLength) // prefix is length of the ciphertext + overhead
-	bint.Encode(prefix, uint64(len(encBody)+ecies.Overhead))
+	prefix = bint.Encode(prefix, uint64(len(encBody)+ecies.Overhead))
 	encrypted, err := ecies.Encrypt(h.remotePubKey, encBody, prefix)
 	return append(prefix, encrypted...), err
+}
+
+// forms a 32 byte signature payload for auth in the form of shared-secret ^ nonce.
+// The shared secret is derived from the local private key and remote public key on the
+// secp256k1 curve.
+func signaturePayload(privKey *secp256k1.PrivateKey, remoteKey *secp256k1.PublicKey, nonce []byte) [32]byte {
+	var ss [32]byte
+	secret := secp256k1.GenerateSharedSecret(privKey, remoteKey)
+	copy(ss[:], secret)
+	var sigPayload [32]byte
+	for i := 0; i < 32; i++ {
+		sigPayload[i] = ss[i] ^ nonce[i]
+	}
+	return sigPayload
 }
