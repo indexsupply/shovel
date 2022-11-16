@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"reflect"
 	"testing"
+
+	"github.com/indexsupply/x/tc"
 )
 
 func ExampleEncode() {
@@ -61,6 +63,18 @@ func randBytes(n int) []byte {
 	res := make([]byte, n)
 	rand.Read(res)
 	return res
+}
+
+func TestDecode_Padding(t *testing.T) {
+	exp := []byte{0x01, 0x00}
+	b := Encode(Bytes(exp))
+	i, err := Decode(append(b, exp...))
+	tc.NoErr(t, err)
+	got, err := i.Bytes()
+	tc.NoErr(t, err)
+	if !bytes.Equal(exp, got) {
+		t.Errorf("expected: %x got: %x", exp, got)
+	}
 }
 
 func TestDecode_Errors(t *testing.T) {
