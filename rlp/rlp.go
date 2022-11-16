@@ -106,9 +106,8 @@ func decodeLength(t byte, input []byte) (int, int) {
 }
 
 var (
-	errNoBytes      = errors.New("input has no bytes")
-	errTooManyBytes = errors.New("input has more bytes than specified by outermost header")
-	errTooFewBytes  = errors.New("input has fewer bytes than specified by header")
+	errNoBytes     = errors.New("input has no bytes")
+	errTooFewBytes = errors.New("input has fewer bytes than specified by header")
 )
 
 func Decode(input []byte) (Item, error) {
