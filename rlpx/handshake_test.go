@@ -1,7 +1,6 @@
 package rlpx
 
 import (
-	"bytes"
 	"encoding/hex"
 	"net"
 	"testing"
@@ -39,7 +38,7 @@ func TestHandshake(t *testing.T) {
 		if isxsecp256k1.Encode(rh.remoteEphPubKey) != isxsecp256k1.Encode(ih.localEphPrvKey.PubKey()) {
 			t.Errorf("initiator ephemeral pub keys do not match: receiver got %x. expected %x", isxsecp256k1.Encode(rh.remoteEphPubKey), isxsecp256k1.Encode(ih.localEphPrvKey.PubKey()))
 		}
-		if !bytes.Equal(rh.initNonce, ih.initNonce) {
+		if rh.initNonce != ih.initNonce {
 			t.Errorf("initiator nonces do not match: receiver got %d and initiator got %d", rh.initNonce, ih.initNonce)
 		}
 		close(ch)
@@ -52,7 +51,7 @@ func TestHandshake(t *testing.T) {
 	tc.NoErr(t, err)
 	err = ih.handleAckMsg(sealedAck)
 	tc.NoErr(t, err)
-	if !bytes.Equal(ih.receiverNonce, rh.receiverNonce) {
+	if ih.receiverNonce != rh.receiverNonce {
 		t.Errorf("receiver nonces do not match: receiver got %d and initiator got %d", rh.receiverNonce, ih.receiverNonce)
 	}
 	if isxsecp256k1.Encode(ih.remoteEphPubKey) != isxsecp256k1.Encode(rh.localEphPrvKey.PubKey()) {

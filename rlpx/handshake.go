@@ -26,8 +26,8 @@ type handshake struct {
 	localEphPrvKey  *secp256k1.PrivateKey
 	remotePubKey    *secp256k1.PublicKey
 	remoteEphPubKey *secp256k1.PublicKey
-	initNonce       []byte
-	receiverNonce   []byte
+	initNonce       [32]byte
+	receiverNonce   [32]byte
 }
 
 func newHandshake(localPrvKey *secp256k1.PrivateKey, to *enr.Record) *handshake {
@@ -50,7 +50,6 @@ func newHandshake(localPrvKey *secp256k1.PrivateKey, to *enr.Record) *handshake 
 func (h *handshake) createAuthMsg() (rlp.Item, error) {
 	var err error
 	// initialize random nonce
-	h.initNonce = make([]byte, 32)
 	_, err = rand.Read(h.initNonce[:])
 	if err != nil {
 		return rlp.Item{}, err
@@ -70,7 +69,7 @@ func (h *handshake) createAuthMsg() (rlp.Item, error) {
 	return rlp.List(
 		rlp.Bytes(sig[:]),
 		rlp.Secp256k1RawPublicKey(h.localPrvKey.PubKey()),
-		rlp.Bytes(h.initNonce),
+		rlp.Bytes(h.initNonce[:]),
 		rlp.Int(authVersion),
 	), nil
 }
@@ -99,7 +98,6 @@ func (h *handshake) createAckMsg() (rlp.Item, error) {
 	if h.isInitiator {
 		return rlp.Item{}, errors.New("cannot send ack message when you are the initiator")
 	}
-	h.receiverNonce = make([]byte, 32)
 	_, err = rand.Read(h.receiverNonce[:])
 	if err != nil {
 		return rlp.Item{}, err
@@ -111,7 +109,7 @@ func (h *handshake) createAckMsg() (rlp.Item, error) {
 	}
 	return rlp.List(
 		rlp.Secp256k1RawPublicKey(h.localEphPrvKey.PubKey()),
-		rlp.Bytes(h.receiverNonce),
+		rlp.Bytes(h.receiverNonce[:]),
 		rlp.Int(authVersion),
 	), nil
 }
@@ -152,14 +150,16 @@ func (h *handshake) handleAuthMsg(sealedAuth []byte, conn net.Conn) error {
 	}
 	var sigBytes [65]byte
 	copy(sigBytes[:], sig)
+	var ivBytes [32]byte
+	copy(ivBytes[:], iv)
 	// Recover the signature
-	ephPk, err := isxsecp256k1.Recover(sigBytes, signaturePayload(h.localPrvKey, h.remotePubKey, iv))
+	ephPk, err := isxsecp256k1.Recover(sigBytes, signaturePayload(h.localPrvKey, h.remotePubKey, ivBytes))
 	if err != nil {
 		return err
 	}
 	h.remotePubKey = rpk
 	h.remoteEphPubKey = ephPk
-	h.initNonce = iv
+	copy(h.initNonce[:], iv)
 	// send the ack
 	return h.sendAck(conn)
 }
@@ -180,7 +180,7 @@ func (h *handshake) handleAckMsg(sealedAck []byte) error {
 		return err
 	}
 	h.remoteEphPubKey = pk
-	h.receiverNonce = iv
+	copy(h.receiverNonce[:], iv)
 	return err
 }
 
@@ -220,7 +220,7 @@ func (h *handshake) seal(body rlp.Item) ([]byte, error) {
 // forms a 32 byte signature payload for auth in the form of shared-secret ^ nonce.
 // The shared secret is derived from the local private key and remote public key on the
 // secp256k1 curve.
-func signaturePayload(privKey *secp256k1.PrivateKey, remoteKey *secp256k1.PublicKey, nonce []byte) [32]byte {
+func signaturePayload(privKey *secp256k1.PrivateKey, remoteKey *secp256k1.PublicKey, nonce [32]byte) [32]byte {
 	var ss [32]byte
 	secret := secp256k1.GenerateSharedSecret(privKey, remoteKey)
 	copy(ss[:], secret)
