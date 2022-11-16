@@ -3,7 +3,7 @@ package rlpx
 import (
 	"crypto/rand"
 	"errors"
-	// mrand "math/rand"
+	mrand "math/rand"
 	"net"
 
 	"github.com/decred/dcrd/dcrec/secp256k1/v4"
@@ -207,9 +207,9 @@ func (h *handshake) seal(body rlp.Item) ([]byte, error) {
 	if h.remotePubKey == nil {
 		return nil, errors.New("unable to encrypt, missing remote pub key")
 	}
-	encBody := rlp.Encode(body)
 	// pad with random data. needs at least 100 bytes to make it indistinguishable from pre-eip-8 handshakes
-	// encBody = append(encBody, make([]byte, mrand.Intn(100)+100)...)
+	encBody := rlp.Encode(body)
+	encBody = append(encBody, make([]byte, mrand.Intn(100)+100)...)
 
 	prefix := make([]byte, prefixLength) // prefix is length of the ciphertext + overhead
 	prefix = bint.Encode(prefix, uint64(len(encBody)+ecies.Overhead))

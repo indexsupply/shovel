@@ -23,7 +23,7 @@ func TestHandshake(t *testing.T) {
 	ch := make(chan struct{})
 
 	// launch the receiver
-	go func(t *testing.T) {
+	go func() {
 		sealedAuth := make([]byte, 1024)
 		br, err := recConn.Read(sealedAuth)
 		tc.NoErr(t, err)
@@ -43,7 +43,7 @@ func TestHandshake(t *testing.T) {
 			t.Errorf("initiator nonces do not match: receiver got %d and initiator got %d", rh.initNonce, ih.initNonce)
 		}
 		close(ch)
-	}(t)
+	}()
 
 	err := ih.sendAuth(initConn)
 	tc.NoErr(t, err)
