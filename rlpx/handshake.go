@@ -30,13 +30,11 @@ type handshake struct {
 	receiverNonce   []byte
 }
 
-func newHandshake(localPrvKey *secp256k1.PrivateKey, to *enr.Record) (*handshake, error) {
-	h := &handshake{
-		remotePubKey: to.PublicKey,
+func newHandshake(localPrvKey *secp256k1.PrivateKey, to *enr.Record) *handshake {
+	return &handshake{
 		localPrvKey:  localPrvKey,
+		remotePubKey: to.PublicKey,
 	}
-
-	return h, nil
 }
 
 // createAuthMsg assembles an Auth message according to the following:
@@ -52,19 +50,15 @@ func newHandshake(localPrvKey *secp256k1.PrivateKey, to *enr.Record) (*handshake
 func (h *handshake) createAuthMsg() (rlp.Item, error) {
 	var err error
 	// initialize random nonce
-	if h.initNonce == nil {
-		h.initNonce = make([]byte, 32)
-		_, err := rand.Read(h.initNonce[:])
-		if err != nil {
-			return rlp.Item{}, err
-		}
+	h.initNonce = make([]byte, 32)
+	_, err = rand.Read(h.initNonce[:])
+	if err != nil {
+		return rlp.Item{}, err
 	}
 	// Generate ephemeral ECDH key
-	if h.localEphPrvKey == nil {
-		h.localEphPrvKey, err = secp256k1.GeneratePrivateKey()
-		if err != nil {
-			return rlp.Item{}, err
-		}
+	h.localEphPrvKey, err = secp256k1.GeneratePrivateKey()
+	if err != nil {
+		return rlp.Item{}, err
 	}
 	// Sig = Sign(Ephemeral Private Key, Shared Secret ^ Nonce)
 	sig, err := isxsecp256k1.Sign(h.localEphPrvKey, signaturePayload(h.localPrvKey, h.remotePubKey, h.initNonce))
@@ -105,18 +99,15 @@ func (h *handshake) createAckMsg() (rlp.Item, error) {
 	if h.isInitiator {
 		return rlp.Item{}, errors.New("cannot send ack message when you are the initiator")
 	}
-	if h.receiverNonce != nil {
-		_, err = rand.Read(h.receiverNonce[:])
-		if err != nil {
-			return rlp.Item{}, err
-		}
+	h.receiverNonce = make([]byte, 32)
+	_, err = rand.Read(h.receiverNonce[:])
+	if err != nil {
+		return rlp.Item{}, err
 	}
 	// Generate ephemeral ECDH key
-	if h.localEphPrvKey == nil {
-		h.localEphPrvKey, err = secp256k1.GeneratePrivateKey()
-		if err != nil {
-			return rlp.Item{}, err
-		}
+	h.localEphPrvKey, err = secp256k1.GeneratePrivateKey()
+	if err != nil {
+		return rlp.Item{}, err
 	}
 	return rlp.List(
 		rlp.Secp256k1RawPublicKey(h.localEphPrvKey.PubKey()),

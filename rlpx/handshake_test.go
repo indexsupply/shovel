@@ -9,6 +9,7 @@ import (
 	"github.com/decred/dcrd/dcrec/secp256k1/v4"
 
 	"github.com/indexsupply/x/isxsecp256k1"
+	"github.com/indexsupply/x/enr"
 	"github.com/indexsupply/x/tc"
 )
 
@@ -72,33 +73,22 @@ func decodeHexString(t *testing.T, s string) []byte {
 
 func setupHandshakes(t *testing.T, tv map[string]string) (ih, rh *handshake) {
 	initPrvKey := secp256k1.PrivKeyFromBytes(decodeHexString(t, tv["initiator_private_key"]))
-	initEphPrvKey := secp256k1.PrivKeyFromBytes(decodeHexString(t, tv["initiator_ephemeral_private_key"]))
-	initNonce := decodeHexString(t, tv["initiator_nonce"])
-	if len(initNonce) != 32 {
-		t.Errorf("initiator nonce is not 32 bytes")
-	}
-	inonce := make([]byte, 32)
-	copy(inonce[:], initNonce)
+	// initEphPrvKey := secp256k1.PrivKeyFromBytes(decodeHexString(t, tv["initiator_ephemeral_private_key"]))
+	// initNonce := decodeHexString(t, tv["initiator_nonce"])
+	// if len(initNonce) != 32 {
+	// 	t.Errorf("initiator nonce is not 32 bytes")
+	// }
+	// inonce := make([]byte, 32)
+	// copy(inonce[:], initNonce)
 	recPrvKey := secp256k1.PrivKeyFromBytes(decodeHexString(t, tv["receiver_private_key"]))
-	recEphPrvKey := secp256k1.PrivKeyFromBytes(decodeHexString(t, tv["receiver_ephemeral_private_key"]))
-	recNonce := decodeHexString(t, tv["receiver_nonce"])
-	if len(recNonce) != 32 {
-		t.Errorf("receiver nonce is not 32 bytes")
-	}
-	rnonce := make([]byte, 32)
-	copy(rnonce[:], recNonce)
-	ih = &handshake{
-		isInitiator:    true,
-		remotePubKey:   recPrvKey.PubKey(),
-		localPrvKey:    initPrvKey,
-		localEphPrvKey: initEphPrvKey,
-		initNonce:      inonce,
-	}
-	rh = &handshake{
-		remotePubKey:   initPrvKey.PubKey(),
-		localPrvKey:    recPrvKey,
-		localEphPrvKey: recEphPrvKey,
-		receiverNonce:  rnonce,
-	}
+	// recEphPrvKey := secp256k1.PrivKeyFromBytes(decodeHexString(t, tv["receiver_ephemeral_private_key"]))
+	// recNonce := decodeHexString(t, tv["receiver_nonce"])
+	// if len(recNonce) != 32 {
+	// 	t.Errorf("receiver nonce is not 32 bytes")
+	// }
+	// rnonce := make([]byte, 32)
+	// copy(rnonce[:], recNonce)
+	ih = newHandshake(initPrvKey, &enr.Record{PublicKey: recPrvKey.PubKey()})
+	rh = newHandshake(recPrvKey, &enr.Record{PublicKey: initPrvKey.PubKey()})
 	return
 }
