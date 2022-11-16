@@ -51,7 +51,7 @@ func TestHandshake(t *testing.T) {
 	_, err = initConn.Read(sealedAck)
 	tc.NoErr(t, err)
 	err = ih.handleAckMsg(sealedAck)
-	// tc.NoErr(t, err)
+	tc.NoErr(t, err)
 	if !bytes.Equal(ih.receiverNonce, rh.receiverNonce) {
 		t.Errorf("receiver nonces do not match: receiver got %d and initiator got %d", rh.receiverNonce, ih.receiverNonce)
 	}
