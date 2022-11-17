@@ -155,11 +155,7 @@ func Decode(input []byte) (Item, error) {
 			// header's length. In this case, instead
 			// of returning an error, we simply remove
 			// the extra bytes.
-<<<<<<< HEAD
 			input = input[:i+listSize]
-=======
-			input = input[: i+listSize]
->>>>>>> 01b3363 (fix test)
 		}
 
 		item := Item{l: []Item{}}
