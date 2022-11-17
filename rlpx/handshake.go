@@ -26,17 +26,15 @@ type handshake struct {
 	localEphPrvKey  *secp256k1.PrivateKey
 	remotePubKey    *secp256k1.PublicKey
 	remoteEphPubKey *secp256k1.PublicKey
-	initNonce       []byte
-	receiverNonce   []byte
+	initNonce       [32]byte
+	receiverNonce   [32]byte
 }
 
-func newHandshake(localPrvKey *secp256k1.PrivateKey, to *enr.Record) (*handshake, error) {
-	h := &handshake{
-		remotePubKey: to.PublicKey,
+func newHandshake(localPrvKey *secp256k1.PrivateKey, to *enr.Record) *handshake {
+	return &handshake{
 		localPrvKey:  localPrvKey,
+		remotePubKey: to.PublicKey,
 	}
-
-	return h, nil
 }
 
 // createAuthMsg assembles an Auth message according to the following:
@@ -52,29 +50,17 @@ func newHandshake(localPrvKey *secp256k1.PrivateKey, to *enr.Record) (*handshake
 func (h *handshake) createAuthMsg() (rlp.Item, error) {
 	var err error
 	// initialize random nonce
-	if h.initNonce == nil {
-		h.initNonce = make([]byte, 32)
-		_, err := rand.Read(h.initNonce[:])
-		if err != nil {
-			return rlp.Item{}, err
-		}
+	_, err = rand.Read(h.initNonce[:])
+	if err != nil {
+		return rlp.Item{}, err
 	}
 	// Generate ephemeral ECDH key
-	if h.localEphPrvKey == nil {
-		h.localEphPrvKey, err = secp256k1.GeneratePrivateKey()
-		if err != nil {
-			return rlp.Item{}, err
-		}
-	}
-	// Create shared secret using ephemeral key and remote pub key
-	var sharedSecretBytes [32]byte
-	copy(sharedSecretBytes[:], secp256k1.GenerateSharedSecret(h.localPrvKey, h.remotePubKey))
-	var signedPayload [32]byte
-	for i := 0; i < 32; i++ {
-		signedPayload[i] = sharedSecretBytes[i] ^ h.initNonce[i]
+	h.localEphPrvKey, err = secp256k1.GeneratePrivateKey()
+	if err != nil {
+		return rlp.Item{}, err
 	}
 	// Sig = Sign(Ephemeral Private Key, Shared Secret ^ Nonce)
-	sig, err := isxsecp256k1.Sign(h.localEphPrvKey, signedPayload)
+	sig, err := isxsecp256k1.Sign(h.localEphPrvKey, signaturePayload(h.localPrvKey, h.remotePubKey, h.initNonce))
 	if err != nil {
 		return rlp.Item{}, err
 	}
@@ -83,7 +69,7 @@ func (h *handshake) createAuthMsg() (rlp.Item, error) {
 	return rlp.List(
 		rlp.Bytes(sig[:]),
 		rlp.Secp256k1RawPublicKey(h.localPrvKey.PubKey()),
-		rlp.Bytes(h.initNonce),
+		rlp.Bytes(h.initNonce[:]),
 		rlp.Int(authVersion),
 	), nil
 }
@@ -112,22 +98,18 @@ func (h *handshake) createAckMsg() (rlp.Item, error) {
 	if h.isInitiator {
 		return rlp.Item{}, errors.New("cannot send ack message when you are the initiator")
 	}
-	if h.receiverNonce != nil {
-		_, err = rand.Read(h.receiverNonce[:])
-		if err != nil {
-			return rlp.Item{}, err
-		}
+	_, err = rand.Read(h.receiverNonce[:])
+	if err != nil {
+		return rlp.Item{}, err
 	}
 	// Generate ephemeral ECDH key
-	if h.localEphPrvKey == nil {
-		h.localEphPrvKey, err = secp256k1.GeneratePrivateKey()
-		if err != nil {
-			return rlp.Item{}, err
-		}
+	h.localEphPrvKey, err = secp256k1.GeneratePrivateKey()
+	if err != nil {
+		return rlp.Item{}, err
 	}
 	return rlp.List(
 		rlp.Secp256k1RawPublicKey(h.localEphPrvKey.PubKey()),
-		rlp.Bytes(h.receiverNonce),
+		rlp.Bytes(h.receiverNonce[:]),
 		rlp.Int(authVersion),
 	), nil
 }
@@ -145,8 +127,45 @@ func (h *handshake) sendAck(conn net.Conn) error {
 	return err
 }
 
+func (h *handshake) handleAuthMsg(sealedAuth []byte, conn net.Conn) error {
+	h.isInitiator = false
+	authPacket, err := h.unseal(sealedAuth)
+	if err != nil {
+		return err
+	}
+	rpk, err := authPacket.At(1).Secp256k1PublicKey()
+	if err != nil {
+		return err
+	}
+	iv, err := authPacket.At(2).Bytes()
+	if err != nil {
+		return err
+	}
+	sig, err := authPacket.At(0).Bytes()
+	if err != nil {
+		return err
+	}
+	if len(sig) != 65 {
+		return errors.New("auth signature is not 65 bytes")
+	}
+	var sigBytes [65]byte
+	copy(sigBytes[:], sig)
+	var ivBytes [32]byte
+	copy(ivBytes[:], iv)
+	// Recover the signature
+	ephPk, err := isxsecp256k1.Recover(sigBytes, signaturePayload(h.localPrvKey, h.remotePubKey, ivBytes))
+	if err != nil {
+		return err
+	}
+	h.remotePubKey = rpk
+	h.remoteEphPubKey = ephPk
+	copy(h.initNonce[:], iv)
+	// send the ack
+	return h.sendAck(conn)
+}
+
 // handleAckMsg unseals an ack message received over the wire
-// and parses the remote pub key and 
+// and parses the remote pub key and
 func (h *handshake) handleAckMsg(sealedAck []byte) error {
 	ackPacket, err := h.unseal(sealedAck)
 	if err != nil {
@@ -161,11 +180,14 @@ func (h *handshake) handleAckMsg(sealedAck []byte) error {
 		return err
 	}
 	h.remoteEphPubKey = pk
-	h.receiverNonce = iv
+	copy(h.receiverNonce[:], iv)
 	return err
 }
 
 func (h *handshake) unseal(b []byte) (rlp.Item, error) {
+	if h.localPrvKey == nil {
+		return rlp.Item{}, errors.New("unable to decrypt, missing local private key")
+	}
 	if len(b) <= 2+ecies.Overhead {
 		return rlp.Item{}, errors.New("message must be at least 2 + ecies overhead bytes long")
 	}
@@ -182,12 +204,29 @@ func (h *handshake) unseal(b []byte) (rlp.Item, error) {
 }
 
 func (h *handshake) seal(body rlp.Item) ([]byte, error) {
-	encBody := rlp.Encode(body)
+	if h.remotePubKey == nil {
+		return nil, errors.New("unable to encrypt, missing remote pub key")
+	}
 	// pad with random data. needs at least 100 bytes to make it indistinguishable from pre-eip-8 handshakes
+	encBody := rlp.Encode(body)
 	encBody = append(encBody, make([]byte, mrand.Intn(100)+100)...)
 
 	prefix := make([]byte, prefixLength) // prefix is length of the ciphertext + overhead
-	bint.Encode(prefix, uint64(len(encBody)+ecies.Overhead))
+	prefix = bint.Encode(prefix, uint64(len(encBody)+ecies.Overhead))
 	encrypted, err := ecies.Encrypt(h.remotePubKey, encBody, prefix)
 	return append(prefix, encrypted...), err
+}
+
+// forms a 32 byte signature payload for auth in the form of shared-secret ^ nonce.
+// The shared secret is derived from the local private key and remote public key on the
+// secp256k1 curve.
+func signaturePayload(privKey *secp256k1.PrivateKey, remoteKey *secp256k1.PublicKey, nonce [32]byte) [32]byte {
+	var ss [32]byte
+	secret := secp256k1.GenerateSharedSecret(privKey, remoteKey)
+	copy(ss[:], secret)
+	var sigPayload [32]byte
+	for i := 0; i < 32; i++ {
+		sigPayload[i] = ss[i] ^ nonce[i]
+	}
+	return sigPayload
 }
