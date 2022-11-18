@@ -49,8 +49,8 @@ func (rw *errRW) Write(f func() ([]byte, error)) {
 
 func serve(c net.Conn, node *enr.Record) {
 	defer c.Close()
-	rw := errRW{c: c}
 	hs := rlpx.Recipient(node.PrivateKey)
+	rw := errRW{c: c}
 	rw.Read(hs.HandleAuth)
 	rw.Write(hs.Ack)
 	rs, err := rlpx.Session(node, hs)
@@ -103,8 +103,8 @@ func main() {
 
 	conn, err := net.Dial("tcp", remote.TCPAddr().String())
 	check(err)
-	rw := errRW{c: conn}
 	hs := rlpx.Initiator(self.PrivateKey, remote.PublicKey)
+	rw := errRW{c: conn}
 	rw.Write(hs.Auth)
 	rw.Read(hs.HandleAck)
 	check(rw.err)
