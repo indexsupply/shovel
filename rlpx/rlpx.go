@@ -83,19 +83,15 @@ func Session(l *enr.Record, hs *handshake) (*session, error) {
 	if hs.initiator {
 		//egress-mac = keccak256.init((mac-secret ^ recipient-nonce) || auth)
 		//ingress-mac = keccak256.init((mac-secret ^ initiator-nonce) || ack)
-		s.eg.hash = sha3.NewLegacyKeccak256()
 		s.eg.hash.Write(rnonce[:])
 		s.eg.hash.Write(hs.auth)
-		s.ig.hash = sha3.NewLegacyKeccak256()
 		s.ig.hash.Write(inonce[:])
 		s.ig.hash.Write(hs.ack)
 	} else {
 		//egress-mac = keccak256.init((mac-secret ^ initiator-nonce) || ack)
 		//ingress-mac = keccak256.init((mac-secret ^ recipient-nonce) || auth)
-		s.eg.hash = sha3.NewLegacyKeccak256()
 		s.eg.hash.Write(inonce[:])
 		s.eg.hash.Write(hs.ack)
-		s.ig.hash = sha3.NewLegacyKeccak256()
 		s.ig.hash.Write(rnonce[:])
 		s.ig.hash.Write(hs.auth)
 	}
@@ -253,7 +249,7 @@ func (s *session) HandleHello(d []byte) error {
 	if err != nil {
 		return isxerrors.Errorf("reading id: %w", err)
 	}
-	s.log("hello from %s", id)
+	s.log("hello from %s\n", id)
 	return nil
 }
 
