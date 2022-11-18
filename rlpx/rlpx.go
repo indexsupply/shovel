@@ -39,11 +39,12 @@ func (s *session) log(format string, args ...any) {
 	}
 }
 
-func Session(l *enr.Record, hs *Handshake) (*session, error) {
-	var (
-		s   = &session{local: l}
-		err error
-	)
+func Session(l *enr.Record, hs *handshake) (*session, error) {
+	err := hs.complete()
+	if err != nil {
+		return nil, err
+	}
+	s := &session{local: l}
 
 	//static-shared-secret = ecdh.agree(privkey, remote-pubk)
 	//ephemeral-key = ecdh.agree(ephemeral-privkey, remote-ephemeral-pubk)
@@ -262,7 +263,7 @@ func (s *session) HandleHello(d []byte) error {
 	return nil
 }
 
-type Handshake struct {
+type handshake struct {
 	initiator bool
 
 	localPrvKey, localEphPrvKey   *secp256k1.PrivateKey
@@ -274,16 +275,32 @@ type Handshake struct {
 	auth, ack []byte
 }
 
-func Initiator(l *secp256k1.PrivateKey, r *secp256k1.PublicKey) *Handshake {
-	return &Handshake{
+func (h *handshake) complete() error {
+	if h.initNonce == [32]byte{} {
+		return errors.New("missing init nonce")
+	}
+	if h.recipientNonce == [32]byte{} {
+		return errors.New("missing recipient nonce")
+	}
+	if h.remotePubKey == nil {
+		return errors.New("missing remote public key")
+	}
+	if h.remoteEphPubKey == nil {
+		return errors.New("missing remote eph public key")
+	}
+	return nil
+}
+
+func Initiator(l *secp256k1.PrivateKey, r *secp256k1.PublicKey) *handshake {
+	return &handshake{
 		initiator:    true,
 		localPrvKey:  l,
 		remotePubKey: r,
 	}
 }
 
-func Recipient(l *secp256k1.PrivateKey) *Handshake {
-	return &Handshake{
+func Recipient(l *secp256k1.PrivateKey) *handshake {
+	return &handshake{
 		initiator:   false,
 		localPrvKey: l,
 	}
@@ -299,7 +316,7 @@ func Recipient(l *secp256k1.PrivateKey) *Handshake {
 // sig = secp256k1.sign(ephemeral-privkey , shared-secret ^ initiator-nonce)
 // enc-auth-body = ecies.encrypt(recipient-pubk, auth-body || auth-padding, auth-size)
 // auth-padding = arbitrary data
-func (h *Handshake) Auth() ([]byte, error) {
+func (h *handshake) Auth() ([]byte, error) {
 	_, err := rand.Read(h.initNonce[:])
 	if err != nil {
 		return nil, err
@@ -340,7 +357,7 @@ func (h *Handshake) Auth() ([]byte, error) {
 	return h.auth, nil
 }
 
-func (h *Handshake) HandleAuth(d []byte) error {
+func (h *handshake) HandleAuth(d []byte) error {
 	h.auth = d
 	if len(d) <= 2+ecies.Overhead {
 		return errors.New("message must be at least 2 + ecies overhead bytes long")
@@ -387,7 +404,7 @@ func (h *Handshake) HandleAuth(d []byte) error {
 // ack-body = [recipient-ephemeral-pubk, recipient-nonce, ack-vsn, ...]
 // enc-ack-body = ecies.encrypt(initiator-pubk, ack-body || ack-padding, ack-size)
 // ack-padding = arbitrary data
-func (h *Handshake) Ack() ([]byte, error) {
+func (h *handshake) Ack() ([]byte, error) {
 	if h.initiator {
 		return nil, errors.New("cannot send ack message when you are the initiator")
 	}
@@ -416,7 +433,7 @@ func (h *Handshake) Ack() ([]byte, error) {
 	return h.ack, nil
 }
 
-func (h *Handshake) HandleAck(d []byte) error {
+func (h *handshake) HandleAck(d []byte) error {
 	h.ack = d
 	if len(d) <= 2+ecies.Overhead {
 		return errors.New("message must be at least 2 + ecies overhead bytes long")
