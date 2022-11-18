@@ -197,13 +197,13 @@ func (s *session) decode(buf []byte) (byte, rlp.Item, error) {
 // header-padding = zero-fill header to 16-byte boundary
 // frame-ciphertext = aes(aes-secret, frame-data || frame-padding)
 // frame-padding = zero-fill frame-data to 16-byte boundary
-func (s *session) encode(id byte, data []byte) []byte {
+func (s *session) encode(msgID byte, msgData []byte) []byte {
 	// Per the spec, the header contains: size, data, and padding.
 	// However, the data (eg [capability-id, context-id]) is unused.
 	// Therefore, we leave the header-data as a list of zero bytes.
 	// Padding is addressed by pre-allocating a 16 byte header.
 	header := make([]byte, 16)
-	bint.Encode(header[:3], uint64(len(data)+1)) //include id
+	bint.Encode(header[:3], uint64(len(msgData)+1)) //include id
 	s.eg.stream.XORKeyStream(header, header)
 	var (
 		headerCiphertext = header
@@ -215,8 +215,8 @@ func (s *session) encode(id byte, data []byte) []byte {
 		frameCiphertext []byte
 		frameMac        []byte
 	)
-	frameData = append(frameData, rlp.Encode(rlp.Byte(id))...)
-	frameData = append(frameData, data...)
+	frameData = append(frameData, rlp.Encode(rlp.Byte(msgID))...)
+	frameData = append(frameData, msgData...)
 	padding := 16 - len(frameData)%16
 	if padding != 0 {
 		frameData = append(frameData, make([]byte, padding)...)
