@@ -74,8 +74,8 @@ func Session(l *enr.Record, hs *handshake) (*session, error) {
 		return nil, err
 	}
 
-	var inonce, rnonce [16]byte
-	for i := 0; i < 16; i++ {
+	var inonce, rnonce [32]byte
+	for i := 0; i < 32; i++ {
 		inonce[i] = macSecret[i] ^ hs.initNonce[i]
 		rnonce[i] = macSecret[i] ^ hs.recipientNonce[i]
 	}
@@ -99,7 +99,6 @@ func Session(l *enr.Record, hs *handshake) (*session, error) {
 		s.ig.hash.Write(rnonce[:])
 		s.ig.hash.Write(hs.auth)
 	}
-
 	return s, nil
 }
 
@@ -166,8 +165,7 @@ func (s *session) decode(buf []byte) (byte, rlp.Item, error) {
 	if len(buf) < 32 {
 		return 0, rlp.Item{}, errors.New("buf too small for 32byte header")
 	}
-	want := s.ig.header(buf[:16])
-	if !hmac.Equal(want, buf[16:32]) {
+	if !hmac.Equal(s.ig.header(buf[:16]), buf[16:32]) {
 		return 0, rlp.Item{}, errors.New("invalid header mac")
 	}
 	s.ig.stream.XORKeyStream(buf[:16], buf[:16])
