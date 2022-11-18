@@ -27,7 +27,8 @@ type Record struct {
 	Sequence  uint64 // The sequence number. Nodes should increase the number whenever the record changes and republish the record.
 	IDScheme  string // name of identity scheme, e.g. “v4”
 
-	PublicKey *secp256k1.PublicKey
+	PrivateKey *secp256k1.PrivateKey
+	PublicKey  *secp256k1.PublicKey
 
 	Ip      net.IP
 	TcpPort uint16

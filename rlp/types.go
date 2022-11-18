@@ -75,9 +75,9 @@ func (i Item) Time() (time.Time, error) {
 	return time.Unix(int64(ts), 0), nil
 }
 
-// RLP Item for an uncompressed secpk256k1 public key, without hashing it.
-func Secp256k1RawPublicKey(pubkey *secp256k1.PublicKey) Item {
-	b := isxsecp256k1.Encode(pubkey)
+// Uncompressed secpk256k1 public key
+func Secp256k1PublicKey(pubk *secp256k1.PublicKey) Item {
+	b := isxsecp256k1.Encode(pubk)
 	return Bytes(b[:])
 }
 
@@ -119,6 +119,20 @@ func (i Item) IP() (net.IP, error) {
 	default:
 		return nil, errors.New(fmt.Sprintf("ip must be 4 or 16 bytes. got: %d", len(i.d)))
 	}
+}
+
+func (i Item) Bytes32() ([32]byte, error) {
+	if len(i.d) != 32 {
+		return [32]byte{}, errors.New("must be exactly 32 bytes")
+	}
+	return *(*[32]byte)(i.d), nil
+}
+
+func (i Item) Bytes65() ([65]byte, error) {
+	if len(i.d) != 65 {
+		return [65]byte{}, errors.New("must be exactly 65 bytes")
+	}
+	return *(*[65]byte)(i.d), nil
 }
 
 func Byte(b byte) Item {
