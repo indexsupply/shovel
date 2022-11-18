@@ -19,7 +19,7 @@ func check(err error) {
 
 type errRW struct {
 	c   net.Conn
-	b   [2048]byte
+	b   [1 << 14]byte //16 MiB devp2p max. TODO(ryan): use dynamic buffer
 	err error
 }
 
