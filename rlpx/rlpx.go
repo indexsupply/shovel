@@ -199,31 +199,19 @@ func (s *session) encode(msgID byte, msgData []byte) []byte {
 	header := make([]byte, 16)
 	bint.Encode(header[:3], uint64(len(msgData)+1)) //include id
 	s.eg.stream.XORKeyStream(header, header)
-	var (
-		headerCiphertext = header
-		headerMac        = s.eg.header(headerCiphertext)
-	)
 
-	var (
-		frameData       []byte
-		frameCiphertext []byte
-		frameMac        []byte
-	)
-	frameData = append(frameData, rlp.Encode(rlp.Byte(msgID))...)
-	frameData = append(frameData, msgData...)
-	padding := 16 - len(frameData)%16
+	msgData = append(rlp.Encode(rlp.Byte(msgID)), msgData...)
+	padding := 16 - len(msgData)%16
 	if padding != 0 {
-		frameData = append(frameData, make([]byte, padding)...)
+		msgData = append(msgData, make([]byte, padding)...)
 	}
-	frameCiphertext = make([]byte, len(frameData))
-	s.eg.stream.XORKeyStream(frameCiphertext, frameData)
-	frameMac = s.eg.frame(frameCiphertext)
+	s.eg.stream.XORKeyStream(msgData, msgData)
 
 	var frame []byte
-	frame = append(frame, headerCiphertext...)
-	frame = append(frame, headerMac...)
-	frame = append(frame, frameCiphertext...)
-	frame = append(frame, frameMac...)
+	frame = append(frame, header...)
+	frame = append(frame, s.eg.header(header)...)
+	frame = append(frame, msgData...)
+	frame = append(frame, s.eg.frame(msgData)...)
 	return frame
 }
 
