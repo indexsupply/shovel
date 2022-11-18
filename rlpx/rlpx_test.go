@@ -1,48 +1,82 @@
 package rlpx
 
 import (
-	"net"
 	"net/netip"
 	"testing"
 
 	"github.com/indexsupply/x/enr"
-	"github.com/indexsupply/x/rlp"
 	"github.com/indexsupply/x/tc"
 
 	"github.com/decred/dcrd/dcrec/secp256k1/v4"
 )
 
-func TestReadWrite(t *testing.T) {
-	c1, c2 := testConn(t)
-	p1 := prv(t)
-	p2 := prv(t)
-	n1 := testNode(t, c1)
-	n2 := testNode(t, c2)
-	h1 := &handshake{
-		initiator:       true,
-		local:           n1,
-		remote:          n2,
-		localEphPrvKey:  p1,
-		remoteEphPubKey: p2.PubKey(),
-	}
-	h2 := &handshake{
-		local:           n2,
-		remote:          n1,
-		localEphPrvKey:  p2,
-		remoteEphPubKey: p1.PubKey(),
-	}
-	s1, err := New(c1, h1)
+func TestHandShake(t *testing.T) {
+	k1 := prv(t)
+	k2 := prv(t)
+	h1 := Initiator(k1, k2.PubKey())
+	h2 := Recipient(k2)
+
+	auth, err := h1.Auth()
 	tc.NoErr(t, err)
-	s2, err := New(c2, h2)
+	tc.NoErr(t, h2.HandleAuth(auth))
+	ack, err := h2.Ack()
+	tc.NoErr(t, err)
+	tc.NoErr(t, h1.HandleAck(ack))
+
+	if !h1.remotePubKey.IsEqual(h2.localPrvKey.PubKey()) {
+		t.Errorf(
+			"pub keys not equal h1: %x h2: %x",
+			h1.remotePubKey.SerializeCompressed(),
+			h2.localPrvKey.PubKey().SerializeCompressed(),
+		)
+	}
+	if !h1.remoteEphPubKey.IsEqual(h2.localEphPrvKey.PubKey()) {
+		t.Errorf(
+			"eph pub keys not equal h1: %x h2: %x",
+			h1.remoteEphPubKey.SerializeCompressed(),
+			h2.localEphPrvKey.PubKey().SerializeCompressed(),
+		)
+	}
+	if h1.initNonce != h2.initNonce {
+		t.Errorf(
+			"expected init nonces to be equal h1: %x h2: %x",
+			h1.initNonce,
+			h2.initNonce,
+		)
+	}
+	if h1.recipientNonce != h2.recipientNonce {
+		t.Errorf(
+			"expected recipient nonces to be equal h1: %x h2: %x",
+			h1.recipientNonce,
+			h2.recipientNonce,
+		)
+	}
+}
+
+func TestSession(t *testing.T) {
+	n1 := testNode(t)
+	n2 := testNode(t)
+
+	k1 := n1.PrivateKey
+	k2 := n2.PrivateKey
+
+	h1 := Initiator(k1, k2.PubKey())
+	h2 := Recipient(k2)
+
+	auth, err := h1.Auth()
+	tc.NoErr(t, err)
+	tc.NoErr(t, h2.HandleAuth(auth))
+	ack, err := h2.Ack()
+	tc.NoErr(t, err)
+	tc.NoErr(t, h1.HandleAck(ack))
+
+	s1, err := Session(n1, h1)
+	tc.NoErr(t, err)
+	s2, err := Session(n2, h2)
 	tc.NoErr(t, err)
 
-	tc.NoErr(t, s1.write(0x00, rlp.Encode(rlp.Byte(1))))
-
-	buf := make([]byte, 1024)
-	_, err = c2.Read(buf)
-	tc.NoErr(t, err)
-	_, err = s2.read(buf)
-	tc.NoErr(t, err)
+	b1, _ := s1.Hello()
+	tc.NoErr(t, s2.HandleHello(b1))
 }
 
 func prv(t *testing.T) *secp256k1.PrivateKey {
@@ -51,33 +85,15 @@ func prv(t *testing.T) *secp256k1.PrivateKey {
 	return prv
 }
 
-func testConn(t *testing.T) (net.Conn, net.Conn) {
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	tc.NoErr(t, err)
-	var (
-		c2   net.Conn
-		done = make(chan struct{}, 1)
-	)
-	go func() {
-		defer ln.Close()
-		c2, err = ln.Accept()
-		tc.NoErr(t, err)
-		done <- struct{}{}
-	}()
-	c1, err := net.Dial("tcp", ln.Addr().String())
-	tc.NoErr(t, err)
-	<-done
-	return c1, c2
-}
-
-func testNode(t *testing.T, conn net.Conn) *enr.Record {
+func testNode(t *testing.T) *enr.Record {
 	prv, err := secp256k1.GeneratePrivateKey()
 	tc.NoErr(t, err)
-	ap := netip.MustParseAddrPort(conn.LocalAddr().String())
+	ap := netip.MustParseAddrPort("127.0.0.1:30303")
 	return &enr.Record{
-		Ip:        ap.Addr().AsSlice(),
-		PublicKey: prv.PubKey(),
-		UdpPort:   ap.Port(),
-		TcpPort:   ap.Port(),
+		Ip:         ap.Addr().AsSlice(),
+		PrivateKey: prv,
+		PublicKey:  prv.PubKey(),
+		UdpPort:    ap.Port(),
+		TcpPort:    ap.Port(),
 	}
 }

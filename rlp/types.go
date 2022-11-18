@@ -121,6 +121,20 @@ func (i Item) IP() (net.IP, error) {
 	}
 }
 
+func (i Item) Bytes32() ([32]byte, error) {
+	if len(i.d) != 32 {
+		return [32]byte{}, errors.New("must be exactly 32 bytes")
+	}
+	return *(*[32]byte)(i.d), nil
+}
+
+func (i Item) Bytes65() ([65]byte, error) {
+	if len(i.d) != 65 {
+		return [65]byte{}, errors.New("must be exactly 65 bytes")
+	}
+	return *(*[65]byte)(i.d), nil
+}
+
 func Byte(b byte) Item {
 	if b == 0 {
 		return Item{d: []byte{}}
