@@ -1,12 +1,13 @@
-package at
+// Types for ABI encoding / decoding
+package abit
 
 type kind byte
 
 const (
-	S kind = iota
-	D
-	T
-	L
+	S kind = iota //static
+	D             //dynamic
+	T             //tuple
+	L             //list
 )
 
 type Type struct {
@@ -30,13 +31,13 @@ var (
 		Name: "bytes",
 		Kind: D,
 	}
-	Uint64 = Type{
-		Name: "uint64",
-		Kind: S,
-	}
 	String = Type{
 		Name: "string",
 		Kind: D,
+	}
+	Uint64 = Type{
+		Name: "uint64",
+		Kind: S,
 	}
 	Uint256 = Type{
 		Name: "uint256",
@@ -47,7 +48,7 @@ var (
 func List(et Type) Type {
 	return Type{
 		ElementType: &et,
-		Name:        "list",
+		Name:        et.Name + "[]",
 		Kind:        L,
 	}
 }
