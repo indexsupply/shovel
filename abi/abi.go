@@ -12,6 +12,7 @@ type kind byte
 const (
 	static kind = iota
 	dynamic
+	list
 )
 
 func rpad(d []byte) []byte {
@@ -94,10 +95,25 @@ func BigInt(i *big.Int) Item {
 	}
 }
 
-func (i Item) BigInt() *big.Int {
+func (it Item) BigInt() *big.Int {
 	x := &big.Int{}
-	x.SetBytes(i.d)
+	x.SetBytes(it.d)
 	return x
+}
+
+func Address(a [20]byte) Item {
+	return Item{
+		k: static,
+		t: "address",
+		d: rpad(a[:]),
+	}
+}
+
+func (it Item) Address() [20]byte {
+	if len(it.d) < 32 {
+		return [20]byte{}
+	}
+	return *(*[20]byte)(it.d[:20])
 }
 
 func Int(i int) Item {
@@ -110,8 +126,15 @@ func Int(i int) Item {
 	}
 }
 
+func (it Item) Int() int {
+	return int(bint.Decode(it.d))
+}
+
 func List(items ...Item) Item {
-	return Item{l: items}
+	return Item{
+		t: "list",
+		l: items,
+	}
 }
 
 func (it Item) At(i int) Item {
@@ -158,4 +181,77 @@ func Encode(items ...Item) []byte {
 		}
 	}
 	return append(head, tail...)
+}
+
+type Type struct {
+	t    *Type
+	name string
+	kind kind
+}
+
+var AddressType = Type{
+	name: "address",
+	kind: static,
+}
+
+var StringType = Type{
+	name: "string",
+	kind: dynamic,
+}
+
+var IntType = Type{
+	name: "int",
+	kind: static,
+}
+
+func ListType(t Type) Type {
+	return Type{
+		name: "list",
+		kind: list,
+		t:    &t,
+	}
+}
+
+func Decode(input []byte, types ...Type) []Item {
+	var (
+		n     int
+		items []Item
+	)
+	for _, t := range types {
+		switch t.kind {
+		case static:
+			items = append(items, Item{
+				k: t.kind,
+				t: t.name,
+				d: input[n : n+32],
+			})
+			n += 32
+		case dynamic:
+			offset := bint.Decode(input[:32])
+			count := bint.Decode(input[offset : offset+32])
+			items = append(items, Item{
+				k: t.kind,
+				t: t.name,
+				d: input[offset+32 : offset+32+count],
+			})
+			//TODO(r): increment n
+		case list:
+			var offset uint64
+			if t.t.kind != static {
+				offset = bint.Decode(input[:32])
+			}
+			count := bint.Decode(input[offset : offset+32])
+			var its []Item
+			for j := uint64(1); j <= count; j++ {
+				n := offset + (32 * j)
+				if t.t.kind != static {
+					n = offset + 32 + bint.Decode(input[n:n+32])
+				}
+				its = append(its, Decode(input[n:], *t.t)...)
+			}
+			items = append(items, List(its...))
+			//TODO(r): increment n
+		}
+	}
+	return items
 }

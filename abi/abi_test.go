@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"reflect"
 	"testing"
 )
 
@@ -45,6 +46,31 @@ func TestEncode_Nested(t *testing.T) {
 	)
 	if !bytes.Equal(want, got) {
 		t.Errorf("want: %x got: %x", want, got)
+	}
+}
+
+func TestDecode(t *testing.T) {
+	a, b := [20]byte{}, [20]byte{}
+	a[19] = 1
+	b[19] = 2
+	want := []Item{
+		Address(a),
+		Address(b),
+		Int(1),
+	}
+	debug(t, Encode(want...))
+	got := Decode(Encode(want...), AddressType, AddressType, IntType)
+	if !reflect.DeepEqual(want, got) {
+		t.Errorf("want: %# v got: %# v", want, got)
+	}
+}
+
+func TestDecode_Dynamic(t *testing.T) {
+	want := List(String("hello"), String("world"))
+	enc := Encode(want)
+	got := Decode(enc, StringType, StringType)
+	if !reflect.DeepEqual(want, got) {
+		t.Errorf("want: %# v got: %# v", want, got)
 	}
 }
 
