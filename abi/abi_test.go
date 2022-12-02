@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"reflect"
 	"testing"
+
+	"github.com/indexsupply/x/abi/at"
 )
 
 func TestPad(t *testing.T) {
@@ -59,7 +61,7 @@ func TestDecode(t *testing.T) {
 		Int(1),
 	}
 	debug(t, Encode(want...))
-	got := Decode(Encode(want...), AddressType, AddressType, IntType)
+	got := Decode(Encode(want...), at.Address, at.Address, at.Int)
 	if !reflect.DeepEqual(want, got) {
 		t.Errorf("want: %# v got: %# v", want, got)
 	}
@@ -68,7 +70,7 @@ func TestDecode(t *testing.T) {
 func TestDecode_Dynamic(t *testing.T) {
 	want := List(String("hello"), String("world"))
 	enc := Encode(want)
-	got := Decode(enc, StringType, StringType)
+	got := Decode(enc, at.String, at.String)
 	if !reflect.DeepEqual(want, got) {
 		t.Errorf("want: %# v got: %# v", want, got)
 	}

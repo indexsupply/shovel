@@ -4,15 +4,8 @@ package abi
 import (
 	"math/big"
 
+	"github.com/indexsupply/x/abi/at"
 	"github.com/indexsupply/x/bint"
-)
-
-type kind byte
-
-const (
-	static kind = iota
-	dynamic
-	list
 )
 
 func rpad(d []byte) []byte {
@@ -24,8 +17,7 @@ func rpad(d []byte) []byte {
 }
 
 type Item struct {
-	k kind
-	t string
+	at.Type
 
 	// must be d XOR l
 	d []byte
@@ -36,9 +28,8 @@ func Bytes(d []byte) Item {
 	var b = make([]byte, 32)
 	bint.Encode(b, uint64(len(b)))
 	return Item{
-		k: dynamic,
-		t: "bytes",
-		d: append(b, rpad(d)...),
+		Type: at.Bytes,
+		d:    append(b, rpad(d)...),
 	}
 }
 
@@ -53,9 +44,8 @@ func String(s string) Item {
 	var b = make([]byte, 32)
 	bint.Encode(b, uint64(len(s)))
 	return Item{
-		k: dynamic,
-		t: "string",
-		d: append(b, rpad([]byte(s))...),
+		Type: at.String,
+		d:    append(b, rpad([]byte(s))...),
 	}
 }
 
@@ -72,9 +62,8 @@ func Bool(b bool) Item {
 		d[31] = 1
 	}
 	return Item{
-		k: static,
-		t: "bool",
-		d: d[:],
+		Type: at.Bool,
+		d:    d[:],
 	}
 }
 
@@ -89,9 +78,8 @@ func BigInt(i *big.Int) Item {
 	var b [32]byte
 	i.FillBytes(b[:])
 	return Item{
-		k: static,
-		t: "uint256",
-		d: b[:],
+		Type: at.Uint256,
+		d:    b[:],
 	}
 }
 
@@ -103,9 +91,8 @@ func (it Item) BigInt() *big.Int {
 
 func Address(a [20]byte) Item {
 	return Item{
-		k: static,
-		t: "address",
-		d: rpad(a[:]),
+		Type: at.Address,
+		d:    rpad(a[:]),
 	}
 }
 
@@ -120,9 +107,8 @@ func Int(i int) Item {
 	var b [32]byte
 	bint.Encode(b[:], uint64(i))
 	return Item{
-		k: static,
-		t: "int",
-		d: b[:],
+		Type: at.Int,
+		d:    b[:],
 	}
 }
 
@@ -132,8 +118,8 @@ func (it Item) Int() int {
 
 func List(items ...Item) Item {
 	return Item{
-		t: "list",
-		l: items,
+		Type: at.List,
+		l:    items,
 	}
 }
 
@@ -153,10 +139,10 @@ func Encode(items ...Item) []byte {
 	for i := range items {
 		switch {
 		case items[i].d != nil:
-			switch items[i].k {
-			case static:
+			switch items[i].Kind {
+			case at.S:
 				head = append(head, items[i].d...)
-			case dynamic:
+			case at.D:
 				var (
 					n      = len(items)*32 + len(tail)
 					offset = [32]byte{}
@@ -183,74 +169,42 @@ func Encode(items ...Item) []byte {
 	return append(head, tail...)
 }
 
-type Type struct {
-	t    *Type
-	name string
-	kind kind
-}
-
-var AddressType = Type{
-	name: "address",
-	kind: static,
-}
-
-var StringType = Type{
-	name: "string",
-	kind: dynamic,
-}
-
-var IntType = Type{
-	name: "int",
-	kind: static,
-}
-
-func ListType(t Type) Type {
-	return Type{
-		name: "list",
-		kind: list,
-		t:    &t,
-	}
-}
-
-func Decode(input []byte, types ...Type) []Item {
+func Decode(input []byte, types ...at.Type) []Item {
 	var (
 		n     int
 		items []Item
 	)
 	for _, t := range types {
-		switch t.kind {
-		case static:
+		switch t.Kind {
+		case at.S:
 			items = append(items, Item{
-				k: t.kind,
-				t: t.name,
-				d: input[n : n+32],
+				Type: t,
+				d:    input[n : n+32],
 			})
 			n += 32
-		case dynamic:
+		case at.D:
 			offset := bint.Decode(input[:32])
 			count := bint.Decode(input[offset : offset+32])
 			items = append(items, Item{
-				k: t.kind,
-				t: t.name,
-				d: input[offset+32 : offset+32+count],
+				Type: t,
+				d:    input[offset+32 : offset+32+count],
 			})
 			//TODO(r): increment n
-		case list:
+		case at.L:
 			var offset uint64
-			if t.t.kind != static {
+			if t.Embedded.Kind != at.S {
 				offset = bint.Decode(input[:32])
 			}
 			count := bint.Decode(input[offset : offset+32])
 			var its []Item
 			for j := uint64(1); j <= count; j++ {
 				n := offset + (32 * j)
-				if t.t.kind != static {
+				if t.Embedded.Kind != at.S {
 					n = offset + 32 + bint.Decode(input[n:n+32])
 				}
-				its = append(its, Decode(input[n:], *t.t)...)
+				its = append(its, Decode(input[n:], *t.Embedded)...)
 			}
 			items = append(items, List(its...))
-			//TODO(r): increment n
 		}
 	}
 	return items
