@@ -41,11 +41,9 @@ func (it Item) Bytes() []byte {
 }
 
 func String(s string) Item {
-	var b = make([]byte, 32)
-	bint.Encode(b, uint64(len(s)))
 	return Item{
 		Type: at.String,
-		d:    append(b, rpad([]byte(s))...),
+		d:    []byte(s),
 	}
 }
 
@@ -142,27 +140,35 @@ func Tuple(items ...Item) Item {
 	}
 }
 
-func Encode(item Item) []byte {
-	var head, tail []byte
-	for _, it := range item.l {
-		switch it.Kind {
-		case at.S:
-			head = append(head, it.d...)
-		case at.D:
-			var offset [32]byte
-			bint.Encode(offset[:], uint64(len(item.l)*32+len(tail)))
-			head = append(head, offset[:]...)
-			tail = append(tail, it.d...)
-		case at.L:
-			var offset, count [32]byte
-			bint.Encode(offset[:], uint64(len(item.l)*32+len(tail)))
-			head = append(head, offset[:]...)
-			bint.Encode(count[:], uint64(len(it.l)))
-			tail = append(tail, count[:]...)
-			tail = append(tail, Encode(it)...)
+func Encode(it Item) []byte {
+	switch it.Kind {
+	case at.S:
+		return it.d
+	case at.D:
+		var c [32]byte
+		bint.Encode(c[:], uint64(len(it.d)))
+		return append(c[:], rpad(it.d)...)
+	case at.L:
+		var c [32]byte
+		bint.Encode(c[:], uint64(len(it.l)))
+		return append(c[:], Encode(Tuple(it.l...))...)
+	case at.T:
+		var head, tail []byte
+		for i := range it.l {
+			switch it.l[i].Kind {
+			case at.S:
+				head = append(head, Encode(it.l[i])...)
+			default:
+				var offset [32]byte
+				bint.Encode(offset[:], uint64(len(it.l)*32+len(tail)))
+				head = append(head, offset[:]...)
+				tail = append(tail, Encode(it.l[i])...)
+			}
 		}
+		return append(head, tail...)
+	default:
+		panic("abi: encode: unkown type")
 	}
-	return append(head, tail...)
 }
 
 func Decode(input []byte, t at.Type) Item {

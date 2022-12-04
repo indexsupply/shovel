@@ -70,6 +70,14 @@ func TestDecode_Tuple(t *testing.T) {
 
 }
 
+func debug2(b []byte) []byte {
+	out := fmt.Sprintf("len: %d\n", len(b))
+	for i := 0; i < len(b); i += 32 {
+		out += fmt.Sprintf("%x\n", b[i:i+32])
+	}
+	fmt.Printf("debug2:\n%s\n", out)
+	return b
+}
 func debug(t *testing.T, b []byte) []byte {
 	t.Helper()
 	out := fmt.Sprintf("len: %d\n", len(b))
