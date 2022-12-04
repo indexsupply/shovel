@@ -133,22 +133,19 @@ func (it Item) Len() int {
 
 func Encode(items ...Item) []byte {
 	var head, tail []byte
-	for i := range items {
-		switch {
-		case items[i].d != nil:
-			switch items[i].Kind {
-			case at.S:
-				head = append(head, items[i].d...)
-			case at.D:
-				var (
-					n      = len(items)*32 + len(tail)
-					offset = [32]byte{}
-				)
-				bint.Encode(offset[:], uint64(n))
-				head = append(head, offset[:]...)
-				tail = append(tail, items[i].d...)
-			}
-		case len(items[i].l) > 0:
+	for _, it := range items {
+		switch it.Kind {
+		case at.S:
+			head = append(head, it.d...)
+		case at.D:
+			var (
+				n      = len(items)*32 + len(tail)
+				offset = [32]byte{}
+			)
+			bint.Encode(offset[:], uint64(n))
+			head = append(head, offset[:]...)
+			tail = append(tail, it.d...)
+		case at.L:
 			var (
 				n      = len(items)*32 + len(tail)
 				offset = [32]byte{}
@@ -156,11 +153,9 @@ func Encode(items ...Item) []byte {
 			)
 			bint.Encode(offset[:], uint64(n))
 			head = append(head, offset[:]...)
-			bint.Encode(count[:], uint64(len(items[i].l)))
+			bint.Encode(count[:], uint64(len(it.l)))
 			tail = append(tail, count[:]...)
-			tail = append(tail, Encode(items[i].l...)...)
-		default:
-			panic("item must have data or list")
+			tail = append(tail, Encode(it.l...)...)
 		}
 	}
 	return append(head, tail...)
