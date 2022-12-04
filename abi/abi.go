@@ -131,31 +131,35 @@ func (it Item) Len() int {
 	return len(it.l)
 }
 
-func Encode(items ...Item) []byte {
+func Tuple(items ...Item) Item {
+	var types []at.Type
+	for i := range items {
+		types = append(types, items[i].Type)
+	}
+	return Item{
+		Type: at.Tuple(types...),
+		l:    items,
+	}
+}
+
+func Encode(item Item) []byte {
 	var head, tail []byte
-	for _, it := range items {
+	for _, it := range item.l {
 		switch it.Kind {
 		case at.S:
 			head = append(head, it.d...)
 		case at.D:
-			var (
-				n      = len(items)*32 + len(tail)
-				offset = [32]byte{}
-			)
-			bint.Encode(offset[:], uint64(n))
+			var offset [32]byte
+			bint.Encode(offset[:], uint64(len(item.l)*32+len(tail)))
 			head = append(head, offset[:]...)
 			tail = append(tail, it.d...)
 		case at.L:
-			var (
-				n      = len(items)*32 + len(tail)
-				offset = [32]byte{}
-				count  = [32]byte{}
-			)
-			bint.Encode(offset[:], uint64(n))
+			var offset, count [32]byte
+			bint.Encode(offset[:], uint64(len(item.l)*32+len(tail)))
 			head = append(head, offset[:]...)
 			bint.Encode(count[:], uint64(len(it.l)))
 			tail = append(tail, count[:]...)
-			tail = append(tail, Encode(it.l...)...)
+			tail = append(tail, Encode(it)...)
 		}
 	}
 	return append(head, tail...)
