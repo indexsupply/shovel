@@ -52,27 +52,41 @@ func TestEncode_Nested(t *testing.T) {
 }
 
 func TestDecode(t *testing.T) {
-	a, b := [20]byte{}, [20]byte{}
-	a[19] = 1
-	b[19] = 2
-	want := []Item{
-		Address(a),
-		Address(b),
-		Int(1),
-	}
-	debug(t, Encode(want...))
-	got := Decode(Encode(want...), at.Address, at.Address, at.Int)
+	want := List(List(Int(1), Int(2)), List(Int(3)))
+	got := Decode(Encode(want), at.List(at.List(at.Int)))[0]
 	if !reflect.DeepEqual(want, got) {
 		t.Errorf("want: %# v got: %# v", want, got)
 	}
 }
 
 func TestDecode_Dynamic(t *testing.T) {
-	want := List(String("hello"), String("world"))
-	enc := Encode(want)
+	b := make([]byte, 1<<10)
+	rand.Read(b)
+	s := string(b)
+
+	enc := Encode(String("hello"), String(s))
 	got := Decode(enc, at.String, at.String)
-	if !reflect.DeepEqual(want, got) {
-		t.Errorf("want: %# v got: %# v", want, got)
+	if len(got) != 2 {
+		t.Fatalf("want decode to return 2 items got: %d", len(got))
+	}
+	if got[0].String() != "hello" {
+		t.Errorf("want %s got %s", "hello", got[0].String())
+	}
+	if got[1].String() != s {
+		t.Errorf("want %s got %s", s, got[0].String())
+	}
+}
+
+func TestDecode_DynamicList(t *testing.T) {
+	s := make([]byte, 1000)
+	rand.Read(s[:])
+	enc := Encode(String(string(s)))
+	got := Decode(enc, at.String)
+	if len(got) != 1 {
+		t.Fatalf("want decode to return 1 items got: %d", len(got))
+	}
+	if got[0].String() != string(s) {
+		t.Errorf("want %s got %s", string(s), got[0].String())
 	}
 }
 

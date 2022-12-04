@@ -50,10 +50,7 @@ func String(s string) Item {
 }
 
 func (it Item) String() string {
-	if len(it.d) < 64 {
-		return ""
-	}
-	return string(it.d[32:])
+	return string(it.d)
 }
 
 func Bool(b bool) Item {
@@ -118,7 +115,7 @@ func (it Item) Int() int {
 
 func List(items ...Item) Item {
 	return Item{
-		Type: at.List,
+		Type: at.List(items[0].Type),
 		l:    items,
 	}
 }
@@ -181,15 +178,15 @@ func Decode(input []byte, types ...at.Type) []Item {
 				Type: t,
 				d:    input[n : n+32],
 			})
-			n += 32
 		case at.D:
-			offset := bint.Decode(input[:32])
-			count := bint.Decode(input[offset : offset+32])
+			var (
+				offset = bint.Decode(input[n : n+32])
+				count  = bint.Decode(input[offset : offset+32])
+			)
 			items = append(items, Item{
 				Type: t,
 				d:    input[offset+32 : offset+32+count],
 			})
-			//TODO(r): increment n
 		case at.L:
 			var offset uint64
 			if t.Embedded.Kind != at.S {
@@ -206,6 +203,7 @@ func Decode(input []byte, types ...at.Type) []Item {
 			}
 			items = append(items, List(its...))
 		}
+		n += 32
 	}
 	return items
 }
