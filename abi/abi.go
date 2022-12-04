@@ -166,44 +166,62 @@ func Encode(items ...Item) []byte {
 	return append(head, tail...)
 }
 
-func Decode(input []byte, types ...at.Type) []Item {
-	var (
-		n     int
-		items []Item
-	)
-	for _, t := range types {
-		switch t.Kind {
-		case at.S:
-			items = append(items, Item{
-				Type: t,
-				d:    input[n : n+32],
-			})
-		case at.D:
-			var (
-				offset = bint.Decode(input[n : n+32])
-				count  = bint.Decode(input[offset : offset+32])
-			)
-			items = append(items, Item{
-				Type: t,
-				d:    input[offset+32 : offset+32+count],
-			})
-		case at.L:
-			var offset uint64
-			if t.Embedded.Kind != at.S {
-				offset = bint.Decode(input[:32])
-			}
-			count := bint.Decode(input[offset : offset+32])
-			var its []Item
-			for j := uint64(1); j <= count; j++ {
-				n := offset + (32 * j)
-				if t.Embedded.Kind != at.S {
-					n = offset + 32 + bint.Decode(input[n:n+32])
-				}
-				its = append(its, Decode(input[n:], *t.Embedded)...)
-			}
-			items = append(items, List(its...))
+func Decode(input []byte, t at.Type) Item {
+	switch t.Kind {
+	case at.S:
+		return Item{
+			Type: t,
+			d:    input[:32],
 		}
-		n += 32
+	case at.D:
+		var (
+			offset = bint.Decode(input[:32])
+			count  = bint.Decode(input[offset : offset+32])
+		)
+		return Item{
+			Type: t,
+			d:    input[offset+32 : offset+32+count],
+		}
+	case at.T:
+		var (
+			n     int
+			items []Item
+		)
+		for _, f := range t.Fields {
+			items = append(items, Decode(input[n:], *f))
+			n += 32
+		}
+		return Item{
+			Type: t,
+			l:    items,
+		}
+	case at.L:
+		switch t.ElementType.Kind {
+		case at.L:
+			offset := bint.Decode(input[:32])
+			count := bint.Decode(input[offset : offset+32])
+			items := []Item{}
+			for j := uint64(1); j <= count; j++ {
+				head := offset + (32 * j)
+				tail := offset + 32 + bint.Decode(input[head:head+32])
+				items = append(items, Decode(input[tail:], *t.ElementType))
+			}
+			return Item{
+				Type: t,
+				l:    items,
+			}
+		default:
+			count := bint.Decode(input[:32])
+			items := []Item{}
+			for j := uint64(1); j <= count; j++ {
+				items = append(items, Decode(input[32*j:], *t.ElementType))
+			}
+			return Item{
+				Type: t,
+				l:    items,
+			}
+		}
+	default:
+		panic("unhandled type")
 	}
-	return items
 }
