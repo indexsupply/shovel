@@ -74,7 +74,7 @@ func (it Item) BigInt() *big.Int {
 func Address(a [20]byte) Item {
 	return Item{
 		Type: at.Address,
-		d:    rpad(a[:]),
+		d:    rpad(32, a[:]),
 	}
 }
 
@@ -127,12 +127,12 @@ func Tuple(items ...Item) Item {
 	}
 }
 
-func rpad(d []byte) []byte {
-	n := len(d) % 32
+func rpad(l int, d []byte) []byte {
+	n := len(d) % l
 	if n == 0 {
 		return d
 	}
-	return append(d, make([]byte, 32-n)...)
+	return append(d, make([]byte, l-n)...)
 }
 
 func Encode(it Item) []byte {
@@ -142,7 +142,7 @@ func Encode(it Item) []byte {
 	case at.D:
 		var c [32]byte
 		bint.Encode(c[:], uint64(len(it.d)))
-		return append(c[:], rpad(it.d)...)
+		return append(c[:], rpad(32, it.d)...)
 	case at.L:
 		var c [32]byte
 		bint.Encode(c[:], uint64(len(it.l)))

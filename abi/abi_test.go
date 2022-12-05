@@ -2,107 +2,139 @@ package abi
 
 import (
 	"bytes"
-	"crypto/rand"
 	"encoding/hex"
-	"fmt"
 	"reflect"
 	"testing"
 
 	"github.com/indexsupply/x/abi/at"
+	"github.com/indexsupply/x/tc"
 )
 
 func TestPad(t *testing.T) {
-	r := []byte{0x20}
-	rwant := make([]byte, 32)
-	rwant[0] = 0x20
-	if !bytes.Equal(rpad(r), rwant) {
-		t.Errorf("want: %x got: %x", rwant, rpad(r))
+	cases := []struct {
+		desc  string
+		input []byte
+		want  []byte
+	}{
+		{
+			desc:  "< 4",
+			input: []byte{0x2a},
+			want:  []byte{0x2a, 0x00, 0x00, 0x00},
+		},
+		{
+			desc:  "= 4",
+			input: []byte{0x2a, 0x00, 0x00, 0x00},
+			want:  []byte{0x2a, 0x00, 0x00, 0x00},
+		},
+		{
+			desc:  "> 4",
+			input: []byte{0x2a, 0x00, 0x00, 0x00, 0x00},
+			want:  []byte{0x2a, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
+		},
 	}
-
-	b := make([]byte, 33)
-	rand.Read(b[:])
-	bwant := make([]byte, 64)
-	copy(bwant, b)
-	if !bytes.Equal(bwant, rpad(b)) {
-		t.Errorf("want: %x got: %x", bwant, rpad(b))
-	}
-}
-
-// Test vector taken from:
-// https://docs.soliditylang.org/en/latest/abi-spec.html#examples
-func TestEncode(t *testing.T) {
-	want, _ := hex.DecodeString(`0000000000000000000000000000000000000000000000000000000000000060000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000000000000000000000000000000464617665000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000003000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000003`)
-	got := Encode(Tuple(String("dave"), Bool(true), List(Int(1), Int(2), Int(3))))
-	if !bytes.Equal(want, got) {
-		t.Errorf("want: %x got: %x", want, got)
-	}
-}
-
-// Test vector taken from:
-// https://docs.soliditylang.org/en/latest/abi-spec.html#use-of-dynamic-types
-func TestEncode_Nested(t *testing.T) {
-	want, _ := hex.DecodeString(`000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000001400000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000030000000000000000000000000000000000000000000000000000000000000003000000000000000000000000000000000000000000000000000000000000006000000000000000000000000000000000000000000000000000000000000000a000000000000000000000000000000000000000000000000000000000000000e000000000000000000000000000000000000000000000000000000000000000036f6e650000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000374776f000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000057468726565000000000000000000000000000000000000000000000000000000`)
-	got := Encode(Tuple(
-		List(List(Int(1), Int(2)), List(Int(3))),
-		List(String("one"), String("two"), String("three")),
-	))
-	if !bytes.Equal(want, got) {
-		t.Errorf("want: %x got: %x", want, got)
+	for _, c := range cases {
+		got := rpad(4, c.input)
+		if !bytes.Equal(c.want, got) {
+			t.Errorf("want: %x got: %x", c.want, got)
+		}
 	}
 }
 
-func TestDecode(t *testing.T) {
-	want := Tuple(List(List(Int(1), Int(2)), List(Int(3))))
-	got := Decode(Encode(want), at.Tuple(at.List(at.List(at.Int))))
-	if !reflect.DeepEqual(want, got) {
-		t.Errorf("want: %# v got: %# v", want, got)
-	}
-}
-
-func TestDecode_Tuple(t *testing.T) {
-	want := Encode(
-		Tuple(
-			String("satoshi"),
-			Int(2008),
-			Tuple(
-				String("vitalik"),
-				List(Int(2008), Int(2010)),
+func TestSolidityVectors(t *testing.T) {
+	cases := []struct {
+		desc  string
+		input Item
+		want  string
+	}{
+		{
+			desc: "https://docs.soliditylang.org/en/latest/abi-spec.html#examples",
+			input: Tuple(
+				String("dave"),
+				Bool(true),
+				List(Int(1), Int(2), Int(3)),
 			),
-		),
-	)
-	got := Decode(want, at.Tuple(
-		at.String,
-		at.Int,
-		at.Tuple(
-			at.String,
-			at.List(at.Int),
-		),
-	))
-	if got.At(0).String() != "satoshi" {
-		t.Errorf("want: satoshi got: %q", got.At(0).String())
+			want: `0000000000000000000000000000000000000000000000000000000000000060000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000000000000000000000000000000464617665000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000003000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000003`,
+		},
+		{
+			desc: "https://docs.soliditylang.org/en/latest/abi-spec.html#use-of-dynamic-types",
+			input: Tuple(
+				List(List(Int(1), Int(2)), List(Int(3))),
+				List(String("one"), String("two"), String("three")),
+			),
+			want: `000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000001400000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000030000000000000000000000000000000000000000000000000000000000000003000000000000000000000000000000000000000000000000000000000000006000000000000000000000000000000000000000000000000000000000000000a000000000000000000000000000000000000000000000000000000000000000e000000000000000000000000000000000000000000000000000000000000000036f6e650000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000374776f000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000057468726565000000000000000000000000000000000000000000000000000000`,
+		},
 	}
-	if got.At(1).Int() != 2008 {
-		t.Errorf("want: 2008 got: %d", got.At(1).Int())
-	}
-	if got.At(2).At(1).At(0).Int() != 2008 {
-		t.Errorf("want: 2008 got: %d", got.At(2).At(1).At(0).Int())
+	for _, c := range cases {
+		want, err := hex.DecodeString(c.want)
+		tc.NoErr(t, err)
+		got := Encode(c.input)
+		if !bytes.Equal(want, got) {
+			t.Errorf("want: %x got: %x", want, got)
+		}
 	}
 }
 
-func debug2(b []byte) []byte {
-	out := fmt.Sprintf("len: %d\n", len(b))
-	for i := 0; i < len(b); i += 32 {
-		out += fmt.Sprintf("%x\n", b[i:i+32])
+func TestDecodeXXX(t *testing.T) {
+	cases := []struct {
+		desc string
+		want Item
+		t    at.Type
+	}{
+		{
+			desc: "1 static",
+			want: Int(0),
+			t:    at.Int,
+		},
+		{
+			desc: "N static",
+			want: Tuple(Int(0), Int(1)),
+			t:    at.Tuple(at.Int, at.Int),
+		},
+		{
+			desc: "1 dynamic",
+			want: String("hello world"),
+			t:    at.String,
+		},
+		{
+			desc: "N dynamic",
+			want: Tuple(String("hello"), String("world")),
+			t:    at.Tuple(at.String, at.String),
+		},
+		{
+			desc: "list static",
+			want: List(Int(0), Int(1)),
+			t:    at.List(at.Int),
+		},
+		{
+			desc: "list dynamic",
+			want: List(String("hello"), String("world")),
+			t:    at.List(at.String),
+		},
+		{
+			desc: "tuple static",
+			want: Tuple(Int(0)),
+			t:    at.Tuple(at.Int),
+		},
+		{
+			desc: "tuple static and dynamic",
+			want: Tuple(Int(0), String("hello")),
+			t:    at.Tuple(at.Int, at.String),
+		},
+		{
+			desc: "tuple tuple",
+			want: Tuple(Int(0), Tuple(String("hello"))),
+			t:    at.Tuple(at.Int, at.Tuple(at.String)),
+		},
+		{
+			desc: "tuple tuple list",
+			want: Tuple(Int(0), Tuple(String("hello")), List(Int(1))),
+			t:    at.Tuple(at.Int, at.Tuple(at.String), at.List(at.Int)),
+		},
 	}
-	fmt.Printf("debug2:\n%s\n", out)
-	return b
-}
-func debug(t *testing.T, b []byte) []byte {
-	t.Helper()
-	out := fmt.Sprintf("len: %d\n", len(b))
-	for i := 0; i < len(b); i += 32 {
-		out += fmt.Sprintf("%x\n", b[i:i+32])
+	for _, c := range cases {
+		got := Decode(Encode(c.want), c.t)
+		if !reflect.DeepEqual(c.want, got) {
+			t.Errorf("decode %q want: %#v got: %#v", c.desc, c.want, got)
+		}
 	}
-	t.Logf("debug:\n%s\n", out)
-	return b
 }
