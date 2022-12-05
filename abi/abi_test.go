@@ -74,7 +74,7 @@ func TestSolidityVectors(t *testing.T) {
 	}
 }
 
-func TestDecodeXXX(t *testing.T) {
+func TestDecode(t *testing.T) {
 	cases := []struct {
 		desc string
 		want Item
