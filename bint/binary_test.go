@@ -43,13 +43,11 @@ func TestDecode_Overflow(t *testing.T) {
 	for i := 0; i < 9; i++ {
 		b = append(b, 0xff)
 	}
-	defer func() {
-		err := recover()
-		if err == nil {
-			t.Error("epected overflow to panic")
-		}
-	}()
-	Decode(b)
+	got := Decode(b)
+	want := uint64(1<<64 - 1)
+	if want != got {
+		t.Errorf("want: %d got: %d", want, got)
+	}
 }
 
 func TestDecode_Pad(t *testing.T) {
