@@ -60,14 +60,33 @@ func TestDecode(t *testing.T) {
 }
 
 func TestDecode_Tuple(t *testing.T) {
-	got := Decode(Encode(Tuple(String("satoshi"), Int(2008))), at.Tuple(at.String, at.Int))
+	want := Encode(
+		Tuple(
+			String("satoshi"),
+			Int(2008),
+			Tuple(
+				String("vitalik"),
+				List(Int(2008), Int(2010)),
+			),
+		),
+	)
+	got := Decode(want, at.Tuple(
+		at.String,
+		at.Int,
+		at.Tuple(
+			at.String,
+			at.List(at.Int),
+		),
+	))
 	if got.At(0).String() != "satoshi" {
 		t.Errorf("want: satoshi got: %q", got.At(0).String())
 	}
 	if got.At(1).Int() != 2008 {
 		t.Errorf("want: 2008 got: %d", got.At(1).Int())
 	}
-
+	if got.At(2).At(1).At(0).Int() != 2008 {
+		t.Errorf("want: 2008 got: %d", got.At(2).At(1).At(0).Int())
+	}
 }
 
 func debug2(b []byte) []byte {

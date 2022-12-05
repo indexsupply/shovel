@@ -8,14 +8,6 @@ import (
 	"github.com/indexsupply/x/bint"
 )
 
-func rpad(d []byte) []byte {
-	n := len(d) % 32
-	if n == 0 {
-		return d
-	}
-	return append(d, make([]byte, 32-n)...)
-}
-
 type Item struct {
 	at.Type
 
@@ -25,19 +17,14 @@ type Item struct {
 }
 
 func Bytes(d []byte) Item {
-	var b = make([]byte, 32)
-	bint.Encode(b, uint64(len(b)))
 	return Item{
 		Type: at.Bytes,
-		d:    append(b, rpad(d)...),
+		d:    d,
 	}
 }
 
 func (it Item) Bytes() []byte {
-	if len(it.d) < 64 {
-		return []byte{}
-	}
-	return it.d[32:]
+	return it.d
 }
 
 func String(s string) Item {
@@ -140,6 +127,14 @@ func Tuple(items ...Item) Item {
 	}
 }
 
+func rpad(d []byte) []byte {
+	n := len(d) % 32
+	if n == 0 {
+		return d
+	}
+	return append(d, make([]byte, 32-n)...)
+}
+
 func Encode(it Item) []byte {
 	switch it.Kind {
 	case at.S:
@@ -174,59 +169,38 @@ func Encode(it Item) []byte {
 func Decode(input []byte, t at.Type) Item {
 	switch t.Kind {
 	case at.S:
-		return Item{
-			Type: t,
-			d:    input[:32],
-		}
+		return Item{Type: t, d: input[:32]}
 	case at.D:
-		var (
-			offset = bint.Decode(input[:32])
-			count  = bint.Decode(input[offset : offset+32])
-		)
-		return Item{
-			Type: t,
-			d:    input[offset+32 : offset+32+count],
-		}
-	case at.T:
-		var (
-			n     int
-			items []Item
-		)
-		for _, f := range t.Fields {
-			items = append(items, Decode(input[n:], *f))
-			n += 32
-		}
-		return Item{
-			Type: t,
-			l:    items,
-		}
+		count := bint.Decode(input[:32])
+		return Item{Type: t, d: input[32 : 32+count]}
 	case at.L:
-		switch t.ElementType.Kind {
-		case at.L:
-			offset := bint.Decode(input[:32])
-			count := bint.Decode(input[offset : offset+32])
-			items := []Item{}
-			for j := uint64(1); j <= count; j++ {
-				head := offset + (32 * j)
-				tail := offset + 32 + bint.Decode(input[head:head+32])
-				items = append(items, Decode(input[tail:], *t.ElementType))
-			}
-			return Item{
-				Type: t,
-				l:    items,
-			}
-		default:
-			count := bint.Decode(input[:32])
-			items := []Item{}
-			for j := uint64(1); j <= count; j++ {
-				items = append(items, Decode(input[32*j:], *t.ElementType))
-			}
-			return Item{
-				Type: t,
-				l:    items,
+		count := bint.Decode(input[:32])
+		items := make([]Item, count)
+		for i := uint64(0); i < count; i++ {
+			n := 32 + (32 * i) //skip count (head)
+			switch t.ElementType.Kind {
+			case at.S:
+				items[i] = Decode(input[n:], *t.ElementType)
+			default:
+				tail := 32 + bint.Decode(input[n:n+32])
+				items[i] = Decode(input[tail:], *t.ElementType)
 			}
 		}
+		return List(items...)
+	case at.T:
+		var items []Item
+		for i, f := range t.Fields {
+			n := 32 * i
+			switch f.Kind {
+			case at.S:
+				items = append(items, Decode(input[n:n+32], *f))
+			default:
+				offset := bint.Decode(input[n : n+32])
+				items = append(items, Decode(input[offset:], *f))
+			}
+		}
+		return Tuple(items...)
 	default:
-		panic("unhandled type")
+		panic("abi: encode: unkown type")
 	}
 }
