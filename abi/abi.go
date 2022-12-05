@@ -188,15 +188,15 @@ func Decode(input []byte, t at.Type) Item {
 		}
 		return List(items...)
 	case at.T:
-		var items []Item
+		items := make([]Item, len(t.Fields))
 		for i, f := range t.Fields {
 			n := 32 * i
 			switch f.Kind {
 			case at.S:
-				items = append(items, Decode(input[n:n+32], *f))
+				items[i] = Decode(input[n:n+32], *f)
 			default:
 				offset := bint.Decode(input[n : n+32])
-				items = append(items, Decode(input[offset:], *f))
+				items[i] = Decode(input[offset:], *f)
 			}
 		}
 		return Tuple(items...)
