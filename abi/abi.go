@@ -65,17 +65,14 @@ func (it Item) BigInt() *big.Int {
 	return x
 }
 
-func Int(i int) Item {
+func Uint64(i uint64) Item {
 	var b [32]byte
-	bint.Encode(b[:], uint64(i))
-	return Item{
-		Type: at.Int,
-		d:    b[:],
-	}
+	bint.Encode(b[:], i)
+	return Item{Type: at.Uint64, d: b[:]}
 }
 
-func (it Item) Int() int {
-	return int(bint.Decode(it.d))
+func (it Item) Uint64() uint64 {
+	return bint.Decode(it.d)
 }
 
 func List(items ...Item) Item {

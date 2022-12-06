@@ -30,8 +30,8 @@ var (
 		Name: "bytes",
 		Kind: D,
 	}
-	Int = Type{
-		Name: "int",
+	Uint64 = Type{
+		Name: "uint64",
 		Kind: S,
 	}
 	String = Type{
