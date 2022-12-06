@@ -55,7 +55,7 @@ func serve(c net.Conn, node *enr.Record) {
 	rw.Write(hs.Ack)
 	rs, err := rlpx.Session(node, hs)
 	check(err)
-	rw.Read(rs.HandleHello)
+	rw.Read(rs.HandleMessage)
 	rw.Write(rs.Hello)
 	if rw.err != nil {
 		fmt.Printf("serve-error: %s\n", rw.err)
@@ -114,6 +114,6 @@ func main() {
 	rs.Verbose = true
 
 	rw.Write(rs.Hello)
-	rw.Read(rs.HandleHello)
+	rw.Read(rs.HandleMessage)
 	check(rw.err)
 }

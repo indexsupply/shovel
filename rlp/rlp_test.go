@@ -163,6 +163,28 @@ func TestDecodeLength(t *testing.T) {
 	}
 }
 
+func TestDecodeZero(t *testing.T) {
+	b := []byte{0x80}
+	item, err := Decode(b)
+	if err != nil {
+		t.Errorf("error %s", err)
+	}
+	got16, err := item.Uint16()
+	if err != nil {
+		t.Errorf("error %s", err)
+	}
+	if got16 != 0 {
+		t.Errorf("got %d, wanted 0", got16)
+	}
+	got64, err := item.Uint64()
+	if err != nil {
+		t.Errorf("error %s", err)
+	}
+	if got64 != 0 {
+		t.Errorf("got %d, wanted 0", got64)
+	}
+}
+
 func TestDecode(t *testing.T) {
 	cases := []struct {
 		desc string

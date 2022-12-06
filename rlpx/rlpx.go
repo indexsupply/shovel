@@ -42,7 +42,7 @@ func (s *session) log(format string, args ...any) {
 func Session(l *enr.Record, hs *handshake) (*session, error) {
 	err := hs.complete()
 	if err != nil {
-		return nil, err
+		return nil, isxerrors.Errorf("handshake incomplete: %w", err)
 	}
 	s := &session{local: l}
 
@@ -157,9 +157,9 @@ func (ms *mstate) frame(fct []byte) []byte {
 	return ms.hash.Sum(nil)[:16]
 }
 
-func (s *session) decode(buf []byte) (byte, rlp.Item, error) {
+func (s *session) decode(buf []byte) (uint64, rlp.Item, error) {
 	if len(buf) < 32 {
-		return 0, rlp.Item{}, errors.New("buf too small for 32byte header")
+		return 0, rlp.Item{}, errors.New("buf too small for 32 byte header")
 	}
 	if !hmac.Equal(s.ig.header(buf[:16]), buf[16:32]) {
 		return 0, rlp.Item{}, errors.New("invalid header mac")
@@ -175,9 +175,17 @@ func (s *session) decode(buf []byte) (byte, rlp.Item, error) {
 		return 0, rlp.Item{}, errors.New("invalid frame mac")
 	}
 	s.ig.stream.XORKeyStream(frame, frame)
-	code := frame[0:1]
+
+	code, err := rlp.Decode(frame[0:1])
+	if err != nil {
+		return 0, rlp.Item{}, err
+	}
+	c, err := code.Uint64()
+	if err != nil {
+		return 0, rlp.Item{}, err
+	}
 	item, err := rlp.Decode(frame[1:frameSize])
-	return code[0], item, isxerrors.Errorf("rlp decoding frame: %w", err)
+	return c, item, isxerrors.Errorf("rlp decoding frame: %w", err)
 }
 
 // Encodees data into an RLPx frame
@@ -191,7 +199,7 @@ func (s *session) decode(buf []byte) (byte, rlp.Item, error) {
 // header-padding = zero-fill header to 16-byte boundary
 // frame-ciphertext = aes(aes-secret, frame-data || frame-padding)
 // frame-padding = zero-fill frame-data to 16-byte boundary
-func (s *session) encode(msgID byte, msgData []byte) []byte {
+func (s *session) encode(msgID uint64, msgData []byte) []byte {
 	// Per the spec, the header contains: size, data, and padding.
 	// However, the data (eg [capability-id, context-id]) is unused.
 	// Therefore, we leave the header-data as a list of zero bytes.
@@ -200,7 +208,7 @@ func (s *session) encode(msgID byte, msgData []byte) []byte {
 	bint.Encode(header[:3], uint64(len(msgData)+1)) //include id
 	s.eg.stream.XORKeyStream(header, header)
 
-	msgData = append(rlp.Encode(rlp.Byte(msgID)), msgData...)
+	msgData = append(rlp.Encode(rlp.Uint64(msgID)), msgData...)
 	padding := 16 - len(msgData)%16
 	if padding != 0 {
 		msgData = append(msgData, make([]byte, padding)...)
@@ -228,16 +236,54 @@ func (s *session) Hello() ([]byte, error) {
 	))), nil
 }
 
-func (s *session) HandleHello(d []byte) error {
-	_, item, err := s.decode(d)
+// HandleMessage parses messages received after the initial handshake.
+// It decodes the wire bytes and 
+func (s *session) HandleMessage(d []byte) error { 
+	msgId, item, err := s.decode(d)
 	if err != nil {
 		return isxerrors.Errorf("decoding hello frame: %w", err)
+	}
+	switch msgId {
+	case 0x00:
+		return s.HandleHello(item)
+	case 0x01:
+		return s.HandleDisconnect(item)
+	}
+	return nil
+}
+
+func (s *session) HandleHello(item rlp.Item) error {
+	if len(item.List()) < 5 {
+		return errors.New(fmt.Sprintf("HandleHello: expected rlp list of at least 5, got %d", len(item.List())))
 	}
 	id, err := item.At(1).String()
 	if err != nil {
 		return isxerrors.Errorf("reading id: %w", err)
 	}
+	var parsedCapabilities [][]string
+	capabilities := item.At(2).List()
+	for _, c := range capabilities {
+		cap, err := c.At(0).String()
+		if err != nil {
+			return isxerrors.Errorf("reading capability: %w", err)
+		}
+		version, err := c.At(1).String()
+		if err != nil {
+			return isxerrors.Errorf("reading capability version: %w", err)
+		}
+		parsedCapabilities = append(parsedCapabilities, []string{cap, version})
+	}
 	s.log("hello from %s\n", id)
+	s.log("capabilities: %v\n", parsedCapabilities)
+	return nil
+}
+
+func (s *session) HandleDisconnect(item rlp.Item) error {
+	b, err := item.Uint16()
+	if err != nil {
+		return isxerrors.Errorf("reading reason: %w", err)
+	}
+	s.log("disconnect message received with reason: %d\n", b)
 	return nil
 }
 
