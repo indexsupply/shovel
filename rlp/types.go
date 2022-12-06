@@ -34,9 +34,6 @@ func Uint16(n uint16) Item {
 }
 
 func (i Item) Uint16() (uint16, error) {
-	if len(i.d) == 0 {
-		return 0, errNoData
-	}
 	return binary.BigEndian.Uint16(leftPad(i.d, 2)), nil
 }
 
@@ -45,9 +42,6 @@ func Uint64(n uint64) Item {
 }
 
 func (i Item) Uint64() (uint64, error) {
-	if len(i.d) == 0 {
-		return 0, errNoData
-	}
 	return binary.BigEndian.Uint64(leftPad(i.d, 8)), nil
 }
 
