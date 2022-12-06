@@ -1,4 +1,7 @@
-// Implementation of: https://docs.soliditylang.org/en/latest/abi-spec.html
+// ABI encoding and decoding.
+// Does not support packed encoding.
+// Implementation based on:
+// https://docs.soliditylang.org/en/latest/abi-spec.html
 package abi
 
 import (
@@ -60,20 +63,6 @@ func (it Item) BigInt() *big.Int {
 	x := &big.Int{}
 	x.SetBytes(it.d)
 	return x
-}
-
-func Address(a [20]byte) Item {
-	return Item{
-		Type: at.Address,
-		d:    rpad(32, a[:]),
-	}
-}
-
-func (it Item) Address() [20]byte {
-	if len(it.d) < 32 {
-		return [20]byte{}
-	}
-	return *(*[20]byte)(it.d[:20])
 }
 
 func Int(i int) Item {
