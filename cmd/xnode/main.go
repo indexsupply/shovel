@@ -106,7 +106,6 @@ func main() {
 	hs := rlpx.Initiator(self.PrivateKey, remote.PublicKey)
 	rw := errRW{c: conn}
 	rw.Write(hs.Auth)
-	check(rw.err)
 	rw.Read(hs.HandleAck)
 	check(rw.err)
 
@@ -115,7 +114,6 @@ func main() {
 	rs.Verbose = true
 
 	rw.Write(rs.Hello)
-	check(rw.err)
 	rw.Read(rs.HandleMessage)
 	check(rw.err)
 }
