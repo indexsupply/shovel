@@ -3,6 +3,7 @@ package abi
 import (
 	"bytes"
 	"encoding/hex"
+	"fmt"
 	"reflect"
 	"testing"
 
@@ -81,6 +82,11 @@ func TestDecode(t *testing.T) {
 		t    at.Type
 	}{
 		{
+			desc: "1 static signed int",
+			want: Int(-42),
+			t:    at.Int,
+		},
+		{
 			desc: "1 static",
 			want: Int(0),
 			t:    at.Int,
@@ -132,9 +138,19 @@ func TestDecode(t *testing.T) {
 		},
 	}
 	for _, c := range cases {
-		got := Decode(Encode(c.want), c.t)
+		got := Decode(debug(t, Encode(c.want)), c.t)
 		if !reflect.DeepEqual(c.want, got) {
 			t.Errorf("decode %q want: %#v got: %#v", c.desc, c.want, got)
 		}
 	}
+}
+
+func debug(t *testing.T, b []byte) []byte {
+	t.Helper()
+	out := fmt.Sprintf("len: %d\n", len(b))
+	for i := 0; i < len(b); i += 32 {
+		out += fmt.Sprintf("%x\n", b[i:i+32])
+	}
+	t.Logf("debug:\n%s\n", out)
+	return b
 }

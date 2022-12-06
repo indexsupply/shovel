@@ -17,10 +17,7 @@ type Item struct {
 }
 
 func Bytes(d []byte) Item {
-	return Item{
-		Type: at.Bytes,
-		d:    d,
-	}
+	return Item{Type: at.Bytes, d: d}
 }
 
 func (it Item) Bytes() []byte {
@@ -28,10 +25,7 @@ func (it Item) Bytes() []byte {
 }
 
 func String(s string) Item {
-	return Item{
-		Type: at.String,
-		d:    []byte(s),
-	}
+	return Item{Type: at.String, d: []byte(s)}
 }
 
 func (it Item) String() string {
@@ -43,10 +37,7 @@ func Bool(b bool) Item {
 	if b {
 		d[31] = 1
 	}
-	return Item{
-		Type: at.Bool,
-		d:    d[:],
-	}
+	return Item{Type: at.Bool, d: d[:]}
 }
 
 func (it Item) Bool() bool {
