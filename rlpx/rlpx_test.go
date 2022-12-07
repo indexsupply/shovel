@@ -76,7 +76,7 @@ func TestSession(t *testing.T) {
 	tc.NoErr(t, err)
 
 	b1, _ := s1.Hello()
-	tc.NoErr(t, s2.HandleHello(b1))
+	tc.NoErr(t, s2.HandleMessage(b1))
 }
 
 func prv(t *testing.T) *secp256k1.PrivateKey {

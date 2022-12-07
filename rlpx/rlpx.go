@@ -228,17 +228,14 @@ func (s *session) Hello() ([]byte, error) {
 		rlp.Int(5),
 		rlp.String("indexsupply/0"),
 		rlp.List(
-			rlp.String("p2p"),
-			rlp.Int(5),
+			rlp.List(rlp.String("p2p"), rlp.Int(5)),
 		),
 		rlp.Uint16(s.local.TcpPort),
 		rlp.Secp256k1PublicKey(s.local.PublicKey),
 	))), nil
 }
 
-// HandleMessage parses messages received after the initial handshake.
-// It decodes the wire bytes and 
-func (s *session) HandleMessage(d []byte) error { 
+func (s *session) HandleMessage(d []byte) error {
 	msgId, item, err := s.decode(d)
 	if err != nil {
 		return isxerrors.Errorf("decoding hello frame: %w", err)
