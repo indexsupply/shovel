@@ -19,9 +19,9 @@ func ExampleEncode() {
 	item, _ = Decode(Encode(item))
 
 	var (
-		first, _  = item.At(0).String()
-		second, _ = item.At(1).At(0).String()
-		third, _  = item.At(1).At(1).String()
+		first  = item.At(0).String()
+		second = item.At(1).At(0).String()
+		third  = item.At(1).At(1).String()
 	)
 	fmt.Println(first, second, third)
 
@@ -70,8 +70,7 @@ func TestDecode_Padding(t *testing.T) {
 	b := Encode(List(Bytes(exp)))
 	i, err := Decode(append(b, exp...))
 	tc.NoErr(t, err)
-	got, err := i.At(0).Bytes()
-	tc.NoErr(t, err)
+	got := i.At(0).Bytes()
 	if !bytes.Equal(exp, got) {
 		t.Errorf("expected: %x got: %x", exp, got)
 	}
@@ -164,24 +163,13 @@ func TestDecodeLength(t *testing.T) {
 }
 
 func TestDecodeZero(t *testing.T) {
-	b := []byte{0x80}
-	item, err := Decode(b)
-	if err != nil {
-		t.Errorf("error %s", err)
+	item, err := Decode([]byte{0x80})
+	tc.NoErr(t, err)
+	if item.Uint16() != 0 {
+		t.Errorf("want: 0 got: %d", item.Uint16())
 	}
-	got16, err := item.Uint16()
-	if err != nil {
-		t.Errorf("error %s", err)
-	}
-	if got16 != 0 {
-		t.Errorf("got %d, wanted 0", got16)
-	}
-	got64, err := item.Uint64()
-	if err != nil {
-		t.Errorf("error %s", err)
-	}
-	if got64 != 0 {
-		t.Errorf("got %d, wanted 0", got64)
+	if item.Uint64() != 0 {
+		t.Errorf("want: 0 got: %d", item.Uint64())
 	}
 }
 
