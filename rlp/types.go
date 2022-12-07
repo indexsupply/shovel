@@ -1,7 +1,6 @@
 package rlp
 
 import (
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"net"
@@ -22,51 +21,40 @@ func Bytes(b []byte) Item {
 	return Item{d: b}
 }
 
-func (i Item) Bytes() ([]byte, error) {
-	if len(i.d) == 0 {
-		return nil, errNoData
-	}
-	return i.d, nil
+func (i Item) Bytes() []byte {
+	return i.d
 }
 
 func Uint16(n uint16) Item {
 	return Item{d: bint.Encode(nil, uint64(n))}
 }
 
-func (i Item) Uint16() (uint16, error) {
-	return binary.BigEndian.Uint16(leftPad(i.d, 2)), nil
+func (i Item) Uint16() uint16 {
+	return uint16(bint.Decode(i.d))
 }
 
 func Uint64(n uint64) Item {
 	return Item{d: bint.Encode(nil, n)}
 }
 
-func (i Item) Uint64() (uint64, error) {
-	return binary.BigEndian.Uint64(leftPad(i.d, 8)), nil
+func (i Item) Uint64() uint64 {
+	return bint.Decode(i.d)
 }
 
 func String(s string) Item {
 	return Item{d: []byte(s)}
 }
 
-func (i Item) String() (string, error) {
-	if len(i.d) == 0 {
-		return "", errNoData
-	}
-	return string(i.d), nil
+func (i Item) String() string {
+	return string(i.d)
 }
 
 func Time(t time.Time) Item {
 	return Uint64(uint64(t.Unix()))
 }
 
-func (i Item) Time() (time.Time, error) {
-	var t time.Time
-	ts, err := i.Uint64()
-	if err != nil {
-		return t, err
-	}
-	return time.Unix(int64(ts), 0), nil
+func (i Item) Time() time.Time {
+	return time.Unix(int64(i.Uint64()), 0)
 }
 
 // Uncompressed secpk256k1 public key
@@ -138,16 +126,4 @@ func Byte(b byte) Item {
 
 func Int(n int) Item {
 	return Item{d: bint.Encode(nil, uint64(n))}
-}
-
-// left pads the provided byte array to the wantedLength, in bytes, using 0s.
-// does nothing if b is already at the wanted length.
-func leftPad(b []byte, wantedLength int) []byte {
-	if len(b) >= wantedLength {
-		return b
-	}
-	padded := make([]byte, wantedLength)
-	bytesNeeded := wantedLength - len(b)
-	copy(padded[bytesNeeded:], b)
-	return padded
 }

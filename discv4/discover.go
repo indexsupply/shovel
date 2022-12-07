@@ -143,10 +143,7 @@ func (p process) handleENRRequest(req *enr.Record, packet []byte) error {
 	if err != nil {
 		return err
 	}
-	expiration, err := item.At(0).Time()
-	if err != nil {
-		return err
-	}
+	expiration := item.At(0).Time()
 	if expiration.Before(time.Now()) {
 		return errors.New("expired enr request")
 	}
@@ -167,12 +164,8 @@ func (p process) handleFindNode(req *enr.Record, packet []byte) error {
 	if err != nil {
 		return err
 	}
-	target, err := item.At(0).Bytes()
-	if err != nil {
-		return err
-	}
 	var (
-		recs  = p.ktable.FindClosest(isxhash.Keccak32(target), 16)
+		recs  = p.ktable.FindClosest(isxhash.Keccak32(item.At(0).Bytes()), 16)
 		nodes []rlp.Item
 	)
 	for _, rec := range recs {
@@ -213,8 +206,8 @@ func (p process) handleNeighbors(req *enr.Record, packet []byte) error {
 		if err != nil {
 			return err
 		}
-		rec.UdpPort, _ = node.At(1).Uint16()
-		rec.TcpPort, _ = node.At(2).Uint16()
+		rec.UdpPort = node.At(1).Uint16()
+		rec.TcpPort = node.At(2).Uint16()
 		rec.PublicKey, err = node.At(3).Secp256k1PublicKey()
 		if err != nil {
 			return isxerrors.Errorf("reading pubkey: %w", err)
@@ -255,10 +248,7 @@ func (p process) handlePing(req *enr.Record, packet []byte) error {
 	if !reqFrom.Equal(req.Ip) {
 		return errors.New("packet ip address doesn't match udp")
 	}
-	reqFromPort, err := item.At(1).At(1).Uint16()
-	if err != nil {
-		return errors.New("malformed ping from-port data")
-	}
+	reqFromPort := item.At(1).At(1).Uint16()
 	if reqFromPort != req.UdpPort {
 		return errors.New("mismatch ping from-port with udp packet")
 	}

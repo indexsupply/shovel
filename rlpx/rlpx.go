@@ -180,12 +180,8 @@ func (s *session) decode(buf []byte) (uint64, rlp.Item, error) {
 	if err != nil {
 		return 0, rlp.Item{}, err
 	}
-	c, err := code.Uint64()
-	if err != nil {
-		return 0, rlp.Item{}, err
-	}
 	item, err := rlp.Decode(frame[1:frameSize])
-	return c, item, isxerrors.Errorf("rlp decoding frame: %w", err)
+	return code.Uint64(), item, isxerrors.Errorf("rlp decoding frame: %w", err)
 }
 
 // Encodees data into an RLPx frame
@@ -253,34 +249,19 @@ func (s *session) HandleHello(item rlp.Item) error {
 	if len(item.List()) < 5 {
 		return errors.New(fmt.Sprintf("HandleHello: expected rlp list of at least 5, got %d", len(item.List())))
 	}
-	id, err := item.At(1).String()
-	if err != nil {
-		return isxerrors.Errorf("reading id: %w", err)
+	var (
+		id   = item.At(1).String()
+		caps [][]string
+	)
+	for _, c := range item.At(2).List() {
+		caps = append(caps, []string{c.At(0).String(), c.At(1).String()})
 	}
-	var parsedCapabilities [][]string
-	capabilities := item.At(2).List()
-	for _, c := range capabilities {
-		cap, err := c.At(0).String()
-		if err != nil {
-			return isxerrors.Errorf("reading capability: %w", err)
-		}
-		version, err := c.At(1).String()
-		if err != nil {
-			return isxerrors.Errorf("reading capability version: %w", err)
-		}
-		parsedCapabilities = append(parsedCapabilities, []string{cap, version})
-	}
-	s.log("hello from %s\n", id)
-	s.log("capabilities: %v\n", parsedCapabilities)
+	s.log("<hello id=%s caps=%v\n", id, caps)
 	return nil
 }
 
 func (s *session) HandleDisconnect(item rlp.Item) error {
-	b, err := item.Uint16()
-	if err != nil {
-		return isxerrors.Errorf("reading reason: %w", err)
-	}
-	s.log("disconnect message received with reason: %d\n", b)
+	s.log("<disconnect reason=%d\n", item.Uint16())
 	return nil
 }
 
