@@ -127,27 +127,18 @@ func UnmarshalText(str string) (Record, error) {
 }
 
 func decode(item rlp.Item) (Record, error) {
-	var (
-		rec = Record{}
-		err error
-	)
-	rec.Signature, err = item.At(0).Bytes()
-	if err != nil {
+	var rec = Record{}
+	rec.Sequence = item.At(1).Uint64()
+	rec.Signature = item.At(0).Bytes()
+	if len(rec.Signature) == 0 {
 		return Record{}, errors.New("missing signature")
-	}
-	rec.Sequence, err = item.At(1).Uint64()
-	if err != nil {
-		return Record{}, errors.New("missing sequence")
 	}
 
 	for i := 2; i < len(item.List()); i += 2 {
-		k, _ := item.At(i).String()
-		switch k {
+		var err error
+		switch k := item.At(i).String(); k {
 		case "id":
-			rec.IDScheme, err = item.At(i + 1).String()
-			if err != nil {
-				return rec, err
-			}
+			rec.IDScheme = item.At(i + 1).String()
 			if len(rec.IDScheme) == 0 {
 				return rec, errors.New("missing id scheme eg v4")
 			}
@@ -167,25 +158,13 @@ func decode(item rlp.Item) (Record, error) {
 				return rec, err
 			}
 		case "tcp":
-			rec.TcpPort, err = item.At(i + 1).Uint16()
-			if err != nil {
-				return rec, err
-			}
+			rec.TcpPort = item.At(i + 1).Uint16()
 		case "udp":
-			rec.UdpPort, err = item.At(i + 1).Uint16()
-			if err != nil {
-				return rec, err
-			}
+			rec.UdpPort = item.At(i + 1).Uint16()
 		case "tcp6":
-			rec.Tcp6Port, err = item.At(i + 1).Uint16()
-			if err != nil {
-				return rec, err
-			}
+			rec.Tcp6Port = item.At(i + 1).Uint16()
 		case "udp6":
-			rec.Udp6Port, err = item.At(i + 1).Uint16()
-			if err != nil {
-				return rec, err
-			}
+			rec.Udp6Port = item.At(i + 1).Uint16()
 		}
 	}
 
