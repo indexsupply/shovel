@@ -254,14 +254,6 @@ func (s *session) Hello() ([]byte, error) {
 	))), nil
 }
 
-func (s *session) EthStatus() ([]byte, error) {
-	return s.encode(0x10, rlp.Encode(rlp.List(
-		rlp.Int(5),
-		rlp.Int(1),
-		rlp.Int(0),
-	))), nil
-}
-
 func (s *session) HandleMessage(d []byte) error {
 	msgId, item, err := s.decode(d)
 	if err != nil {
