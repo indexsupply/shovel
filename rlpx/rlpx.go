@@ -15,6 +15,7 @@ import (
 
 	"github.com/decred/dcrd/dcrec/secp256k1/v4"
 	"golang.org/x/crypto/sha3"
+	"github.com/golang/snappy"
 
 	"github.com/indexsupply/x/bint"
 	"github.com/indexsupply/x/ecies"
@@ -23,6 +24,11 @@ import (
 	"github.com/indexsupply/x/isxhash"
 	"github.com/indexsupply/x/isxsecp256k1"
 	"github.com/indexsupply/x/rlp"
+)
+
+const (
+	helloMsgId = 0x00
+	disconnectMsgId = 0x01
 )
 
 type session struct {
@@ -180,7 +186,23 @@ func (s *session) decode(buf []byte) (uint64, rlp.Item, error) {
 	if err != nil {
 		return 0, rlp.Item{}, err
 	}
-	item, err := rlp.Decode(frame[1:frameSize])
+	rawPayload := frame[1:frameSize]
+	var snappyDecoded []byte
+	if code.Uint64() == helloMsgId {
+		snappyDecoded = make([]byte, frameSize - 1)
+		copy(snappyDecoded, rawPayload)
+	} else {
+		n, err := snappy.DecodedLen(rawPayload)
+		if err != nil {
+			return code.Uint64(), rlp.Item{}, isxerrors.Errorf("snappy decoding error: %w", err)
+		}
+		snappyDecoded = make([]byte, n)
+		_, err = snappy.Decode(snappyDecoded, rawPayload)
+		if err != nil {
+			return code.Uint64(), rlp.Item{}, isxerrors.Errorf("snappy decoding error: %w", err)
+		}
+	}
+	item, err := rlp.Decode(snappyDecoded)
 	return code.Uint64(), item, isxerrors.Errorf("rlp decoding frame: %w", err)
 }
 
@@ -225,9 +247,18 @@ func (s *session) Hello() ([]byte, error) {
 		rlp.String("indexsupply/0"),
 		rlp.List(
 			rlp.List(rlp.String("p2p"), rlp.Int(5)),
+			rlp.List(rlp.String("eth"), rlp.Int(67)),
 		),
 		rlp.Uint16(s.local.TcpPort),
 		rlp.Secp256k1PublicKey(s.local.PublicKey),
+	))), nil
+}
+
+func (s *session) EthStatus() ([]byte, error) {
+	return s.encode(0x10, rlp.Encode(rlp.List(
+		rlp.Int(5),
+		rlp.Int(1),
+		rlp.Int(0),
 	))), nil
 }
 
@@ -237,10 +268,13 @@ func (s *session) HandleMessage(d []byte) error {
 		return isxerrors.Errorf("decoding hello frame: %w", err)
 	}
 	switch msgId {
-	case 0x00:
+	case helloMsgId:
 		return s.HandleHello(item)
-	case 0x01:
+	case disconnectMsgId:
 		return s.HandleDisconnect(item)
+	// Eth subprotocol
+	case 0x10:
+		return s.HandleEthStatus(item)
 	}
 	return nil
 }
@@ -262,6 +296,11 @@ func (s *session) HandleHello(item rlp.Item) error {
 
 func (s *session) HandleDisconnect(item rlp.Item) error {
 	s.log("<disconnect reason=%d\n", item.Uint16())
+	return nil
+}
+
+func (s *session) HandleEthStatus(item rlp.Item) error {
+	s.log("<status version=%d network=%d difficulty=%d\n", item.At(0).Uint16(), item.At(1).Uint16(), item.At(2).Uint64())
 	return nil
 }
 

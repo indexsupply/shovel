@@ -18,7 +18,7 @@ import (
 	"github.com/decred/dcrd/dcrec/secp256k1/v4"
 )
 
-func (p process) Update() {
+func (p *process) Update() {
 	for ; ; time.Sleep(5 * time.Second) {
 		fmt.Printf("peer-count: %d\n", len(p.peers))
 		if len(p.peers) >= 16 {
@@ -46,7 +46,7 @@ type process struct {
 	ktable   *kademlia.Table
 }
 
-func (p process) log(format string, args ...any) {
+func (p *process) log(format string, args ...any) {
 	if p.Verbose {
 		fmt.Printf(format, args...)
 	}
@@ -66,7 +66,7 @@ func New(
 	}
 }
 
-func (p process) Serve() {
+func (p *process) Serve() {
 	for {
 		err := p.read()
 		if err != nil {
@@ -75,7 +75,7 @@ func (p process) Serve() {
 	}
 }
 
-func (p process) read() error {
+func (p *process) read() error {
 	buf := make([]byte, 1280)
 	n, addr, err := p.conn.ReadFrom(buf)
 	if err != nil {
@@ -97,7 +97,7 @@ const (
 	headerSize = hashSize + sigSize + kindSize
 )
 
-func (p process) serve(uaddr *net.UDPAddr, packet []byte) error {
+func (p *process) serve(uaddr *net.UDPAddr, packet []byte) error {
 	if len(packet) <= headerSize {
 		return errors.New("discv4 packet too small")
 	}
@@ -137,7 +137,7 @@ func (p process) serve(uaddr *net.UDPAddr, packet []byte) error {
 	return isxerrors.Errorf("serving %x: %w", kind, err)
 }
 
-func (p process) handleENRRequest(req *enr.Record, packet []byte) error {
+func (p *process) handleENRRequest(req *enr.Record, packet []byte) error {
 	// packet-data = [request-hash, ENR]
 	item, err := rlp.Decode(packet[headerSize:])
 	if err != nil {
@@ -158,7 +158,7 @@ func (p process) handleENRRequest(req *enr.Record, packet []byte) error {
 	return err
 }
 
-func (p process) handleFindNode(req *enr.Record, packet []byte) error {
+func (p *process) handleFindNode(req *enr.Record, packet []byte) error {
 	// packet-data = [target, expiration, ...]
 	item, err := rlp.Decode(packet[headerSize:])
 	if err != nil {
@@ -184,7 +184,7 @@ func (p process) handleFindNode(req *enr.Record, packet []byte) error {
 	return err
 }
 
-func (p process) handleNeighbors(req *enr.Record, packet []byte) error {
+func (p *process) handleNeighbors(req *enr.Record, packet []byte) error {
 	// packet-data = [nodes, expiration, ...]
 	// nodes = [[ip, udp-port, tcp-port, node-id], ...]
 	pd := packet[headerSize:]
@@ -228,7 +228,7 @@ func (p process) handleNeighbors(req *enr.Record, packet []byte) error {
 	return nil
 }
 
-func (p process) handlePing(req *enr.Record, packet []byte) error {
+func (p *process) handlePing(req *enr.Record, packet []byte) error {
 	// packet-data = [version, from, to, expiration, enr-seq ...]
 	// version = 4
 	// from = [sender-ip, sender-udp-port, sender-tcp-port]
@@ -278,7 +278,7 @@ func (p process) handlePing(req *enr.Record, packet []byte) error {
 	return nil
 }
 
-func (p process) handlePong(req *enr.Record, packet []byte) error {
+func (p *process) handlePong(req *enr.Record, packet []byte) error {
 	// packet-data = [to, ping-hash, expiration, enr-seq, ...]
 	item, err := rlp.Decode(packet[headerSize:])
 	if err != nil {
@@ -321,7 +321,7 @@ func (p process) handlePong(req *enr.Record, packet []byte) error {
 // - packet-header = hash || signature || packet-type
 // - hash = keccak256(signature || packet-type || packet-data)
 // - signature = sign(packet-type || packet-data)
-func (p process) write(pt byte, to *net.UDPAddr, it rlp.Item) ([]byte, error) {
+func (p *process) write(pt byte, to *net.UDPAddr, it rlp.Item) ([]byte, error) {
 	pd := rlp.Encode(it)
 	var ts []byte
 	ts = append(ts, pt)
@@ -347,7 +347,7 @@ func (p process) write(pt byte, to *net.UDPAddr, it rlp.Item) ([]byte, error) {
 	return hash, err
 }
 
-func (p process) FindNode(target *secp256k1.PublicKey, dest *enr.Record) error {
+func (p *process) FindNode(target *secp256k1.PublicKey, dest *enr.Record) error {
 	tb := isxsecp256k1.Encode(target)
 	_, err := p.write(0x03, dest.UDPAddr(), rlp.List(
 		rlp.Bytes(tb[:]),
@@ -357,7 +357,7 @@ func (p process) FindNode(target *secp256k1.PublicKey, dest *enr.Record) error {
 	return err
 }
 
-func (p process) Pong(pingHash []byte, dest *enr.Record) error {
+func (p *process) Pong(pingHash []byte, dest *enr.Record) error {
 	_, err := p.write(0x02, dest.UDPAddr(), rlp.List(
 		rlp.List(
 			rlp.Bytes(dest.Ip),
@@ -371,7 +371,7 @@ func (p process) Pong(pingHash []byte, dest *enr.Record) error {
 	return err
 }
 
-func (p process) Ping(dest *enr.Record) error {
+func (p *process) Ping(dest *enr.Record) error {
 	p.writeMut.Lock()
 	defer p.writeMut.Unlock()
 

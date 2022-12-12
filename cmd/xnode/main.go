@@ -116,4 +116,8 @@ func main() {
 	rw.Write(rs.Hello)
 	rw.Read(rs.HandleMessage)
 	check(rw.err)
+
+	// Read the Eth protocol message from geth
+	rw.Read(rs.HandleMessage)
+	check(rw.err)
 }
