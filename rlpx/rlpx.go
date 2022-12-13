@@ -7,6 +7,7 @@ import (
 	"crypto/cipher"
 	"crypto/hmac"
 	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"hash"
@@ -192,12 +193,7 @@ func (s *session) decode(buf []byte) (uint64, rlp.Item, error) {
 		snappyDecoded = make([]byte, frameSize - 1)
 		copy(snappyDecoded, rawPayload)
 	} else {
-		n, err := snappy.DecodedLen(rawPayload)
-		if err != nil {
-			return code.Uint64(), rlp.Item{}, isxerrors.Errorf("snappy decoding error: %w", err)
-		}
-		snappyDecoded = make([]byte, n)
-		_, err = snappy.Decode(snappyDecoded, rawPayload)
+		snappyDecoded, err = snappy.Decode(nil, rawPayload)
 		if err != nil {
 			return code.Uint64(), rlp.Item{}, isxerrors.Errorf("snappy decoding error: %w", err)
 		}
@@ -217,6 +213,7 @@ func (s *session) decode(buf []byte) (uint64, rlp.Item, error) {
 // header-padding = zero-fill header to 16-byte boundary
 // frame-ciphertext = aes(aes-secret, frame-data || frame-padding)
 // frame-padding = zero-fill frame-data to 16-byte boundary
+// Snappy compression is used for all messages other than Hello (msg-id 0).
 func (s *session) encode(msgID uint64, msgData []byte) []byte {
 	// Per the spec, the header contains: size, data, and padding.
 	// However, the data (eg [capability-id, context-id]) is unused.
@@ -225,6 +222,10 @@ func (s *session) encode(msgID uint64, msgData []byte) []byte {
 	header := make([]byte, 16)
 	bint.Encode(header[:3], uint64(len(msgData)+1)) //include id
 	s.eg.stream.XORKeyStream(header, header)
+
+	if msgID != helloMsgId {
+		msgData = snappy.Encode(nil, msgData)
+	}
 
 	msgData = append(rlp.Encode(rlp.Uint64(msgID)), msgData...)
 	padding := 16 - len(msgData)%16
@@ -251,6 +252,25 @@ func (s *session) Hello() ([]byte, error) {
 		),
 		rlp.Uint16(s.local.TcpPort),
 		rlp.Secp256k1PublicKey(s.local.PublicKey),
+	))), nil
+}
+
+func (s *session) EthStatus() ([]byte, error) {
+	gh, err := hex.DecodeString("d4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3")
+	if err != nil {
+		return nil, err
+	}
+	fh, err := hex.DecodeString("fc64ec04") // fork hash for unsynced mainnet from https://eips.ethereum.org/EIPS/eip-2124
+	if err != nil {
+		return nil, err
+	}
+	return s.encode(0x10, rlp.Encode(rlp.List(
+		rlp.Int(67), // version
+		rlp.Int(1), // network ID - 1 for mainnet
+		rlp.Int(17179869184), // Total difficulty of genesis block
+		rlp.Bytes(gh[:]), // Genesis block hash
+		rlp.Bytes(gh[:]), // Last known block - genesis block
+		rlp.List(rlp.Bytes(fh), rlp.Int(1150000)), // [fork-hash, fork-next] - unsynced mainnet from https://eips.ethereum.org/EIPS/eip-2124 
 	))), nil
 }
 
