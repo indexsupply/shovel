@@ -7,6 +7,7 @@ import (
 	"crypto/cipher"
 	"crypto/hmac"
 	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"hash"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/decred/dcrd/dcrec/secp256k1/v4"
 	"golang.org/x/crypto/sha3"
+	"github.com/golang/snappy"
 
 	"github.com/indexsupply/x/bint"
 	"github.com/indexsupply/x/ecies"
@@ -23,6 +25,11 @@ import (
 	"github.com/indexsupply/x/isxhash"
 	"github.com/indexsupply/x/isxsecp256k1"
 	"github.com/indexsupply/x/rlp"
+)
+
+const (
+	helloMsgId = 0x00
+	disconnectMsgId = 0x01
 )
 
 type session struct {
@@ -180,7 +187,18 @@ func (s *session) decode(buf []byte) (uint64, rlp.Item, error) {
 	if err != nil {
 		return 0, rlp.Item{}, err
 	}
-	item, err := rlp.Decode(frame[1:frameSize])
+	rawPayload := frame[1:frameSize]
+	var snappyDecoded []byte
+	if code.Uint64() == helloMsgId {
+		snappyDecoded = make([]byte, frameSize - 1)
+		copy(snappyDecoded, rawPayload)
+	} else {
+		snappyDecoded, err = snappy.Decode(nil, rawPayload)
+		if err != nil {
+			return code.Uint64(), rlp.Item{}, isxerrors.Errorf("snappy decoding error: %w", err)
+		}
+	}
+	item, err := rlp.Decode(snappyDecoded)
 	return code.Uint64(), item, isxerrors.Errorf("rlp decoding frame: %w", err)
 }
 
@@ -195,6 +213,7 @@ func (s *session) decode(buf []byte) (uint64, rlp.Item, error) {
 // header-padding = zero-fill header to 16-byte boundary
 // frame-ciphertext = aes(aes-secret, frame-data || frame-padding)
 // frame-padding = zero-fill frame-data to 16-byte boundary
+// Snappy compression is used for all messages other than Hello (msg-id 0).
 func (s *session) encode(msgID uint64, msgData []byte) []byte {
 	// Per the spec, the header contains: size, data, and padding.
 	// However, the data (eg [capability-id, context-id]) is unused.
@@ -203,6 +222,10 @@ func (s *session) encode(msgID uint64, msgData []byte) []byte {
 	header := make([]byte, 16)
 	bint.Encode(header[:3], uint64(len(msgData)+1)) //include id
 	s.eg.stream.XORKeyStream(header, header)
+
+	if msgID != helloMsgId {
+		msgData = snappy.Encode(nil, msgData)
+	}
 
 	msgData = append(rlp.Encode(rlp.Uint64(msgID)), msgData...)
 	padding := 16 - len(msgData)%16
@@ -225,9 +248,29 @@ func (s *session) Hello() ([]byte, error) {
 		rlp.String("indexsupply/0"),
 		rlp.List(
 			rlp.List(rlp.String("p2p"), rlp.Int(5)),
+			rlp.List(rlp.String("eth"), rlp.Int(67)),
 		),
 		rlp.Uint16(s.local.TcpPort),
 		rlp.Secp256k1PublicKey(s.local.PublicKey),
+	))), nil
+}
+
+func (s *session) EthStatus() ([]byte, error) {
+	gh, err := hex.DecodeString("d4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3")
+	if err != nil {
+		return nil, err
+	}
+	fh, err := hex.DecodeString("fc64ec04") // fork hash for unsynced mainnet from https://eips.ethereum.org/EIPS/eip-2124
+	if err != nil {
+		return nil, err
+	}
+	return s.encode(0x10, rlp.Encode(rlp.List(
+		rlp.Int(67), // version
+		rlp.Int(1), // network ID - 1 for mainnet
+		rlp.Int(17179869184), // Total difficulty of genesis block
+		rlp.Bytes(gh[:]), // Genesis block hash
+		rlp.Bytes(gh[:]), // Last known block - genesis block
+		rlp.List(rlp.Bytes(fh), rlp.Int(1150000)), // [fork-hash, fork-next] - unsynced mainnet from https://eips.ethereum.org/EIPS/eip-2124 
 	))), nil
 }
 
@@ -237,10 +280,13 @@ func (s *session) HandleMessage(d []byte) error {
 		return isxerrors.Errorf("decoding hello frame: %w", err)
 	}
 	switch msgId {
-	case 0x00:
+	case helloMsgId:
 		return s.HandleHello(item)
-	case 0x01:
+	case disconnectMsgId:
 		return s.HandleDisconnect(item)
+	// Eth subprotocol
+	case 0x10:
+		return s.HandleEthStatus(item)
 	}
 	return nil
 }
@@ -262,6 +308,11 @@ func (s *session) HandleHello(item rlp.Item) error {
 
 func (s *session) HandleDisconnect(item rlp.Item) error {
 	s.log("<disconnect reason=%d\n", item.Uint16())
+	return nil
+}
+
+func (s *session) HandleEthStatus(item rlp.Item) error {
+	s.log("<status version=%d network=%d difficulty=%d\n", item.At(0).Uint16(), item.At(1).Uint16(), item.At(2).Uint64())
 	return nil
 }
 
