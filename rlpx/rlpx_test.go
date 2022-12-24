@@ -75,8 +75,11 @@ func TestSession(t *testing.T) {
 	s2, err := Session(n2, h2)
 	tc.NoErr(t, err)
 
-	b1, _ := s1.Hello()
-	tc.NoErr(t, s2.HandleMessage(b1))
+	m1, _ := s1.Hello()
+	tc.NoErr(t, s2.HandleMessage(m1))
+
+	m2, _ := s1.EthStatus()
+	tc.NoErr(t, s2.HandleMessage(m2))
 }
 
 func prv(t *testing.T) *secp256k1.PrivateKey {
