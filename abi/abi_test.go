@@ -7,7 +7,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/indexsupply/x/abi/at"
+	"github.com/indexsupply/x/abi/abit"
 	"github.com/indexsupply/x/tc"
 )
 
@@ -79,57 +79,63 @@ func TestDecode(t *testing.T) {
 	cases := []struct {
 		desc string
 		want Item
-		t    at.Type
+		t    abit.Type
 	}{
 		{
 			desc: "1 static",
 			want: Uint64(0),
-			t:    at.Uint64,
+			t:    abit.Uint64,
 		},
 		{
 			desc: "N static",
 			want: Tuple(Uint64(0), Uint64(1)),
-			t:    at.Tuple(at.Uint64, at.Uint64),
+			t:    abit.Tuple(abit.Uint64, abit.Uint64),
 		},
 		{
 			desc: "1 dynamic",
 			want: String("hello world"),
-			t:    at.String,
+			t:    abit.String,
 		},
 		{
 			desc: "N dynamic",
 			want: Tuple(String("hello"), String("world")),
-			t:    at.Tuple(at.String, at.String),
+			t:    abit.Tuple(abit.String, abit.String),
 		},
 		{
 			desc: "list static",
 			want: List(Uint64(0), Uint64(1)),
-			t:    at.List(at.Uint64),
+			t:    abit.List(abit.Uint64),
 		},
 		{
 			desc: "list dynamic",
 			want: List(String("hello"), String("world")),
-			t:    at.List(at.String),
+			t:    abit.List(abit.String),
 		},
 		{
 			desc: "tuple static",
 			want: Tuple(Uint64(0)),
-			t:    at.Tuple(at.Uint64),
+			t:    abit.Tuple(abit.Uint64),
 		},
 		{
 			desc: "tuple static and dynamic",
 			want: Tuple(Uint64(0), String("hello")),
-			t:    at.Tuple(at.Uint64, at.String),
+			t:    abit.Tuple(abit.Uint64, abit.String),
 		},
 		{
 			desc: "tuple tuple",
 			want: Tuple(Uint64(0), Tuple(String("hello"))),
-			t:    at.Tuple(at.Uint64, at.Tuple(at.String)),
+			t:    abit.Tuple(abit.Uint64, abit.Tuple(abit.String)),
 		},
 		{
 			desc: "tuple tuple list",
 			want: Tuple(Uint64(0), Tuple(String("hello")), List(Uint64(1))),
-			t:    at.Tuple(at.Uint64, at.Tuple(at.String), at.List(at.Uint64)),
+			t: abit.Tuple(
+				abit.Uint64,
+				abit.Tuple(
+					abit.String,
+				),
+				abit.List(abit.Uint64),
+			),
 		},
 	}
 	for _, c := range cases {
