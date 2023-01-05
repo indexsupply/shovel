@@ -64,7 +64,7 @@ func (e *Event) Signature() string {
 	s.WriteString(e.Name)
 	s.WriteString("(")
 	for i := range e.Inputs {
-		s.WriteString(e.Inputs[i].Type.Name)
+		s.WriteString(e.Inputs[i].Type.Name())
 		if i+1 < len(e.Inputs) {
 			s.WriteString(",")
 		}
