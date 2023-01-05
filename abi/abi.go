@@ -290,12 +290,12 @@ func Decode(input []byte, t abit.Type) Item {
 		items := make([]Item, count)
 		for i := uint64(0); i < count; i++ {
 			n := 32 + (32 * i) //skip count (head)
-			switch t.ElementType.Kind {
+			switch t.Elem.Kind {
 			case abit.S:
-				items[i] = Decode(input[n:], *t.ElementType)
+				items[i] = Decode(input[n:], *t.Elem)
 			default:
 				offset := 32 + bint.Decode(input[n:n+32])
-				items[i] = Decode(input[offset:], *t.ElementType)
+				items[i] = Decode(input[offset:], *t.Elem)
 			}
 		}
 		return List(items...)
