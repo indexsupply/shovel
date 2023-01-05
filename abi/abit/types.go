@@ -14,8 +14,8 @@ type Type struct {
 	Name string
 	Kind kind
 
-	Fields      []*Type //For Tuple
-	ElementType *Type   //For List
+	Fields []*Type //For Tuple
+	Elem   *Type   //For List
 }
 
 var (
@@ -47,9 +47,9 @@ var (
 
 func List(et Type) Type {
 	return Type{
-		ElementType: &et,
-		Name:        et.Name + "[]",
-		Kind:        L,
+		Elem: &et,
+		Name: et.Name + "[]",
+		Kind: L,
 	}
 }
 
