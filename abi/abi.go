@@ -15,9 +15,24 @@ import (
 )
 
 type Input struct {
-	Name    string
-	Type    abit.Type
-	Indexed bool
+	Indexed    bool
+	Name       string
+	Type       string
+	Components []Input
+}
+
+// Returns a fully formed abit.Type for the input
+// by recursively iterating through the components
+// and '[]' list.
+func (inp *Input) ABIType() abit.Type {
+	if !strings.HasPrefix(inp.Type, "tuple") {
+		return abit.Resolve(inp.Type)
+	}
+	var types []abit.Type
+	for _, c := range inp.Components {
+		types = append(types, c.ABIType())
+	}
+	return abit.Resolve(inp.Type, types...)
 }
 
 type Event struct {
@@ -25,34 +40,9 @@ type Event struct {
 	sigHash [32]byte
 
 	Name      string
-	Type      string
+	Type      string //∈ {function, event}
 	Anonymous bool
 	Inputs    []Input
-}
-
-// Retruns new [Event] setting Name.
-func NamedEvent(name string) *Event {
-	return &Event{Name: name}
-}
-
-// Adds indexed input to e and returns e for successive calling
-func (e *Event) Indexed(name string, t abit.Type) *Event {
-	e.Inputs = append(e.Inputs, Input{
-		Name:    name,
-		Type:    t,
-		Indexed: true,
-	})
-	return e
-}
-
-// Adds un-indexed input to e and returns e for successive calling
-func (e *Event) UnIndexed(name string, t abit.Type) *Event {
-	e.Inputs = append(e.Inputs, Input{
-		Name:    name,
-		Type:    t,
-		Indexed: false,
-	})
-	return e
 }
 
 // Computes signature (eg name(type1,type2)). Caches result on e
@@ -64,7 +54,7 @@ func (e *Event) Signature() string {
 	s.WriteString(e.Name)
 	s.WriteString("(")
 	for i := range e.Inputs {
-		s.WriteString(e.Inputs[i].Type.Name())
+		s.WriteString(e.Inputs[i].ABIType().Name())
 		if i+1 < len(e.Inputs) {
 			s.WriteString(",")
 		}
@@ -113,7 +103,7 @@ func Match(l Log, e *Event) (map[string]Item, bool) {
 
 	var types []abit.Type
 	for _, input := range unindexed {
-		types = append(types, input.Type)
+		types = append(types, input.ABIType())
 	}
 	item := Decode(l.Data, abit.Tuple(types...))
 	for i, input := range unindexed {
