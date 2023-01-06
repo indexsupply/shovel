@@ -11,6 +11,75 @@ import (
 	"github.com/indexsupply/x/tc"
 )
 
+func TestABIType(t *testing.T) {
+	cases := []struct {
+		input Input
+		want  abit.Type
+	}{
+		{
+			input: Input{
+				Name: "a",
+				Type: "uint8",
+			},
+			want: abit.Uint8,
+		},
+		{
+			input: Input{
+				Name: "a",
+				Type: "uint8[]",
+			},
+			want: abit.List(abit.Uint8),
+		},
+		{
+			input: Input{
+				Name: "a",
+				Type: "tuple",
+				Components: []Input{
+					Input{
+						Name: "b",
+						Type: "uint8",
+					},
+				},
+			},
+			want: abit.Tuple(abit.Uint8),
+		},
+		{
+			input: Input{
+				Name: "a",
+				Type: "tuple[][]",
+				Components: []Input{
+					Input{
+						Name: "b",
+						Type: "uint8",
+					},
+					Input{
+						Name: "c",
+						Type: "tuple",
+						Components: []Input{
+							Input{
+								Name: "d",
+								Type: "uint8",
+							},
+						},
+					},
+				},
+			},
+			want: abit.List(abit.List(abit.Tuple(
+				abit.Uint8,
+				abit.Tuple(
+					abit.Uint8,
+				),
+			))),
+		},
+	}
+	for _, tc := range cases {
+		got := tc.input.ABIType()
+		if !reflect.DeepEqual(got, tc.want) {
+			t.Errorf("got: %s want: %s", got.Name(), tc.want.Name())
+		}
+	}
+}
+
 func TestPad(t *testing.T) {
 	cases := []struct {
 		desc  string

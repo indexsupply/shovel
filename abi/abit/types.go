@@ -12,6 +12,32 @@ const (
 	L             //list
 )
 
+func Resolve(desc string, fields ...Type) Type {
+	if strings.HasSuffix(desc, "[]") {
+		return List(Resolve(strings.TrimSuffix(desc, "[]"), fields...))
+	}
+	switch desc {
+	case "address":
+		return Address
+	case "bool":
+		return Bool
+	case "bytes":
+		return Bytes
+	case "bytes32":
+		return Bytes32
+	case "tuple":
+		return Tuple(fields...)
+	case "uint8":
+		return Uint8
+	case "uint64":
+		return Uint64
+	case "uint256":
+		return Uint256
+	default:
+		return Type{}
+	}
+}
+
 type Type struct {
 	Kind kind
 	name string
@@ -27,7 +53,7 @@ type Type struct {
 // For example:
 // tuple(uint8, address) becomes (uint8, address)
 // tuple(uint8, address[] becomes (uint8, address)[]
-func (t *Type) Name() string {
+func (t Type) Name() string {
 	switch t.Kind {
 	case L:
 		return t.Elem.Name() + "[]"
@@ -60,9 +86,17 @@ var (
 		name: "bytes",
 		Kind: D,
 	}
+	Bytes32 = Type{
+		name: "bytes32",
+		Kind: S,
+	}
 	String = Type{
 		name: "string",
 		Kind: D,
+	}
+	Uint8 = Type{
+		name: "uint8",
+		Kind: S,
 	}
 	Uint64 = Type{
 		name: "uint64",
