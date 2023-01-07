@@ -151,6 +151,11 @@ func TestDecode(t *testing.T) {
 		t    abit.Type
 	}{
 		{
+			desc: "1 uint8",
+			want: Uint8(0),
+			t:    abit.Uint8,
+		},
+		{
 			desc: "1 static",
 			want: Uint64(0),
 			t:    abit.Uint64,

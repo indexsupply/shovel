@@ -187,6 +187,16 @@ func Uint64(i uint64) Item {
 	return Item{Type: abit.Uint64, d: b[:]}
 }
 
+func Uint8(i uint8) Item {
+	var b [32]byte
+	bint.Encode(b[:], uint64(i))
+	return Item{Type: abit.Uint8, d: b[:]}
+}
+
+func (it Item) Uint8() uint8 {
+	return uint8(bint.Decode(it.d))
+}
+
 func (it Item) Uint64() uint64 {
 	return bint.Decode(it.d)
 }
