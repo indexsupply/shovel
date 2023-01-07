@@ -25,6 +25,8 @@ func Resolve(desc string, fields ...Type) Type {
 		return Bytes
 	case "bytes32":
 		return Bytes32
+	case "string":
+		return String
 	case "tuple":
 		return Tuple(fields...)
 	case "uint8":
