@@ -18,6 +18,7 @@ type Input struct {
 	Indexed    bool
 	Name       string
 	Type       string
+	Gtype      string
 	Components []Input
 }
 
@@ -325,6 +326,7 @@ func Encode(it Item) []byte {
 
 // Decodes ABI encoded bytes into an [Item] according to
 // the 'schema' defined by t. For example:
+//
 //	Decode(b, abit.Tuple(abit.String, abit.Uint256))
 func Decode(input []byte, t abit.Type) Item {
 	switch t.Kind {
