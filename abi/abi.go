@@ -128,11 +128,27 @@ func (it Item) Bytes() []byte {
 	return it.d
 }
 
+func (it Item) BytesSlice() [][]byte {
+	var res [][]byte
+	for i := range it.l {
+		res = append(res, it.l[i].Bytes())
+	}
+	return res
+}
+
 func (it Item) Address() [20]byte {
 	if len(it.d) < 32 {
 		return [20]byte{}
 	}
 	return *(*[20]byte)(it.d[12:])
+}
+
+func (it Item) AddressSlice() [][20]byte {
+	var res [][20]byte
+	for i := range it.l {
+		res = append(res, it.l[i].Address())
+	}
+	return res
 }
 
 func String(s string) Item {
@@ -141,6 +157,14 @@ func String(s string) Item {
 
 func (it Item) String() string {
 	return string(it.d)
+}
+
+func (it Item) StringSlice() []string {
+	var res []string
+	for i := range it.l {
+		res = append(res, it.l[i].String())
+	}
+	return res
 }
 
 func Bool(b bool) Item {
@@ -156,6 +180,14 @@ func (it Item) Bool() bool {
 		return false
 	}
 	return it.d[31] == 1
+}
+
+func (it Item) BoolSlice() []bool {
+	var res []bool
+	for i := range it.l {
+		res = append(res, it.l[i].Bool())
+	}
+	return res
 }
 
 func BigInt(i *big.Int) Item {
@@ -187,6 +219,18 @@ func Uint64(i uint64) Item {
 	return Item{Type: abit.Uint64, d: b[:]}
 }
 
+func (it Item) Uint64() uint64 {
+	return bint.Decode(it.d)
+}
+
+func (it Item) Uint64Slice() []uint64 {
+	var res []uint64
+	for i := range it.l {
+		res = append(res, it.l[i].Uint64())
+	}
+	return res
+}
+
 func Uint8(i uint8) Item {
 	var b [32]byte
 	bint.Encode(b[:], uint64(i))
@@ -197,8 +241,12 @@ func (it Item) Uint8() uint8 {
 	return uint8(bint.Decode(it.d))
 }
 
-func (it Item) Uint64() uint64 {
-	return bint.Decode(it.d)
+func (it Item) Uint8Slice() []uint8 {
+	var res []uint8
+	for i := range it.l {
+		res = append(res, it.l[i].Uint8())
+	}
+	return res
 }
 
 func List(items ...Item) Item {
