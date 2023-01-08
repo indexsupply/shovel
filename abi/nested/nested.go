@@ -36,7 +36,7 @@ var e = abi.Event{
 						{
 							Name:    "x",
 							Indexed: false,
-							Gtype:   "*ig.Int",
+							Gtype:   "*big.Int",
 							Type:    "uint256",
 						},
 						{
