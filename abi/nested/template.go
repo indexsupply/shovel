@@ -12,7 +12,7 @@ import (
 
 const ct = `
 {{with .Event}}
-type {{.Name}} struct {
+type {{titleize .Name}} struct {
 	{{range .Inputs}}
 		{{geninput .}}
 	{{end}}
@@ -20,13 +20,13 @@ type {{.Name}} struct {
 {{end}}
 `
 
-var funcs = template.FuncMap{"geninput": GenInput}
+var funcs = template.FuncMap{"geninput": genInput, "titleize": strings.ToTitle}
 
-func GenInput(i abi.Input) string {
+func genInput(i abi.Input) string {
 	if i.Type == "tuple" {
 		var c []string
 		for _, comp := range i.Components {
-			c = append(c, GenInput(comp))
+			c = append(c, genInput(comp))
 		}
 		return fmt.Sprintf("%s struct{%s}", strings.ToTitle(i.Name), strings.Join(c, "\n"))
 	} else {
