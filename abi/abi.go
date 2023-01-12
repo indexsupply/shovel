@@ -14,7 +14,47 @@ import (
 	"github.com/indexsupply/x/isxhash"
 )
 
+type Log struct {
+	Address [20]byte
+	Topics  [4][32]byte
+	Data    []byte
+}
+
+// Matches event data in a log. Sets decoded data on e.
+// Use [Input]'s Item field to read decoded data.
+//
+// A false return value indicates the first log topic doesn't match
+// the event's [Event.SignatureHash].
+func Match(l Log, e Event) (Item, bool) {
+	if e.SignatureHash() != l.Topics[0] {
+		return Item{}, false
+	}
+	var (
+		items     = make([]Item, len(e.Inputs))
+		unindexed []abit.Type
+	)
+	for i, inp := range e.Inputs {
+		if !inp.Indexed {
+			unindexed = append(unindexed, inp.ABIType())
+			continue
+		}
+		items[i] = Bytes(l.Topics[i+1][:])
+	}
+	item := Decode(l.Data, abit.Tuple(unindexed...))
+	for i, j := 0, 0; i < len(e.Inputs); i++ {
+		if e.Inputs[i].Indexed {
+			continue
+		}
+		items[i] = item.At(j)
+		j++
+	}
+	return Tuple(items...), true
+}
+
+// Optionally contains a decoded Item. See: [Match].
 type Input struct {
+	Item *Item
+
 	Indexed    bool
 	Name       string
 	Type       string
@@ -40,7 +80,7 @@ type Event struct {
 	sigHash [32]byte
 
 	Name      string
-	Type      string //∈ {function, event}
+	Type      string //event
 	Anonymous bool
 	Inputs    []Input
 }
@@ -54,7 +94,7 @@ func (e *Event) Signature() string {
 	s.WriteString(e.Name)
 	s.WriteString("(")
 	for i := range e.Inputs {
-		s.WriteString(e.Inputs[i].ABIType().Name())
+		s.WriteString(e.Inputs[i].ABIType().Signature())
 		if i+1 < len(e.Inputs) {
 			s.WriteString(",")
 		}
@@ -71,45 +111,6 @@ func (e *Event) SignatureHash() [32]byte {
 	}
 	e.sigHash = isxhash.Keccak32([]byte(e.Signature()))
 	return e.sigHash
-}
-
-type Log struct {
-	Address [20]byte
-	Topics  [4][32]byte
-	Data    []byte
-}
-
-// Matches event data in a log. Returns a map with input names for keys
-// and [Item] for types.
-//
-// A false return value indicates the first log topic doesn't match
-// the event's [Event.SignatureHash].
-func Match(l Log, e *Event) (map[string]Item, bool) {
-	if e.SignatureHash() != l.Topics[0] {
-		return nil, false
-	}
-
-	var (
-		items     = map[string]Item{}
-		unindexed []Input
-	)
-	for i, input := range e.Inputs {
-		if !input.Indexed {
-			unindexed = append(unindexed, input)
-			continue
-		}
-		items[input.Name] = Bytes(l.Topics[i+1][:])
-	}
-
-	var types []abit.Type
-	for _, input := range unindexed {
-		types = append(types, input.ABIType())
-	}
-	item := Decode(l.Data, abit.Tuple(types...))
-	for i, input := range unindexed {
-		items[input.Name] = item.At(i)
-	}
-	return items, true
 }
 
 type Item struct {
@@ -257,7 +258,7 @@ func List(items ...Item) Item {
 }
 
 func (it Item) At(i int) Item {
-	if len(it.l) < i {
+	if len(it.l) <= i {
 		return Item{}
 	}
 	return it.l[i]
