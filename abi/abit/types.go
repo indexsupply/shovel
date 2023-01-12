@@ -42,28 +42,25 @@ func Resolve(desc string, fields ...Type) Type {
 
 type Type struct {
 	Kind kind
-	name string
+	Name string
 
 	Fields []*Type //For Tuple
 	Elem   *Type   //For List
 }
 
-// Returns the name of the type in a format ready for ABI signatures
-// This is achieved by calling abit.Name on tuple abit.Fields and
-// tuple abit.Elem for tuples and arrays respectively.
-//
+// Returns signature of the type including it's Elem and Fields
 // For example:
-// tuple(uint8, address) becomes (uint8, address)
-// tuple(uint8, address[] becomes (uint8, address)[]
-func (t Type) Name() string {
+// 	tuple(uint8, address) becomes (uint8, address)
+// 	tuple(uint8, address[] becomes (uint8, address)[]
+func (t Type) Signature() string {
 	switch t.Kind {
 	case L:
-		return t.Elem.Name() + "[]"
+		return t.Elem.Signature() + "[]"
 	case T:
 		var s strings.Builder
 		s.WriteString("(")
 		for i, f := range t.Fields {
-			s.WriteString(f.Name())
+			s.WriteString(f.Signature())
 			if i+1 < len(t.Fields) {
 				s.WriteString(",")
 			}
@@ -71,51 +68,55 @@ func (t Type) Name() string {
 		s.WriteString(")")
 		return s.String()
 	default:
-		return t.name
+		return t.Name
 	}
 }
 
 var (
 	Address = Type{
-		name: "address",
+		Name: "address",
 		Kind: S,
 	}
 	Bool = Type{
-		name: "bool",
+		Name: "bool",
 		Kind: S,
 	}
 	Bytes = Type{
-		name: "bytes",
+		Name: "bytes",
 		Kind: D,
 	}
 	Bytes32 = Type{
-		name: "bytes32",
+		Name: "bytes32",
 		Kind: S,
 	}
 	String = Type{
-		name: "string",
+		Name: "string",
 		Kind: D,
 	}
 	Uint8 = Type{
-		name: "uint8",
+		Name: "uint8",
 		Kind: S,
 	}
 	Uint64 = Type{
-		name: "uint64",
+		Name: "uint64",
 		Kind: S,
 	}
 	Uint256 = Type{
-		name: "uint256",
+		Name: "uint256",
 		Kind: S,
 	}
 )
 
 func List(et Type) Type {
-	return Type{Kind: L, Elem: &et}
+	return Type{
+		Name: et.Signature(),
+		Kind: L,
+		Elem: &et,
+	}
 }
 
 func Tuple(types ...Type) Type {
-	t := Type{Kind: T}
+	t := Type{Name: "tuple", Kind: T}
 	for i := range types {
 		t.Fields = append(t.Fields, &types[i])
 	}

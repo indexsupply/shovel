@@ -75,7 +75,7 @@ func TestABIType(t *testing.T) {
 	for _, tc := range cases {
 		got := tc.input.ABIType()
 		if !reflect.DeepEqual(got, tc.want) {
-			t.Errorf("got: %s want: %s", got.Name(), tc.want.Name())
+			t.Errorf("got: %s want: %s", got.Name, tc.want.Name)
 		}
 	}
 }

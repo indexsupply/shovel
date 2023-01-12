@@ -34,7 +34,7 @@ func TestResolve(t *testing.T) {
 	for _, tc := range cases {
 		r := Resolve(tc.desc)
 		if !reflect.DeepEqual(r, tc.want) {
-			t.Errorf("got: %s want: %s", r.Name(), tc.want.Name())
+			t.Errorf("got: %s want: %s", r.Name, tc.want.Name)
 		}
 	}
 }
@@ -62,8 +62,8 @@ func TestName(t *testing.T) {
 		},
 	}
 	for _, tc := range cases {
-		if tc.t.Name() != tc.want {
-			t.Errorf("got: %s want: %s", tc.t.Name(), tc.want)
+		if tc.t.Signature() != tc.want {
+			t.Errorf("got: %s want: %s", tc.t.Signature(), tc.want)
 		}
 	}
 }
