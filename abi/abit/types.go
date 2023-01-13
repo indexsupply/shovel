@@ -16,16 +16,24 @@ const (
 )
 
 func Resolve(desc string, fields ...Type) Type {
-	a := strings.LastIndex(desc, "[")
-	b := strings.LastIndex(desc, "]")
 	// list case
+	var (
+		a = strings.LastIndex(desc, "[")
+		b = strings.LastIndex(desc, "]")
+	)
 	if a > 0 && b > 0 {
-		sizestr := desc[a+1 : b]
-		if sizestr == "" {
+		lenDesc := desc[a+1 : b]
+		if lenDesc == "" {
 			return List(Resolve(desc[:a], fields...))
 		}
-		size, _ := strconv.ParseUint(sizestr, 10, 32)
-		return ListK(Resolve(desc[:a], fields...), uint(size))
+		k, err := strconv.ParseUint(lenDesc, 10, 32)
+		if err != nil {
+			//TODO(ryan): panic might not be the best thing to do here
+			//but there is a larger issue to solve when it comes to
+			//errors when parsing logs. See: #61
+			panic("list length descriptor is not a number")
+		}
+		return ListK(Resolve(desc[:a], fields...), uint(k))
 	}
 	switch desc {
 	case "address":
@@ -53,11 +61,16 @@ func Resolve(desc string, fields ...Type) Type {
 
 type Type struct {
 	Kind kind
+
+	// Name is used in building the type's [Signature] and also
+	// in debugging. For types of kind L or T, the Name is not used
+	// since [Signature] and [Resolve] deal with these kinds of types
+	// explicitly.
 	Name string
 
-	Fields   []*Type //For Tuple
-	Elem     *Type   //For List
-	ListSize uint    // 0 for dynamic List, otherwise the size of a fixed-length list
+	Fields []*Type //For Tuple
+	Elem   *Type   //For List
+	Length uint    // 0 for dynamic List, otherwise the size of a fixed-length list
 }
 
 // Returns signature of the type including it's Elem and Fields
@@ -72,11 +85,10 @@ func (t Type) Signature() string {
 		var s strings.Builder
 		s.WriteString(t.Elem.Signature())
 		s.WriteString("[")
-		if t.ListSize > 0 {
-			s.WriteString(strconv.Itoa(int(t.ListSize)))
+		if t.Length > 0 {
+			s.WriteString(strconv.Itoa(int(t.Length)))
 		}
 		s.WriteString("]")
-
 		return s.String()
 	case T:
 		var s strings.Builder
@@ -130,24 +142,21 @@ var (
 )
 
 func List(et Type) Type {
-	t := Type{
-		Name: et.Signature(),
+	return Type{
+		Name: "list",
 		Kind: L,
 		Elem: &et,
 	}
-	t.Name = t.Signature()
-	return t
 }
 
 // Fixed list of length k
-func ListK(et Type, size uint) Type {
-	t := Type{
-		Kind:     L,
-		Elem:     &et,
-		ListSize: size,
+func ListK(et Type, k uint) Type {
+	return Type{
+		Name:   "list",
+		Kind:   L,
+		Elem:   &et,
+		Length: k,
 	}
-	t.Name = t.Signature()
-	return t
 }
 
 func Tuple(types ...Type) Type {
