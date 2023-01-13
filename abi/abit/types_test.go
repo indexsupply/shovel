@@ -30,6 +30,14 @@ func TestResolve(t *testing.T) {
 			desc: "tuple[]",
 			want: List(Tuple()),
 		},
+		{
+			desc: "address[6]",
+			want: ListK(Address, 6),
+		},
+		{
+			desc: "address[][6]",
+			want: ListK(List(Address), 6),
+		},
 	}
 	for _, tc := range cases {
 		r := Resolve(tc.desc)
@@ -39,7 +47,7 @@ func TestResolve(t *testing.T) {
 	}
 }
 
-func TestName(t *testing.T) {
+func TestSignature(t *testing.T) {
 	cases := []struct {
 		t    Type
 		want string
@@ -59,6 +67,10 @@ func TestName(t *testing.T) {
 		{
 			t:    List(Address),
 			want: "address[]",
+		},
+		{
+			t:    ListK(Address, 8),
+			want: "address[8]",
 		},
 	}
 	for _, tc := range cases {
