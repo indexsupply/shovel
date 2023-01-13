@@ -1,7 +1,10 @@
 // Types for ABI encoding / decoding
 package abit
 
-import "strings"
+import (
+	"strconv"
+	"strings"
+)
 
 type kind byte
 
@@ -13,8 +16,16 @@ const (
 )
 
 func Resolve(desc string, fields ...Type) Type {
-	if strings.HasSuffix(desc, "[]") {
-		return List(Resolve(strings.TrimSuffix(desc, "[]"), fields...))
+	a := strings.LastIndex(desc, "[")
+	b := strings.LastIndex(desc, "]")
+	// list case
+	if a > 0 && b > 0 {
+		sizestr := desc[a+1 : b]
+		if sizestr == "" {
+			return List(Resolve(desc[:a], fields...))
+		}
+		size, _ := strconv.ParseUint(sizestr, 10, 32)
+		return ListK(Resolve(desc[:a], fields...), uint(size))
 	}
 	switch desc {
 	case "address":
@@ -44,18 +55,29 @@ type Type struct {
 	Kind kind
 	Name string
 
-	Fields []*Type //For Tuple
-	Elem   *Type   //For List
+	Fields   []*Type //For Tuple
+	Elem     *Type   //For List
+	ListSize uint    // 0 for dynamic List, otherwise the size of a fixed-length list
 }
 
 // Returns signature of the type including it's Elem and Fields
 // For example:
-// 	tuple(uint8, address) becomes (uint8, address)
-// 	tuple(uint8, address[] becomes (uint8, address)[]
+//
+//	A size 8 list of address becomes 'address[8]'
+//	tuple(uint8, address) becomes (uint8, address)
+//	tuple(uint8, address)[] becomes (uint8, address)[]
 func (t Type) Signature() string {
 	switch t.Kind {
 	case L:
-		return t.Elem.Signature() + "[]"
+		var s strings.Builder
+		s.WriteString(t.Elem.Signature())
+		s.WriteString("[")
+		if t.ListSize > 0 {
+			s.WriteString(strconv.Itoa(int(t.ListSize)))
+		}
+		s.WriteString("]")
+
+		return s.String()
 	case T:
 		var s strings.Builder
 		s.WriteString("(")
@@ -108,11 +130,24 @@ var (
 )
 
 func List(et Type) Type {
-	return Type{
+	t := Type{
 		Name: et.Signature(),
 		Kind: L,
 		Elem: &et,
 	}
+	t.Name = t.Signature()
+	return t
+}
+
+// Fixed list of length k
+func ListK(et Type, size uint) Type {
+	t := Type{
+		Kind:     L,
+		Elem:     &et,
+		ListSize: size,
+	}
+	t.Name = t.Signature()
+	return t
 }
 
 func Tuple(types ...Type) Type {
