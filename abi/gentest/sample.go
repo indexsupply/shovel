@@ -61,6 +61,15 @@ func (x *I2) F1() [20]byte {
 	return x.it.At(0).Address()
 }
 
+func (x *I2) F2() [][20]byte {
+	it := x.it.At(1)
+	addrs := make([][20]byte, it.Len())
+	for i, a := range it.List() {
+		addrs[i] = a.Address()
+	}
+	return addrs
+}
+
 func (x *I2) F3() *F3 {
 	i := x.it.At(2)
 	return &F3{&i}

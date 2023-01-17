@@ -144,14 +144,6 @@ func (it Item) Address() [20]byte {
 	return *(*[20]byte)(it.d[12:])
 }
 
-func (it Item) AddressSlice() [][20]byte {
-	var res [][20]byte
-	for i := range it.l {
-		res = append(res, it.l[i].Address())
-	}
-	return res
-}
-
 func String(s string) Item {
 	return Item{Type: abit.String, d: []byte(s)}
 }
@@ -271,6 +263,10 @@ func (it Item) Len() int {
 		return len(it.l)
 	}
 	return len(it.d)
+}
+
+func (it Item) List() []Item {
+	return it.l
 }
 
 func Tuple(items ...Item) Item {

@@ -125,6 +125,15 @@ func (x *{{ $en }}){{ $in }}() *{{ $in }} {
 func (x *{{ $en }}){{ $in }}() [20]byte {
     return x.it.At({{ $index }}).Address()
 }
+{{ else if eq $inp.Type "address[]" -}}
+func (x *{{ $en }}){{ $in }}() [][20]byte {
+	it := x.it.At({{ $index }})
+	addrs := make([][20]byte, it.Len())
+	for i, a := range it.List() {
+		addrs[i] = a.Address()
+	}
+    return addrs
+}
 {{ else if eq $inp.Type "int" -}}
 func (x *{{ $en }}){{ $in }}() int64 {
     return x.it.At({{ $index }}).Int64()
