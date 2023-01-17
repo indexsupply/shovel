@@ -1,0 +1,55 @@
+[
+    {
+        "name": "e1",
+        "type": "event",
+        "anonymous": false,
+        "inputs": [
+            {
+                "indexed": true,
+                "name": "i1",
+                "type": "address"
+            },
+            {
+                "indexed": false,
+                "name": "i2",
+                "type": "tuple",
+                "components": [
+                    {
+                        "indexed": false,
+                        "name": "f1",
+                        "type": "address"
+                    },
+                    {
+                        "indexed": false,
+                        "name": "f2",
+                        "type": "address[]"
+                    },
+                    {
+                        "indexed": false,
+                        "name": "f3",
+                        "type": "tuple",
+                        "components": [
+                            {
+                                "indexed": false,
+                                "name": "f4",
+                                "type": "address"
+                            }
+                        ]
+                    }
+                ]
+            }
+        ]
+    },
+    {
+        "name": "f1",
+        "type": "function",
+        "stateMutability": "view",
+        "inputs": [],
+        "outputs": [
+            {
+                "name": "",
+                "type": "address"
+            }
+        ]
+    }
+]

@@ -11,25 +11,41 @@ import (
 	"github.com/indexsupply/x/isxerrors"
 )
 
-func Gen(js []byte) ([]byte, error) {
+func Gen(pkg string, js []byte) ([]byte, error) {
 	events := []Event{}
 	err := json.NewDecoder(bytes.NewReader(js)).Decode(&events)
 	if err != nil {
 		return nil, isxerrors.Errorf("parsing abi json: %w", err)
 	}
 	var (
-		t = template.New("wt")
 		b bytes.Buffer
+		t *template.Template
 	)
+
+	t = template.New("header")
+	t, err = t.Parse(header)
+	if err != nil {
+		return nil, isxerrors.Errorf("parsing header template: %w", err)
+	}
+	err = t.Execute(&b, struct {
+		Pkg string
+	}{
+		Pkg: pkg,
+	})
+	if err != nil {
+		return nil, isxerrors.Errorf("executing header template: %w", err)
+	}
+
+	t = template.New("body")
 	t.Funcs(template.FuncMap{
 		"export": func(name string) string {
 			ru, n := utf8.DecodeRuneInString(name)
 			return string(unicode.ToUpper(ru)) + name[n:]
 		},
 	})
-	t, err = t.Parse(wrapperTemplate)
+	t, err = t.Parse(body)
 	if err != nil {
-		return nil, isxerrors.Errorf("parsing template: %w", err)
+		return nil, isxerrors.Errorf("parsing body template: %w", err)
 	}
 
 	for _, event := range events {
@@ -38,7 +54,7 @@ func Gen(js []byte) ([]byte, error) {
 		}
 		err = t.Execute(&b, event)
 		if err != nil {
-			return nil, isxerrors.Errorf("executing template: %w", err)
+			return nil, isxerrors.Errorf("executing body template: %w", err)
 		}
 	}
 	code, err := format.Source(b.Bytes())
@@ -48,13 +64,19 @@ func Gen(js []byte) ([]byte, error) {
 	return code, nil
 }
 
-const wrapperTemplate = `
+const header = `
+package {{ .Pkg }}
+
+import "github.com/indexsupply/x/abi"
+`
+
+const body = `
 {{- define "x" -}}
-Input{
+abi.Input{
     Name: "{{.Name}}",
     Type: "{{.Type}}",
     {{ if eq .Type "tuple" -}}
-    Inputs: []Input{
+    Inputs: []abi.Input{
     {{ range .Inputs -}}
     {{ template "x" . }}
     {{ end }}
@@ -63,9 +85,9 @@ Input{
 },
 {{- end -}}
 
-var {{ export .Name }}Event = Event{
+var {{ export .Name }}Event = abi.Event{
     Name: "{{ .Name }}",
-    Inputs: []Input{
+    Inputs: []abi.Input{
         {{ range .Inputs -}}
         {{ template "x" . }}
         {{ end }}
@@ -80,7 +102,7 @@ type {{ export .Name }} struct {
 {{ range $inp := .Inputs -}}
 {{ if eq .Type "tuple" }}
 type {{export .Name }} struct {
-    it *abit.Item
+    it *abi.Item
 }
 {{ template "y" $inp -}}
 {{ end -}}
@@ -90,23 +112,25 @@ type {{export .Name }} struct {
 
 {{- define "z" -}}
 {{ $event := . -}}
+{{ $en := export $event.Name }}
 {{ range $index, $inp := .Inputs -}}
-{{ $fn := export $inp.Name }}
+{{ $in := export $inp.Name }}
 {{ if eq $inp.Type "tuple" -}}
-func (x *{{ export $event.Name }}){{ export $inp.Name }}() *{{ $inp.Name }} {
-    return &{{ $inp.Name }}{x.it.At({{ $index }})}
+func (x *{{ $en }}){{ $in }}() *{{ $in }} {
+	i := x.it.At({{ $index }})
+    return &{{ $in }}{&i}
 }
 {{ template "z" $inp -}}
 {{ else if eq $inp.Type "address" -}}
-func (x *{{ $event.Name}}){{ $fn }}() [20]byte {
+func (x *{{ $en }}){{ $in }}() [20]byte {
     return x.it.At({{ $index }}).Address()
 }
 {{ else if eq $inp.Type "int" -}}
-func (x *{{ $event.Name}}){{ $fn }}() int64 {
+func (x *{{ $en }}){{ $in }}() int64 {
     return x.it.At({{ $index }}).Int64()
 }
 {{ else if eq $inp.Type "uint256" -}}
-func (x *{{ $event.Name}}){{ $fn }}() *big.Int {
+func (x *{{ $en }}){{ $in }}() *big.Int {
     return x.it.At({{ $index }}).BigInt()
 }
 {{ end -}}

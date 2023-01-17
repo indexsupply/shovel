@@ -34,7 +34,7 @@ func TestABIType(t *testing.T) {
 			input: Input{
 				Name: "a",
 				Type: "tuple",
-				Components: []Input{
+				Inputs: []Input{
 					{
 						Name: "b",
 						Type: "uint8",
@@ -47,7 +47,7 @@ func TestABIType(t *testing.T) {
 			input: Input{
 				Name: "a",
 				Type: "tuple[][]",
-				Components: []Input{
+				Inputs: []Input{
 					{
 						Name: "b",
 						Type: "uint8",
@@ -55,7 +55,7 @@ func TestABIType(t *testing.T) {
 					{
 						Name: "c",
 						Type: "tuple",
-						Components: []Input{
+						Inputs: []Input{
 							{
 								Name: "d",
 								Type: "uint8",
