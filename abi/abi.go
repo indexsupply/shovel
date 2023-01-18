@@ -198,14 +198,6 @@ func (it Item) BigInt() *big.Int {
 	return x
 }
 
-func (it Item) BigIntSlice() []*big.Int {
-	var res []*big.Int
-	for i := range it.l {
-		res = append(res, it.l[i].BigInt())
-	}
-	return res
-}
-
 func Uint64(i uint64) Item {
 	var b [32]byte
 	bint.Encode(b[:], i)

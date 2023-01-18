@@ -1,39 +1,28 @@
 [
     {
-        "name": "e1",
+        "name": "e",
         "type": "event",
         "anonymous": false,
         "inputs": [
-            {
-                "indexed": true,
-                "name": "i1",
-                "type": "address"
-            },
+            {"indexed": true,  "name": "address", "type": "address"},
+            {"indexed": false, "name": "address_list", "type": "address[]"},
+            {"indexed": false, "name": "bool", "type": "bool"},
+            {"indexed": false, "name": "bool_list", "type": "bool[]"},
+            {"indexed": false, "name": "uint256", "type": "uint256"},
+            {"indexed": false, "name": "uint256_list", "type": "uint256[]"},
             {
                 "indexed": false,
                 "name": "i2",
                 "type": "tuple",
                 "components": [
-                    {
-                        "indexed": false,
-                        "name": "f1",
-                        "type": "address"
-                    },
-                    {
-                        "indexed": false,
-                        "name": "f2",
-                        "type": "address[]"
-                    },
+                    {"indexed": false, "name": "f1", "type": "address"},
+                    {"indexed": false, "name": "f2", "type": "address[]"},
                     {
                         "indexed": false,
                         "name": "f3",
                         "type": "tuple",
                         "components": [
-                            {
-                                "indexed": false,
-                                "name": "f4",
-                                "type": "address"
-                            }
+                            {"indexed": false, "name": "f4", "type": "address"}
                         ]
                     }
                 ]

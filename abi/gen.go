@@ -6,10 +6,28 @@ import (
 	"go/format"
 	"text/template"
 	"unicode"
-	"unicode/utf8"
 
 	"github.com/indexsupply/x/isxerrors"
 )
+
+// convert snake case to camel case
+func camel(str string) string {
+	var (
+		in  = []rune(str)
+		res []rune
+	)
+	for i, r := range in {
+		switch {
+		case r == '_':
+			//skip
+		case i == 0 || in[i-1] == '_':
+			res = append(res, unicode.ToUpper(r))
+		default:
+			res = append(res, r)
+		}
+	}
+	return string(res)
+}
 
 func Gen(pkg string, js []byte) ([]byte, error) {
 	events := []Event{}
@@ -37,12 +55,7 @@ func Gen(pkg string, js []byte) ([]byte, error) {
 	}
 
 	t = template.New("body")
-	t.Funcs(template.FuncMap{
-		"export": func(name string) string {
-			ru, n := utf8.DecodeRuneInString(name)
-			return string(unicode.ToUpper(ru)) + name[n:]
-		},
-	})
+	t.Funcs(template.FuncMap{"camel": camel})
 	t, err = t.Parse(body)
 	if err != nil {
 		return nil, isxerrors.Errorf("parsing body template: %w", err)
@@ -67,7 +80,11 @@ func Gen(pkg string, js []byte) ([]byte, error) {
 const header = `
 package {{ .Pkg }}
 
-import "github.com/indexsupply/x/abi"
+import (
+	"math/big"
+
+	"github.com/indexsupply/x/abi"
+)
 `
 
 const body = `
@@ -85,7 +102,7 @@ abi.Input{
 },
 {{- end -}}
 
-var {{ export .Name }}Event = abi.Event{
+var {{ camel .Name }}Event = abi.Event{
     Name: "{{ .Name }}",
     Inputs: []abi.Input{
         {{ range .Inputs -}}
@@ -94,14 +111,14 @@ var {{ export .Name }}Event = abi.Event{
     },
 }
 
-type {{ export .Name }} struct {
+type {{ camel .Name }} struct {
     it *abi.Item
 }
 
 {{ define "y" -}}
 {{ range $inp := .Inputs -}}
 {{ if eq .Type "tuple" }}
-type {{export .Name }} struct {
+type {{camel .Name }} struct {
     it *abi.Item
 }
 {{ template "y" $inp -}}
@@ -112,9 +129,9 @@ type {{export .Name }} struct {
 
 {{- define "z" -}}
 {{ $event := . -}}
-{{ $en := export $event.Name }}
+{{ $en := camel $event.Name }}
 {{ range $index, $inp := .Inputs -}}
-{{ $in := export $inp.Name }}
+{{ $in := camel $inp.Name }}
 {{ if eq $inp.Type "tuple" -}}
 func (x *{{ $en }}){{ $in }}() *{{ $in }} {
 	i := x.it.At({{ $index }})
@@ -128,11 +145,24 @@ func (x *{{ $en }}){{ $in }}() [20]byte {
 {{ else if eq $inp.Type "address[]" -}}
 func (x *{{ $en }}){{ $in }}() [][20]byte {
 	it := x.it.At({{ $index }})
-	addrs := make([][20]byte, it.Len())
-	for i, a := range it.List() {
-		addrs[i] = a.Address()
+	res := make([][20]byte, it.Len())
+	for i, v := range it.List() {
+		res[i] = v.Address()
 	}
-    return addrs
+    return res
+}
+{{ else if eq $inp.Type "bool" -}}
+func (x *{{ $en }}){{ $in }}() bool {
+    return x.it.At({{ $index }}).Bool()
+}
+{{ else if eq $inp.Type "bool[]" -}}
+func (x *{{ $en }}){{ $in }}() []bool {
+	it := x.it.At({{ $index }})
+	res := make([]bool, it.Len())
+	for i, v := range it.List() {
+		res[i] = v.Bool()
+	}
+    return res
 }
 {{ else if eq $inp.Type "int" -}}
 func (x *{{ $en }}){{ $in }}() int64 {
@@ -141,6 +171,15 @@ func (x *{{ $en }}){{ $in }}() int64 {
 {{ else if eq $inp.Type "uint256" -}}
 func (x *{{ $en }}){{ $in }}() *big.Int {
     return x.it.At({{ $index }}).BigInt()
+}
+{{ else if eq $inp.Type "uint256[]" -}}
+func (x *{{ $en }}){{ $in }}() []*big.Int {
+	it := x.it.At({{ $index }})
+	res := make([]*big.Int, it.Len())
+	for i, v := range it.List() {
+		res[i] = v.BigInt()
+	}
+    return res
 }
 {{ end -}}
 {{ end -}}

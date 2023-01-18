@@ -8,7 +8,7 @@ import (
 
 //go:generate genabi -i sample.json -o sample.go -p gentest
 
-func TestGen(t *testing.T) {
+func TestZero(t *testing.T) {
 	e1 := E1{&abi.Item{}}
 	e1.I1()
 	i2 := e1.I2()

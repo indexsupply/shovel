@@ -11,6 +11,27 @@ import (
 	"github.com/indexsupply/x/tc"
 )
 
+func TestCamel(t *testing.T) {
+	cases := []struct {
+		input string
+		want  string
+	}{
+		{input: "a", want: "A"},
+		{input: "_a", want: "A"},
+		{input: "a_b", want: "AB"},
+		{input: "a_b_", want: "AB"},
+		{input: "a_b_c", want: "ABC"},
+		{input: "hello", want: "Hello"},
+		{input: "hello_world", want: "HelloWorld"},
+	}
+	for _, tc := range cases {
+		got := camel(tc.input)
+		if got != tc.want {
+			t.Errorf("got: %s want: %s", got, tc.want)
+		}
+	}
+}
+
 func TestABIType(t *testing.T) {
 	cases := []struct {
 		input Input
