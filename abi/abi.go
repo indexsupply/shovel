@@ -55,10 +55,10 @@ func Match(l Log, e Event) (Item, bool) {
 type Input struct {
 	Item *Item
 
-	Indexed bool
-	Name    string
-	Type    string
-	Inputs  []Input `json:"components"`
+	Indexed    bool
+	Name       string
+	Type       string
+	Components []Input
 }
 
 // Returns a fully formed abit.Type for the input
@@ -69,7 +69,7 @@ func (inp *Input) ABIType() abit.Type {
 		return abit.Resolve(inp.Type)
 	}
 	var types []abit.Type
-	for _, c := range inp.Inputs {
+	for _, c := range inp.Components {
 		types = append(types, c.ABIType())
 	}
 	return abit.Resolve(inp.Type, types...)

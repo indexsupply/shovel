@@ -15,8 +15,8 @@ abi.Input{
 	Name: "{{.Name}}",
 	Type: "{{.Type}}",
 	{{ if eq .Type "tuple" -}}
-	Inputs: []abi.Input{
-	{{ range .Inputs -}}
+	Components: []abi.Input{
+	{{ range .Components -}}
 	{{ template "event-input" . }}
 	{{ end }}
 	},
@@ -25,139 +25,59 @@ abi.Input{
 {{- end -}}
 
 {{ define "tuples" -}}
-{{ range $inp := .Inputs -}}
+{{ range $inp := . -}}
 {{ if eq .Type "tuple" }}
 type {{camel .Name }} struct {
 	it *abi.Item
 }
-{{ template "tuples" $inp -}}
+{{ template "tuples" $inp.Components -}}
 {{ end -}}
 {{ end -}}
 {{ end -}}
 
-{{- define "accessors" -}}
-{{ $eventName := camel .Name }}
-{{ range $index, $inp := .Inputs -}}
-{{ $inputName := camel $inp.Name }}
-{{ if eq $inp.Type "tuple" -}}
-func (x *{{ $eventName }}){{ $inputName }}() *{{ $inputName }} {
-	i := x.it.At({{ $index }})
-	return &{{ $inputName }}{&i}
-}
-{{ template "accessors" $inp -}}
-{{ else if eq $inp.Type "address" -}}
-func (x *{{ $eventName }}){{ $inputName }}() [20]byte {
-	return x.it.At({{ $index }}).Address()
-}
-{{ else if eq $inp.Type "address[]" -}}
-func (x *{{ $eventName }}){{ $inputName }}() [][20]byte {
-	it := x.it.At({{ $index }})
-	res := make([][20]byte, it.Len())
-	for i, v := range it.List() {
-		res[i] = v.Address()
-	}
-	return res
-}
-{{ else if eq $inp.Type "bool" -}}
-func (x *{{ $eventName }}){{ $inputName }}() bool {
-	return x.it.At({{ $index }}).Bool()
-}
-{{ else if eq $inp.Type "bool[]" -}}
-func (x *{{ $eventName }}){{ $inputName }}() []bool {
-	it := x.it.At({{ $index }})
-	res := make([]bool, it.Len())
-	for i, v := range it.List() {
-		res[i] = v.Bool()
-	}
-	return res
-}
-{{ else if eq $inp.Type "bytes" -}}
-func (x *{{ $eventName }}){{ $inputName }}() []byte{
-	return x.it.At({{ $index }}).Bytes()
-}
-{{ else if eq $inp.Type "bytes[]" -}}
-func (x *{{ $eventName }}){{ $inputName }}() [][]byte {
-	it := x.it.At({{ $index }})
-	res := make([][]byte, it.Len())
-	for i, v := range it.List() {
-		res[i] = v.Bytes()
-	}
-	return res
-}
-{{ else if eq $inp.Type "int" -}}
-func (x *{{ $eventName }}){{ $inputName }}() int64 {
-	return x.it.At({{ $index }}).Int64()
-}
-{{ else if eq $inp.Type "string" -}}
-func (x *{{ $eventName }}){{ $inputName }}() string {
-	return x.it.At({{ $index }}).String()
-}
-{{ else if eq $inp.Type "string[]" -}}
-func (x *{{ $eventName }}){{ $inputName }}() []string {
-	it := x.it.At({{ $index }})
-	res := make([]string, it.Len())
-	for i, v := range it.List() {
-		res[i] = v.String()
-	}
-	return res
-}
-{{ else if eq $inp.Type "uint256" -}}
-func (x *{{ $eventName }}){{ $inputName }}() *big.Int {
-	return x.it.At({{ $index }}).BigInt()
-}
-{{ else if eq $inp.Type "uint256[]" -}}
-func (x *{{ $eventName }}){{ $inputName }}() []*big.Int {
-	it := x.it.At({{ $index }})
-	res := make([]*big.Int, it.Len())
-	for i, v := range it.List() {
-		res[i] = v.BigInt()
-	}
-	return res
-}
-{{ else if eq $inp.Type "uint8" -}}
-func (x *{{ $eventName }}){{ $inputName }}() uint8 {
-	return x.it.At({{ $index }}).Uint8()
-}
-{{ else if eq $inp.Type "uint8[]" -}}
-func (x *{{ $eventName }}){{ $inputName }}() []uint8 {
-	it := x.it.At({{ $index }})
-	res := make([]uint8, it.Len())
-	for i, v := range it.List() {
-		res[i] = v.Uint8()
-	}
-	return res
-}
-{{ else if eq $inp.Type "uint64" -}}
-func (x *{{ $eventName }}){{ $inputName }}() uint64 {
-	return x.it.At({{ $index }}).Uint64()
-}
-{{ else if eq $inp.Type "uint64[]" -}}
-func (x *{{ $eventName }}){{ $inputName }}() []uint64 {
-	it := x.it.At({{ $index }})
-	res := make([]uint64, it.Len())
-	for i, v := range it.List() {
-		res[i] = v.Uint64()
-	}
-	return res
-}
-{{ end -}}
-{{ end -}}
-{{ end -}}
+{{ define "accessor" }}
+	{{ if eq .Input.ABIType.Kind 2 -}}
+		func (x *{{ camel .Event.Name }}){{ camel .Input.Name }}() *{{ camel .Input.Name }} {
+			i := x.it.At({{ .Index }})
+			return &{{ camel .Input.Name }}{&i}
+		}
+		{{ range $i, $input := .Input.Components -}}
+		{{ template "accessor" col $i $.Event $input -}}
+		{{ end }}
+	{{ else if eq .Input.ABIType.Kind 3 -}}
+		func (x *{{ camel .Event.Name }}){{ camel .Input.Name }}() []{{ .Input.ABIType.Elem.TemplateType }} {
+			it := x.it.At({{ .Index }})
+			res := make([]{{ .Input.ABIType.Elem.TemplateType }}, it.Len())
+			for i, v := range it.List() {
+				res[i] = v.{{ .Input.ABIType.Elem.TemplateFunc }}()
+			}
+			return res
+		}
+	{{ else  -}}
+		func (x *{{ camel .Event.Name}}){{ camel .Input.Name }}() {{ .Input.ABIType.TemplateType }}{
+			return x.it.At({{ .Index }}).{{ .Input.ABIType.TemplateFunc }}()
+		}
+	{{ end -}}
+{{ end }}
 
 {{- define "event" -}}
-var {{ camel .Name }}Event = abi.Event{
-	Name: "{{ .Name }}",
-	Inputs: []abi.Input{
-		{{ range .Inputs -}}
-		{{ template "event-input" . }}
-		{{ end }}
-	},
-}
+	var {{ camel .Name }}Event = abi.Event{
+		Name: "{{ .Name }}",
+		Inputs: []abi.Input{
+			{{ range .Inputs -}}
+			{{ template "event-input" . }}
+			{{ end }}
+		},
+	}
 
-type {{ camel .Name }} struct {
-	it *abi.Item
-}
+	type {{ camel .Name }} struct {
+		it *abi.Item
+	}
 
-{{ template "tuples" . -}}
-{{ template "accessors" . -}}
+	{{ template "tuples" .Inputs -}}
+
+	{{ $event := . }}
+	{{ range $i, $input := .Inputs -}}
+		{{ template "accessor" col $i $event $input -}}
+	{{ end -}}
 {{ end -}}

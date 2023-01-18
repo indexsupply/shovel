@@ -68,9 +68,12 @@ type Type struct {
 	// explicitly.
 	Name string
 
+	TemplateType string
+	TemplateFunc string
+
 	Fields []*Type //For Tuple
 	Elem   *Type   //For List
-	Length uint    // 0 for dynamic List, otherwise the size of a fixed-length list
+	Length uint    //0 for dynamic List, otherwise the size of a fixed-length list
 }
 
 // Returns signature of the type including it's Elem and Fields
@@ -108,36 +111,50 @@ func (t Type) Signature() string {
 
 var (
 	Address = Type{
-		Name: "address",
-		Kind: S,
+		Name:         "address",
+		Kind:         S,
+		TemplateFunc: "Address",
+		TemplateType: "[20]byte",
 	}
 	Bool = Type{
-		Name: "bool",
-		Kind: S,
+		Name:         "bool",
+		Kind:         S,
+		TemplateFunc: "Bool",
+		TemplateType: "bool",
 	}
 	Bytes = Type{
-		Name: "bytes",
-		Kind: D,
+		Name:         "bytes",
+		Kind:         D,
+		TemplateFunc: "Bytes",
+		TemplateType: "[]byte",
 	}
 	Bytes32 = Type{
 		Name: "bytes32",
 		Kind: S,
 	}
 	String = Type{
-		Name: "string",
-		Kind: D,
+		Name:         "string",
+		Kind:         D,
+		TemplateFunc: "String",
+		TemplateType: "string",
 	}
 	Uint8 = Type{
-		Name: "uint8",
-		Kind: S,
+		Name:         "uint8",
+		Kind:         S,
+		TemplateFunc: "Uint8",
+		TemplateType: "uint8",
 	}
 	Uint64 = Type{
-		Name: "uint64",
-		Kind: S,
+		Name:         "uint64",
+		Kind:         S,
+		TemplateFunc: "Uint64",
+		TemplateType: "uint64",
 	}
 	Uint256 = Type{
-		Name: "uint256",
-		Kind: S,
+		Name:         "uint256",
+		Kind:         S,
+		TemplateFunc: "BigInt",
+		TemplateType: "*big.Int",
 	}
 )
 

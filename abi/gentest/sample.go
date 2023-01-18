@@ -70,7 +70,7 @@ var EEvent = abi.Event{
 		abi.Input{
 			Name: "i2",
 			Type: "tuple",
-			Inputs: []abi.Input{
+			Components: []abi.Input{
 				abi.Input{
 					Name: "f1",
 					Type: "address",
@@ -82,7 +82,7 @@ var EEvent = abi.Event{
 				abi.Input{
 					Name: "f3",
 					Type: "tuple",
-					Inputs: []abi.Input{
+					Components: []abi.Input{
 						abi.Input{
 							Name: "f4",
 							Type: "address",
@@ -202,11 +202,11 @@ func (x *E) I2() *I2 {
 	return &I2{&i}
 }
 
-func (x *I2) F1() [20]byte {
+func (x *E) F1() [20]byte {
 	return x.it.At(0).Address()
 }
 
-func (x *I2) F2() [][20]byte {
+func (x *E) F2() [][20]byte {
 	it := x.it.At(1)
 	res := make([][20]byte, it.Len())
 	for i, v := range it.List() {
@@ -215,11 +215,11 @@ func (x *I2) F2() [][20]byte {
 	return res
 }
 
-func (x *I2) F3() *F3 {
+func (x *E) F3() *F3 {
 	i := x.it.At(2)
 	return &F3{&i}
 }
 
-func (x *F3) F4() [20]byte {
+func (x *E) F4() [20]byte {
 	return x.it.At(0).Address()
 }

@@ -14,6 +14,20 @@ import (
 //go:embed template.txt
 var abitemp string
 
+type Accessor struct {
+	Index int
+	Event Event
+	Input *Input
+}
+
+func col(idx int, e Event, i *Input) Accessor {
+	return Accessor{
+		Index: idx,
+		Event: e,
+		Input: i,
+	}
+}
+
 func camel(str string) string {
 	var (
 		in  = []rune(str)
@@ -39,7 +53,10 @@ func Gen(pkg string, js []byte) ([]byte, error) {
 		return nil, isxerrors.Errorf("parsing abi json: %w", err)
 	}
 
-	t := template.New("abi").Funcs(template.FuncMap{"camel": camel})
+	t := template.New("abi").Funcs(template.FuncMap{
+		"camel": camel,
+		"col":   col,
+	})
 	t, err = t.Parse(abitemp)
 	if err != nil {
 		return nil, isxerrors.Errorf("parsing template: %w", err)
