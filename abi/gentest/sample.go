@@ -26,6 +26,38 @@ var EEvent = abi.Event{
 			Type: "bool[]",
 		},
 		abi.Input{
+			Name: "bytes",
+			Type: "bytes",
+		},
+		abi.Input{
+			Name: "bytes_list",
+			Type: "bytes[]",
+		},
+		abi.Input{
+			Name: "string",
+			Type: "string",
+		},
+		abi.Input{
+			Name: "string_list",
+			Type: "string[]",
+		},
+		abi.Input{
+			Name: "uint8",
+			Type: "uint8",
+		},
+		abi.Input{
+			Name: "uint8_list",
+			Type: "uint8[]",
+		},
+		abi.Input{
+			Name: "uint64",
+			Type: "uint64",
+		},
+		abi.Input{
+			Name: "uint64_list",
+			Type: "uint64[]",
+		},
+		abi.Input{
 			Name: "uint256",
 			Type: "uint256",
 		},
@@ -98,12 +130,64 @@ func (x *E) BoolList() []bool {
 	return res
 }
 
+func (x *E) Bytes() []byte {
+	return x.it.At(4).Bytes()
+}
+
+func (x *E) BytesList() [][]byte {
+	it := x.it.At(5)
+	res := make([][]byte, it.Len())
+	for i, v := range it.List() {
+		res[i] = v.Bytes()
+	}
+	return res
+}
+
+func (x *E) String() string {
+	return x.it.At(6).String()
+}
+
+func (x *E) StringList() []string {
+	it := x.it.At(7)
+	res := make([]string, it.Len())
+	for i, v := range it.List() {
+		res[i] = v.String()
+	}
+	return res
+}
+
+func (x *E) Uint8() uint8 {
+	return x.it.At(8).Uint8()
+}
+
+func (x *E) Uint8List() []uint8 {
+	it := x.it.At(9)
+	res := make([]uint8, it.Len())
+	for i, v := range it.List() {
+		res[i] = v.Uint8()
+	}
+	return res
+}
+
+func (x *E) Uint64() uint64 {
+	return x.it.At(10).Uint64()
+}
+
+func (x *E) Uint64List() []uint64 {
+	it := x.it.At(11)
+	res := make([]uint64, it.Len())
+	for i, v := range it.List() {
+		res[i] = v.Uint64()
+	}
+	return res
+}
+
 func (x *E) Uint256() *big.Int {
-	return x.it.At(4).BigInt()
+	return x.it.At(12).BigInt()
 }
 
 func (x *E) Uint256List() []*big.Int {
-	it := x.it.At(5)
+	it := x.it.At(13)
 	res := make([]*big.Int, it.Len())
 	for i, v := range it.List() {
 		res[i] = v.BigInt()
@@ -112,7 +196,7 @@ func (x *E) Uint256List() []*big.Int {
 }
 
 func (x *E) I2() *I2 {
-	i := x.it.At(6)
+	i := x.it.At(14)
 	return &I2{&i}
 }
 

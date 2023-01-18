@@ -164,9 +164,35 @@ func (x *{{ $en }}){{ $in }}() []bool {
 	}
     return res
 }
+{{ else if eq $inp.Type "bytes" -}}
+func (x *{{ $en }}){{ $in }}() []byte{
+    return x.it.At({{ $index }}).Bytes()
+}
+{{ else if eq $inp.Type "bytes[]" -}}
+func (x *{{ $en }}){{ $in }}() [][]byte {
+	it := x.it.At({{ $index }})
+	res := make([][]byte, it.Len())
+	for i, v := range it.List() {
+		res[i] = v.Bytes()
+	}
+    return res
+}
 {{ else if eq $inp.Type "int" -}}
 func (x *{{ $en }}){{ $in }}() int64 {
     return x.it.At({{ $index }}).Int64()
+}
+{{ else if eq $inp.Type "string" -}}
+func (x *{{ $en }}){{ $in }}() string {
+    return x.it.At({{ $index }}).String()
+}
+{{ else if eq $inp.Type "string[]" -}}
+func (x *{{ $en }}){{ $in }}() []string {
+	it := x.it.At({{ $index }})
+	res := make([]string, it.Len())
+	for i, v := range it.List() {
+		res[i] = v.String()
+	}
+    return res
 }
 {{ else if eq $inp.Type "uint256" -}}
 func (x *{{ $en }}){{ $in }}() *big.Int {
@@ -178,6 +204,32 @@ func (x *{{ $en }}){{ $in }}() []*big.Int {
 	res := make([]*big.Int, it.Len())
 	for i, v := range it.List() {
 		res[i] = v.BigInt()
+	}
+    return res
+}
+{{ else if eq $inp.Type "uint8" -}}
+func (x *{{ $en }}){{ $in }}() uint8 {
+    return x.it.At({{ $index }}).Uint8()
+}
+{{ else if eq $inp.Type "uint8[]" -}}
+func (x *{{ $en }}){{ $in }}() []uint8 {
+	it := x.it.At({{ $index }})
+	res := make([]uint8, it.Len())
+	for i, v := range it.List() {
+		res[i] = v.Uint8()
+	}
+    return res
+}
+{{ else if eq $inp.Type "uint64" -}}
+func (x *{{ $en }}){{ $in }}() uint64 {
+    return x.it.At({{ $index }}).Uint64()
+}
+{{ else if eq $inp.Type "uint64[]" -}}
+func (x *{{ $en }}){{ $in }}() []uint64 {
+	it := x.it.At({{ $index }})
+	res := make([]uint64, it.Len())
+	for i, v := range it.List() {
+		res[i] = v.Uint64()
 	}
     return res
 }
