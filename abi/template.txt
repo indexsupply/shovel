@@ -11,28 +11,28 @@ import (
 {{ end }}
 
 {{- define "event-input" -}}
-abi.Input{
-	Name: "{{.Name}}",
-	Type: "{{.Type}}",
-	{{ if eq .Type "tuple" -}}
-	Components: []abi.Input{
-	{{ range .Components -}}
-	{{ template "event-input" . }}
-	{{ end }}
+	abi.Input{
+		Name: "{{.Name}}",
+		Type: "{{.Type}}",
+		{{ if eq .Type "tuple" -}}
+		Components: []abi.Input{
+		{{ range .Components -}}
+		{{ template "event-input" . }}
+		{{ end }}
+		},
+		{{ end }}
 	},
-	{{ end }}
-},
 {{- end -}}
 
 {{ define "tuples" -}}
-{{ range $inp := . -}}
-{{ if eq .Type "tuple" }}
-type {{camel .Name }} struct {
-	it *abi.Item
-}
-{{ template "tuples" $inp.Components -}}
-{{ end -}}
-{{ end -}}
+	{{ range $inp := . -}}
+		{{ if eq .Type "tuple" }}
+			type {{camel .Name }} struct {
+				it *abi.Item
+			}
+			{{ template "tuples" $inp.Components -}}
+		{{ end -}}
+	{{ end -}}
 {{ end -}}
 
 {{ define "accessor" }}
@@ -42,7 +42,7 @@ type {{camel .Name }} struct {
 			return &{{ camel .Input.Name }}{&i}
 		}
 		{{ range $i, $input := .Input.Components -}}
-		{{ template "accessor" col $i $.Event $input -}}
+			{{ template "accessor" col $i $.Event $input -}}
 		{{ end }}
 	{{ else if eq .Input.ABIType.Kind 3 -}}
 		func (x *{{ camel .Event.Name }}){{ camel .Input.Name }}() []{{ .Input.ABIType.Elem.TemplateType }} {
