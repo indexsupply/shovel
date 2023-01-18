@@ -38,13 +38,14 @@ func Gen(pkg string, js []byte) ([]byte, error) {
 	if err != nil {
 		return nil, isxerrors.Errorf("parsing abi json: %w", err)
 	}
-	var b bytes.Buffer
 
 	t := template.New("abi").Funcs(template.FuncMap{"camel": camel})
 	t, err = t.Parse(abitemp)
 	if err != nil {
 		return nil, isxerrors.Errorf("parsing template: %w", err)
 	}
+
+	var b bytes.Buffer
 	err = t.ExecuteTemplate(&b, "header", pkg)
 	if err != nil {
 		return nil, isxerrors.Errorf("executing header template: %w", err)
