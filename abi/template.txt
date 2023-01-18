@@ -12,15 +12,15 @@ import (
 
 {{- define "event-input" -}}
 abi.Input{
-    Name: "{{.Name}}",
-    Type: "{{.Type}}",
-    {{ if eq .Type "tuple" -}}
-    Inputs: []abi.Input{
-    {{ range .Inputs -}}
-    {{ template "event-input" . }}
-    {{ end }}
-    },
-    {{ end }}
+	Name: "{{.Name}}",
+	Type: "{{.Type}}",
+	{{ if eq .Type "tuple" -}}
+	Inputs: []abi.Input{
+	{{ range .Inputs -}}
+	{{ template "event-input" . }}
+	{{ end }}
+	},
+	{{ end }}
 },
 {{- end -}}
 
@@ -28,7 +28,7 @@ abi.Input{
 {{ range $inp := .Inputs -}}
 {{ if eq .Type "tuple" }}
 type {{camel .Name }} struct {
-    it *abi.Item
+	it *abi.Item
 }
 {{ template "tuples" $inp -}}
 {{ end -}}
@@ -42,12 +42,12 @@ type {{camel .Name }} struct {
 {{ if eq $inp.Type "tuple" -}}
 func (x *{{ $eventName }}){{ $inputName }}() *{{ $inputName }} {
 	i := x.it.At({{ $index }})
-    return &{{ $inputName }}{&i}
+	return &{{ $inputName }}{&i}
 }
 {{ template "accessors" $inp -}}
 {{ else if eq $inp.Type "address" -}}
 func (x *{{ $eventName }}){{ $inputName }}() [20]byte {
-    return x.it.At({{ $index }}).Address()
+	return x.it.At({{ $index }}).Address()
 }
 {{ else if eq $inp.Type "address[]" -}}
 func (x *{{ $eventName }}){{ $inputName }}() [][20]byte {
@@ -56,11 +56,11 @@ func (x *{{ $eventName }}){{ $inputName }}() [][20]byte {
 	for i, v := range it.List() {
 		res[i] = v.Address()
 	}
-    return res
+	return res
 }
 {{ else if eq $inp.Type "bool" -}}
 func (x *{{ $eventName }}){{ $inputName }}() bool {
-    return x.it.At({{ $index }}).Bool()
+	return x.it.At({{ $index }}).Bool()
 }
 {{ else if eq $inp.Type "bool[]" -}}
 func (x *{{ $eventName }}){{ $inputName }}() []bool {
@@ -69,11 +69,11 @@ func (x *{{ $eventName }}){{ $inputName }}() []bool {
 	for i, v := range it.List() {
 		res[i] = v.Bool()
 	}
-    return res
+	return res
 }
 {{ else if eq $inp.Type "bytes" -}}
 func (x *{{ $eventName }}){{ $inputName }}() []byte{
-    return x.it.At({{ $index }}).Bytes()
+	return x.it.At({{ $index }}).Bytes()
 }
 {{ else if eq $inp.Type "bytes[]" -}}
 func (x *{{ $eventName }}){{ $inputName }}() [][]byte {
@@ -82,15 +82,15 @@ func (x *{{ $eventName }}){{ $inputName }}() [][]byte {
 	for i, v := range it.List() {
 		res[i] = v.Bytes()
 	}
-    return res
+	return res
 }
 {{ else if eq $inp.Type "int" -}}
 func (x *{{ $eventName }}){{ $inputName }}() int64 {
-    return x.it.At({{ $index }}).Int64()
+	return x.it.At({{ $index }}).Int64()
 }
 {{ else if eq $inp.Type "string" -}}
 func (x *{{ $eventName }}){{ $inputName }}() string {
-    return x.it.At({{ $index }}).String()
+	return x.it.At({{ $index }}).String()
 }
 {{ else if eq $inp.Type "string[]" -}}
 func (x *{{ $eventName }}){{ $inputName }}() []string {
@@ -99,11 +99,11 @@ func (x *{{ $eventName }}){{ $inputName }}() []string {
 	for i, v := range it.List() {
 		res[i] = v.String()
 	}
-    return res
+	return res
 }
 {{ else if eq $inp.Type "uint256" -}}
 func (x *{{ $eventName }}){{ $inputName }}() *big.Int {
-    return x.it.At({{ $index }}).BigInt()
+	return x.it.At({{ $index }}).BigInt()
 }
 {{ else if eq $inp.Type "uint256[]" -}}
 func (x *{{ $eventName }}){{ $inputName }}() []*big.Int {
@@ -112,11 +112,11 @@ func (x *{{ $eventName }}){{ $inputName }}() []*big.Int {
 	for i, v := range it.List() {
 		res[i] = v.BigInt()
 	}
-    return res
+	return res
 }
 {{ else if eq $inp.Type "uint8" -}}
 func (x *{{ $eventName }}){{ $inputName }}() uint8 {
-    return x.it.At({{ $index }}).Uint8()
+	return x.it.At({{ $index }}).Uint8()
 }
 {{ else if eq $inp.Type "uint8[]" -}}
 func (x *{{ $eventName }}){{ $inputName }}() []uint8 {
@@ -125,11 +125,11 @@ func (x *{{ $eventName }}){{ $inputName }}() []uint8 {
 	for i, v := range it.List() {
 		res[i] = v.Uint8()
 	}
-    return res
+	return res
 }
 {{ else if eq $inp.Type "uint64" -}}
 func (x *{{ $eventName }}){{ $inputName }}() uint64 {
-    return x.it.At({{ $index }}).Uint64()
+	return x.it.At({{ $index }}).Uint64()
 }
 {{ else if eq $inp.Type "uint64[]" -}}
 func (x *{{ $eventName }}){{ $inputName }}() []uint64 {
@@ -138,7 +138,7 @@ func (x *{{ $eventName }}){{ $inputName }}() []uint64 {
 	for i, v := range it.List() {
 		res[i] = v.Uint64()
 	}
-    return res
+	return res
 }
 {{ end -}}
 {{ end -}}
@@ -146,16 +146,16 @@ func (x *{{ $eventName }}){{ $inputName }}() []uint64 {
 
 {{- define "event" -}}
 var {{ camel .Name }}Event = abi.Event{
-    Name: "{{ .Name }}",
-    Inputs: []abi.Input{
-        {{ range .Inputs -}}
-        {{ template "event-input" . }}
-        {{ end }}
-    },
+	Name: "{{ .Name }}",
+	Inputs: []abi.Input{
+		{{ range .Inputs -}}
+		{{ template "event-input" . }}
+		{{ end }}
+	},
 }
 
 type {{ camel .Name }} struct {
-    it *abi.Item
+	it *abi.Item
 }
 
 {{ template "tuples" . -}}
