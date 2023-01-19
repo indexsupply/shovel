@@ -14,14 +14,15 @@ import (
 //go:embed template.txt
 var abitemp string
 
-type Accessor struct {
+// used to aggregate template data in template.txt
+type accessor struct {
 	Index int
 	Event Event
 	Input *Input
 }
 
-func col(idx int, e Event, i *Input) Accessor {
-	return Accessor{
+func coalesce(idx int, e Event, i *Input) accessor {
+	return accessor{
 		Index: idx,
 		Event: e,
 		Input: i,
@@ -54,8 +55,8 @@ func Gen(pkg string, js []byte) ([]byte, error) {
 	}
 
 	t := template.New("abi").Funcs(template.FuncMap{
-		"camel": camel,
-		"col":   col,
+		"camel":    camel,
+		"coalesce": coalesce,
 	})
 	t, err = t.Parse(abitemp)
 	if err != nil {
