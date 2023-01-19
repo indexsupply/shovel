@@ -68,6 +68,8 @@ type Type struct {
 	// explicitly.
 	Name string
 
+	// The abi package uses these fields
+	// for code gen.
 	TemplateType string
 	TemplateFunc string
 
