@@ -3,9 +3,8 @@
 package gentest
 
 import (
-	"math/big"
-
 	"github.com/indexsupply/x/abi"
+	"math/big"
 )
 
 var EEvent = abi.Event{
