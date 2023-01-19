@@ -278,7 +278,7 @@ var FooEvent = abi.Event{
 		abi.Input{
 
 			Name: "baz",
-			Type: "bytes",
+			Type: "string",
 		},
 	},
 }
@@ -296,6 +296,6 @@ func (x *Foo) Bar() uint64 {
 	return x.it.At(0).Uint64()
 }
 
-func (x *Foo) Baz() []byte {
-	return x.it.At(1).Bytes()
+func (x *Foo) Baz() string {
+	return x.it.At(1).String()
 }
