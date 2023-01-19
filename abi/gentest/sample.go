@@ -20,6 +20,10 @@ var EEvent = abi.Event{
 			Type: "address[]",
 		},
 		abi.Input{
+			Name: "address_list_4",
+			Type: "address[4]",
+		},
+		abi.Input{
 			Name: "bool",
 			Type: "bool",
 		},
@@ -119,12 +123,24 @@ func (x *E) AddressList() [][20]byte {
 	return res
 }
 
+func (x *E) AddressList4() [4][20]byte {
+	it := x.it.At(2)
+	if it.Len() != 4 {
+		panic("genabi: E.AddressList4 array size mismatch")
+	}
+	var res [4][20]byte
+	for i, v := range it.List() {
+		res[i] = v.Address()
+	}
+	return res
+}
+
 func (x *E) Bool() bool {
-	return x.it.At(2).Bool()
+	return x.it.At(3).Bool()
 }
 
 func (x *E) BoolList() []bool {
-	it := x.it.At(3)
+	it := x.it.At(4)
 	res := make([]bool, it.Len())
 	for i, v := range it.List() {
 		res[i] = v.Bool()
@@ -133,11 +149,11 @@ func (x *E) BoolList() []bool {
 }
 
 func (x *E) Bytes() []byte {
-	return x.it.At(4).Bytes()
+	return x.it.At(5).Bytes()
 }
 
 func (x *E) BytesList() [][]byte {
-	it := x.it.At(5)
+	it := x.it.At(6)
 	res := make([][]byte, it.Len())
 	for i, v := range it.List() {
 		res[i] = v.Bytes()
@@ -146,11 +162,11 @@ func (x *E) BytesList() [][]byte {
 }
 
 func (x *E) String() string {
-	return x.it.At(6).String()
+	return x.it.At(7).String()
 }
 
 func (x *E) StringList() []string {
-	it := x.it.At(7)
+	it := x.it.At(8)
 	res := make([]string, it.Len())
 	for i, v := range it.List() {
 		res[i] = v.String()
@@ -159,11 +175,11 @@ func (x *E) StringList() []string {
 }
 
 func (x *E) Uint8() uint8 {
-	return x.it.At(8).Uint8()
+	return x.it.At(9).Uint8()
 }
 
 func (x *E) Uint8List() []uint8 {
-	it := x.it.At(9)
+	it := x.it.At(10)
 	res := make([]uint8, it.Len())
 	for i, v := range it.List() {
 		res[i] = v.Uint8()
@@ -172,11 +188,11 @@ func (x *E) Uint8List() []uint8 {
 }
 
 func (x *E) Uint64() uint64 {
-	return x.it.At(10).Uint64()
+	return x.it.At(11).Uint64()
 }
 
 func (x *E) Uint64List() []uint64 {
-	it := x.it.At(11)
+	it := x.it.At(12)
 	res := make([]uint64, it.Len())
 	for i, v := range it.List() {
 		res[i] = v.Uint64()
@@ -185,11 +201,11 @@ func (x *E) Uint64List() []uint64 {
 }
 
 func (x *E) Uint256() *big.Int {
-	return x.it.At(12).BigInt()
+	return x.it.At(13).BigInt()
 }
 
 func (x *E) Uint256List() []*big.Int {
-	it := x.it.At(13)
+	it := x.it.At(14)
 	res := make([]*big.Int, it.Len())
 	for i, v := range it.List() {
 		res[i] = v.BigInt()
@@ -198,7 +214,7 @@ func (x *E) Uint256List() []*big.Int {
 }
 
 func (x *E) I2() *I2 {
-	i := x.it.At(14)
+	i := x.it.At(15)
 	return &I2{&i}
 }
 

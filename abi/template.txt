@@ -45,14 +45,28 @@ import (
 			{{ template "accessor" col $i $.Event $input -}}
 		{{ end }}
 	{{ else if eq .Input.ABIType.Kind 3 -}}
-		func (x *{{ camel .Event.Name }}){{ camel .Input.Name }}() []{{ .Input.ABIType.Elem.TemplateType }} {
-			it := x.it.At({{ .Index }})
-			res := make([]{{ .Input.ABIType.Elem.TemplateType }}, it.Len())
-			for i, v := range it.List() {
-				res[i] = v.{{ .Input.ABIType.Elem.TemplateFunc }}()
+		{{ if gt .Input.ABIType.Length 0 -}}
+			func (x *{{ camel .Event.Name }}){{ camel .Input.Name }}() [{{ .Input.ABIType.Length }}]{{ .Input.ABIType.Elem.TemplateType }} {
+				it := x.it.At({{ .Index }})
+				if it.Len() != {{ .Input.ABIType.Length }} {
+					panic("genabi: {{ camel .Event.Name }}.{{ camel .Input.Name }} array size mismatch")
+				}
+				var res [{{ .Input.ABIType.Length }}]{{ .Input.ABIType.Elem.TemplateType }}
+				for i, v := range it.List() {
+					res[i] = v.{{ .Input.ABIType.Elem.TemplateFunc }}()
+				}
+				return res
 			}
-			return res
-		}
+		{{ else }}
+			func (x *{{ camel .Event.Name }}){{ camel .Input.Name }}() []{{ .Input.ABIType.Elem.TemplateType }} {
+				it := x.it.At({{ .Index }})
+				res := make([]{{ .Input.ABIType.Elem.TemplateType }}, it.Len())
+				for i, v := range it.List() {
+					res[i] = v.{{ .Input.ABIType.Elem.TemplateFunc }}()
+				}
+				return res
+			}
+		{{ end }}
 	{{ else  -}}
 		func (x *{{ camel .Event.Name}}){{ camel .Input.Name }}() {{ .Input.ABIType.TemplateType }}{
 			return x.it.At({{ .Index }}).{{ .Input.ABIType.TemplateFunc }}()

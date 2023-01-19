@@ -6,6 +6,7 @@
         "inputs": [
             {"indexed": true,  "name": "address", "type": "address"},
             {"indexed": false, "name": "address_list", "type": "address[]"},
+            {"indexed": false, "name": "address_list_4", "type": "address[4]"},
             {"indexed": false, "name": "bool", "type": "bool"},
             {"indexed": false, "name": "bool_list", "type": "bool[]"},
             {"indexed": false, "name": "bytes", "type": "bytes"},
