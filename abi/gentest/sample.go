@@ -12,82 +12,103 @@ var EEvent = abi.Event{
 	Name: "e",
 	Inputs: []abi.Input{
 		abi.Input{
+			Indexed: true,
+
 			Name: "address",
 			Type: "address",
 		},
 		abi.Input{
+
 			Name: "address_list",
 			Type: "address[]",
 		},
 		abi.Input{
+
 			Name: "address_list_4",
 			Type: "address[4]",
 		},
 		abi.Input{
+
 			Name: "bool",
 			Type: "bool",
 		},
 		abi.Input{
+
 			Name: "bool_list",
 			Type: "bool[]",
 		},
 		abi.Input{
+
 			Name: "bytes",
 			Type: "bytes",
 		},
 		abi.Input{
+
 			Name: "bytes_list",
 			Type: "bytes[]",
 		},
 		abi.Input{
+
 			Name: "string",
 			Type: "string",
 		},
 		abi.Input{
+
 			Name: "string_list",
 			Type: "string[]",
 		},
 		abi.Input{
+
 			Name: "uint8",
 			Type: "uint8",
 		},
 		abi.Input{
+
 			Name: "uint8_list",
 			Type: "uint8[]",
 		},
 		abi.Input{
+
 			Name: "uint64",
 			Type: "uint64",
 		},
 		abi.Input{
+
 			Name: "uint64_list",
 			Type: "uint64[]",
 		},
 		abi.Input{
+
 			Name: "uint256",
 			Type: "uint256",
 		},
 		abi.Input{
+
 			Name: "uint256_list",
 			Type: "uint256[]",
 		},
 		abi.Input{
+
 			Name: "i2",
 			Type: "tuple",
 			Components: []abi.Input{
 				abi.Input{
+
 					Name: "f1",
 					Type: "address",
 				},
 				abi.Input{
+
 					Name: "f2",
 					Type: "address[]",
 				},
 				abi.Input{
+
 					Name: "f3",
 					Type: "tuple",
 					Components: []abi.Input{
 						abi.Input{
+
 							Name: "f4",
 							Type: "address",
 						},
@@ -243,4 +264,38 @@ func (x *E) F3() *F3 {
 
 func (x *E) F4() [20]byte {
 	return x.it.At(0).Address()
+}
+
+var FooEvent = abi.Event{
+	Name: "foo",
+	Inputs: []abi.Input{
+		abi.Input{
+			Indexed: true,
+
+			Name: "bar",
+			Type: "uint64",
+		},
+		abi.Input{
+
+			Name: "baz",
+			Type: "bytes",
+		},
+	},
+}
+
+type Foo struct {
+	it *abi.Item
+}
+
+func MatchFoo(l abi.Log) (*Foo, bool) {
+	i, ok := abi.Match(l, FooEvent)
+	return &Foo{&i}, ok
+}
+
+func (x *Foo) Bar() uint64 {
+	return x.it.At(0).Uint64()
+}
+
+func (x *Foo) Baz() []byte {
+	return x.it.At(1).Bytes()
 }

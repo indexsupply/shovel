@@ -55,7 +55,7 @@ func TestABIType(t *testing.T) {
 			input: Input{
 				Name: "a",
 				Type: "tuple",
-				Inputs: []Input{
+				Components: []Input{
 					{
 						Name: "b",
 						Type: "uint8",
@@ -68,7 +68,7 @@ func TestABIType(t *testing.T) {
 			input: Input{
 				Name: "a",
 				Type: "tuple[][]",
-				Inputs: []Input{
+				Components: []Input{
 					{
 						Name: "b",
 						Type: "uint8",
@@ -76,7 +76,7 @@ func TestABIType(t *testing.T) {
 					{
 						Name: "c",
 						Type: "tuple",
-						Inputs: []Input{
+						Components: []Input{
 							{
 								Name: "d",
 								Type: "uint8",
@@ -210,6 +210,11 @@ func TestDecode(t *testing.T) {
 			desc: "tuple static",
 			want: Tuple(Uint64(0)),
 			t:    abit.Tuple(abit.Uint64),
+		},
+		{
+			desc: "tuple dynamic",
+			want: Tuple(String("hello")),
+			t:    abit.Tuple(abit.String),
 		},
 		{
 			desc: "tuple static and dynamic",

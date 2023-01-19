@@ -12,6 +12,9 @@ import (
 
 {{- define "event-input" -}}
 	abi.Input{
+		{{ if eq .Indexed true -}}
+		Indexed: true,
+		{{ end }}
 		Name: "{{.Name}}",
 		Type: "{{.Type}}",
 		{{ if eq .Type "tuple" -}}

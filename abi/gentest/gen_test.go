@@ -1,6 +1,7 @@
 package gentest
 
 import (
+	"fmt"
 	"math/big"
 	"reflect"
 	"testing"
@@ -54,5 +55,23 @@ func TestZero(t *testing.T) {
 	}
 	if !reflect.DeepEqual(e.Uint256List(), []*big.Int{}) {
 		t.Error("expected empty slice of big ints")
+	}
+}
+
+func TestMatch(t *testing.T) {
+	l := abi.Log{
+		Topics: [4][32]byte{
+			FooEvent.SignatureHash(),
+			*(*[32]byte)(abi.Encode(abi.Uint64(42))),
+		},
+		Data: abi.Encode(abi.Tuple(abi.String("bar"))),
+	}
+	fmt.Printf("%x\n", abi.Encode(abi.Tuple(abi.String("bar"))))
+	f, ok := MatchFoo(l)
+	if !ok {
+		t.Fatal("expected testmatch to match")
+	}
+	if f.Bar() != 42 {
+		t.Errorf("got: %d want: %d", f.Bar(), 42)
 	}
 }

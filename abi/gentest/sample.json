@@ -38,6 +38,23 @@
             }
         ]
     },
+	{
+		"name": "foo",
+		"type": "event",
+		"anonymous": false,
+		"inputs": [
+			{
+				"indexed": true,
+				"name": "bar",
+				"type": "uint64"
+			},
+			{
+				"indexed": false,
+				"name": "baz",
+				"type": "bytes"
+			}
+		]
+	},
     {
         "name": "f1",
         "type": "function",
