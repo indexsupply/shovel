@@ -88,6 +88,11 @@ import (
 		it *abi.Item
 	}
 
+	func Match{{ camel .Name }}(l abi.Log) (*{{ camel .Name }}, bool) {
+		i, ok := abi.Match(l, {{ camel .Name }}Event)
+		return &{{ camel .Name }}{&i}, ok
+	}
+
 	{{ template "tuples" .Inputs -}}
 
 	{{ $event := . }}

@@ -102,6 +102,11 @@ type E struct {
 	it *abi.Item
 }
 
+func MatchE(l abi.Log) (*E, bool) {
+	i, ok := abi.Match(l, EEvent)
+	return &E{&i}, ok
+}
+
 type I2 struct {
 	it *abi.Item
 }
