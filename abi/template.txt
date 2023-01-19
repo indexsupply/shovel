@@ -14,7 +14,7 @@ import (
 	abi.Input{
 		{{ if eq .Indexed true -}}
 		Indexed: true,
-		{{ end }}
+		{{ end -}}
 		Name: "{{.Name}}",
 		Type: "{{.Type}}",
 		{{ if eq .Type "tuple" -}}

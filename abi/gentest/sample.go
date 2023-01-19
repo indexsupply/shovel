@@ -13,102 +13,82 @@ var EEvent = abi.Event{
 	Inputs: []abi.Input{
 		abi.Input{
 			Indexed: true,
-
-			Name: "address",
-			Type: "address",
+			Name:    "address",
+			Type:    "address",
 		},
 		abi.Input{
-
 			Name: "address_list",
 			Type: "address[]",
 		},
 		abi.Input{
-
 			Name: "address_list_4",
 			Type: "address[4]",
 		},
 		abi.Input{
-
 			Name: "bool",
 			Type: "bool",
 		},
 		abi.Input{
-
 			Name: "bool_list",
 			Type: "bool[]",
 		},
 		abi.Input{
-
 			Name: "bytes",
 			Type: "bytes",
 		},
 		abi.Input{
-
 			Name: "bytes_list",
 			Type: "bytes[]",
 		},
 		abi.Input{
-
 			Name: "string",
 			Type: "string",
 		},
 		abi.Input{
-
 			Name: "string_list",
 			Type: "string[]",
 		},
 		abi.Input{
-
 			Name: "uint8",
 			Type: "uint8",
 		},
 		abi.Input{
-
 			Name: "uint8_list",
 			Type: "uint8[]",
 		},
 		abi.Input{
-
 			Name: "uint64",
 			Type: "uint64",
 		},
 		abi.Input{
-
 			Name: "uint64_list",
 			Type: "uint64[]",
 		},
 		abi.Input{
-
 			Name: "uint256",
 			Type: "uint256",
 		},
 		abi.Input{
-
 			Name: "uint256_list",
 			Type: "uint256[]",
 		},
 		abi.Input{
-
 			Name: "i2",
 			Type: "tuple",
 			Components: []abi.Input{
 				abi.Input{
-
 					Name: "f1",
 					Type: "address",
 				},
 				abi.Input{
-
 					Name: "f2",
 					Type: "address[]",
 				},
 				abi.Input{
-
 					Name: "f3",
 					Type: "tuple",
 					Components: []abi.Input{
 						abi.Input{
-
 							Name: "f4",
 							Type: "address",
 						},
@@ -271,12 +251,10 @@ var FooEvent = abi.Event{
 	Inputs: []abi.Input{
 		abi.Input{
 			Indexed: true,
-
-			Name: "bar",
-			Type: "uint64",
+			Name:    "bar",
+			Type:    "uint64",
 		},
 		abi.Input{
-
 			Name: "baz",
 			Type: "string",
 		},
