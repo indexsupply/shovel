@@ -55,6 +55,21 @@
 			}
 		]
 	},
+	{
+		"name": "nfoo",
+		"type": "event",
+		"anonymous": false,
+		"inputs": [
+			{
+				"indexed": false,
+				"name": "bar",
+				"type": "tuple[]",
+				"components": [
+					{"name": "baz", "type": "uint8"}
+				]
+			}
+		]
+	},
     {
         "name": "f1",
         "type": "function",

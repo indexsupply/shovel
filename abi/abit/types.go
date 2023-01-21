@@ -131,8 +131,10 @@ var (
 		TemplateType: "[]byte",
 	}
 	Bytes32 = Type{
-		Name: "bytes32",
-		Kind: S,
+		Name:         "bytes32",
+		Kind:         S,
+		TemplateFunc: "Bytes32",
+		TemplateType: "[32]byte",
 	}
 	String = Type{
 		Name:         "string",

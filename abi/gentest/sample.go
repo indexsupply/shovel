@@ -276,3 +276,46 @@ func (x *Foo) Bar() uint64 {
 func (x *Foo) Baz() string {
 	return x.it.At(1).String()
 }
+
+var NfooEvent = abi.Event{
+	Name: "nfoo",
+	Inputs: []abi.Input{
+		abi.Input{
+			Name: "bar",
+			Type: "tuple[]",
+			Components: []abi.Input{
+				abi.Input{
+					Name: "baz",
+					Type: "uint8",
+				},
+			},
+		},
+	},
+}
+
+type Nfoo struct {
+	it *abi.Item
+}
+
+func MatchNfoo(l abi.Log) (*Nfoo, bool) {
+	i, ok := abi.Match(l, NfooEvent)
+	return &Nfoo{&i}, ok
+}
+
+type Bar struct {
+	it *abi.Item
+}
+
+func (x *Nfoo) Bar() []*Bar {
+	it := x.it.At(0)
+	res := make([]*Bar, it.Len())
+	for i, v := range it.List() {
+		si := v.At(i)
+		res[i] = &Bar{&si}
+	}
+	return res
+}
+
+func (x *Nfoo) Baz() uint8 {
+	return x.it.At(0).Uint8()
+}
