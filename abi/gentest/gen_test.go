@@ -75,3 +75,20 @@ func TestMatch(t *testing.T) {
 		t.Errorf("got: %s want: %s", f.Baz(), "baz")
 	}
 }
+
+func TestNestedArray(t *testing.T) {
+	b, ok := MatchBar(abi.Log{
+		Topics: [4][32]byte{
+			BarEvent.SignatureHash(),
+			*(*[32]byte)(abi.Encode(abi.Uint64(42))),
+		},
+		Data: abi.Encode(abi.Tuple(abi.List(abi.List(abi.List(abi.String("qux")))))),
+	})
+	if !ok {
+		t.Fatal("expected nested array to match")
+	}
+	want := [][][]string{[][]string{[]string{"qux"}}}
+	if !reflect.DeepEqual(b.Baz(), want) {
+		t.Errorf("got: %#v want: %# v", b.Baz(), want)
+	}
+}

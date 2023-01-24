@@ -120,24 +120,25 @@ func (x *E) Address() [20]byte {
 }
 
 func (x *E) AddressList() [][20]byte {
-	it := x.it.At(1)
-	res := make([][20]byte, it.Len())
-	for i, v := range it.List() {
-		res[i] = v.Address()
+	it0 := x.it.At(1)
+	res0 := make([][20]byte, it0.Len())
+	for i0 := 0; i0 < it0.Len(); i0++ {
+		res0[i0] = it0.At(i0).Address()
 	}
-	return res
+	return res0
 }
 
 func (x *E) AddressList4() [4][20]byte {
-	it := x.it.At(2)
-	if it.Len() != 4 {
+	it0 := x.it.At(2)
+
+	if it0.Len() != 4 {
 		panic("genabi: E.AddressList4 array size mismatch")
 	}
-	var res [4][20]byte
-	for i, v := range it.List() {
-		res[i] = v.Address()
+	var res0 [4][20]byte
+	for i0 := 0; i0 < it0.Len(); i0++ {
+		res0[i0] = it0.At(i0).Address()
 	}
-	return res
+	return res0
 }
 
 func (x *E) Bool() bool {
@@ -145,12 +146,12 @@ func (x *E) Bool() bool {
 }
 
 func (x *E) BoolList() []bool {
-	it := x.it.At(4)
-	res := make([]bool, it.Len())
-	for i, v := range it.List() {
-		res[i] = v.Bool()
+	it0 := x.it.At(4)
+	res0 := make([]bool, it0.Len())
+	for i0 := 0; i0 < it0.Len(); i0++ {
+		res0[i0] = it0.At(i0).Bool()
 	}
-	return res
+	return res0
 }
 
 func (x *E) Bytes() []byte {
@@ -158,12 +159,12 @@ func (x *E) Bytes() []byte {
 }
 
 func (x *E) BytesList() [][]byte {
-	it := x.it.At(6)
-	res := make([][]byte, it.Len())
-	for i, v := range it.List() {
-		res[i] = v.Bytes()
+	it0 := x.it.At(6)
+	res0 := make([][]byte, it0.Len())
+	for i0 := 0; i0 < it0.Len(); i0++ {
+		res0[i0] = it0.At(i0).Bytes()
 	}
-	return res
+	return res0
 }
 
 func (x *E) String() string {
@@ -171,12 +172,12 @@ func (x *E) String() string {
 }
 
 func (x *E) StringList() []string {
-	it := x.it.At(8)
-	res := make([]string, it.Len())
-	for i, v := range it.List() {
-		res[i] = v.String()
+	it0 := x.it.At(8)
+	res0 := make([]string, it0.Len())
+	for i0 := 0; i0 < it0.Len(); i0++ {
+		res0[i0] = it0.At(i0).String()
 	}
-	return res
+	return res0
 }
 
 func (x *E) Uint8() uint8 {
@@ -184,12 +185,12 @@ func (x *E) Uint8() uint8 {
 }
 
 func (x *E) Uint8List() []uint8 {
-	it := x.it.At(10)
-	res := make([]uint8, it.Len())
-	for i, v := range it.List() {
-		res[i] = v.Uint8()
+	it0 := x.it.At(10)
+	res0 := make([]uint8, it0.Len())
+	for i0 := 0; i0 < it0.Len(); i0++ {
+		res0[i0] = it0.At(i0).Uint8()
 	}
-	return res
+	return res0
 }
 
 func (x *E) Uint64() uint64 {
@@ -197,12 +198,12 @@ func (x *E) Uint64() uint64 {
 }
 
 func (x *E) Uint64List() []uint64 {
-	it := x.it.At(12)
-	res := make([]uint64, it.Len())
-	for i, v := range it.List() {
-		res[i] = v.Uint64()
+	it0 := x.it.At(12)
+	res0 := make([]uint64, it0.Len())
+	for i0 := 0; i0 < it0.Len(); i0++ {
+		res0[i0] = it0.At(i0).Uint64()
 	}
-	return res
+	return res0
 }
 
 func (x *E) Uint256() *big.Int {
@@ -210,12 +211,12 @@ func (x *E) Uint256() *big.Int {
 }
 
 func (x *E) Uint256List() []*big.Int {
-	it := x.it.At(14)
-	res := make([]*big.Int, it.Len())
-	for i, v := range it.List() {
-		res[i] = v.BigInt()
+	it0 := x.it.At(14)
+	res0 := make([]*big.Int, it0.Len())
+	for i0 := 0; i0 < it0.Len(); i0++ {
+		res0[i0] = it0.At(i0).BigInt()
 	}
-	return res
+	return res0
 }
 
 func (x *E) I2() *I2 {
@@ -228,12 +229,12 @@ func (x *E) F1() [20]byte {
 }
 
 func (x *E) F2() [][20]byte {
-	it := x.it.At(1)
-	res := make([][20]byte, it.Len())
-	for i, v := range it.List() {
-		res[i] = v.Address()
+	it0 := x.it.At(1)
+	res0 := make([][20]byte, it0.Len())
+	for i0 := 0; i0 < it0.Len(); i0++ {
+		res0[i0] = it0.At(i0).Address()
 	}
-	return res
+	return res0
 }
 
 func (x *E) F3() *F3 {
@@ -277,45 +278,49 @@ func (x *Foo) Baz() string {
 	return x.it.At(1).String()
 }
 
-var NfooEvent = abi.Event{
-	Name: "nfoo",
+var BarEvent = abi.Event{
+	Name: "bar",
 	Inputs: []abi.Input{
 		abi.Input{
-			Name: "bar",
-			Type: "tuple[]",
-			Components: []abi.Input{
-				abi.Input{
-					Name: "baz",
-					Type: "uint8",
-				},
-			},
+			Indexed: true,
+			Name:    "bar",
+			Type:    "uint64",
+		},
+		abi.Input{
+			Name: "baz",
+			Type: "string[][][]",
 		},
 	},
-}
-
-type Nfoo struct {
-	it *abi.Item
-}
-
-func MatchNfoo(l abi.Log) (*Nfoo, bool) {
-	i, ok := abi.Match(l, NfooEvent)
-	return &Nfoo{&i}, ok
 }
 
 type Bar struct {
 	it *abi.Item
 }
 
-func (x *Nfoo) Bar() []*Bar {
-	it := x.it.At(0)
-	res := make([]*Bar, it.Len())
-	for i, v := range it.List() {
-		si := v.At(i)
-		res[i] = &Bar{&si}
-	}
-	return res
+func MatchBar(l abi.Log) (*Bar, bool) {
+	i, ok := abi.Match(l, BarEvent)
+	return &Bar{&i}, ok
 }
 
-func (x *Nfoo) Baz() uint8 {
-	return x.it.At(0).Uint8()
+func (x *Bar) Bar() uint64 {
+	return x.it.At(0).Uint64()
+}
+
+func (x *Bar) Baz() [][][]string {
+	it0 := x.it.At(1)
+	res0 := make([][][]string, it0.Len())
+	for i0 := 0; i0 < it0.Len(); i0++ {
+		it1 := it0.At(i0)
+		res1 := make([][]string, it1.Len())
+		for i1 := 0; i1 < it1.Len(); i1++ {
+			it2 := it1.At(i1)
+			res2 := make([]string, it2.Len())
+			for i2 := 0; i2 < it2.Len(); i2++ {
+				res2[i2] = it2.At(i2).String()
+			}
+			res1[i1] = res2
+		}
+		res0[i0] = res1
+	}
+	return res0
 }

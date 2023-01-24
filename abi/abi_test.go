@@ -54,6 +54,13 @@ func TestABIType(t *testing.T) {
 		{
 			input: Input{
 				Name: "a",
+				Type: "uint8[][]",
+			},
+			want: abit.List(abit.List(abit.Uint8)),
+		},
+		{
+			input: Input{
+				Name: "a",
 				Type: "tuple",
 				Components: []Input{
 					{

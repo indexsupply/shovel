@@ -56,17 +56,19 @@
 		]
 	},
 	{
-		"name": "nfoo",
+		"name": "bar",
 		"type": "event",
 		"anonymous": false,
 		"inputs": [
 			{
-				"indexed": false,
+				"indexed": true,
 				"name": "bar",
-				"type": "tuple[]",
-				"components": [
-					{"name": "baz", "type": "uint8"}
-				]
+				"type": "uint64"
+			},
+			{
+				"indexed": false,
+				"name": "baz",
+				"type": "string[][][]"
 			}
 		]
 	},

@@ -4,10 +4,12 @@ import (
 	"bytes"
 	_ "embed"
 	"encoding/json"
+	"fmt"
 	"go/format"
 	"text/template"
 	"unicode"
 
+	"github.com/indexsupply/x/abi/abit"
 	"github.com/indexsupply/x/isxerrors"
 )
 
@@ -46,18 +48,58 @@ func templateType(inputs []Input) map[string]struct{} {
 	return types
 }
 
-// used to aggregate template data in template.txt
-type accessor struct {
+type nestedGetter struct {
+	g     getter
+	Type  abit.Type
 	Index int
-	Event Event
-	Input *Input
 }
 
-func coalesce(idx int, e Event, i *Input) accessor {
-	return accessor{
-		Index: idx,
-		Event: e,
-		Input: i,
+func newNestedGetter(g getter) nestedGetter {
+	return nestedGetter{
+		g:     g,
+		Type:  *g.Input.ABIType().Elem,
+		Index: 1,
+	}
+}
+
+func (ng nestedGetter) Next() *nestedGetter {
+	if ng.Type.Elem == nil {
+		return nil
+	}
+	if ng.Type.Elem.Kind != abit.L {
+		return nil
+	}
+	return &nestedGetter{
+		g:     ng.g,
+		Type:  *ng.Type.Elem,
+		Index: ng.Index + 1,
+	}
+}
+
+// used to aggregate template data in template.txt
+type getter struct {
+	Event Event
+	Input Input
+	Index int
+}
+
+func (g getter) Struct() string {
+	return camel(g.Event.Name)
+}
+
+func (g getter) Method() string {
+	return camel(g.Input.Name)
+}
+
+func (g getter) Type() abit.Type {
+	return g.Input.ABIType()
+}
+
+func newGetter(i int, event Event, input Input) getter {
+	return getter{
+		Index: i,
+		Event: event,
+		Input: input,
 	}
 }
 
@@ -87,8 +129,12 @@ func Gen(pkg string, js []byte) ([]byte, error) {
 	}
 
 	t := template.New("abi").Funcs(template.FuncMap{
-		"camel":    camel,
-		"coalesce": coalesce,
+		"camel":   camel,
+		"getter":  newGetter,
+		"ngetter": newNestedGetter,
+		"sub": func(x, y int) int {
+			return x - y
+		},
 	})
 	t, err = t.Parse(abitemp)
 	if err != nil {
@@ -116,6 +162,7 @@ func Gen(pkg string, js []byte) ([]byte, error) {
 	}
 	code, err := format.Source(b.Bytes())
 	if err != nil {
+		fmt.Printf("%s\n", b.Bytes())
 		return nil, isxerrors.Errorf("formatting source: %w", err)
 	}
 	return code, nil

@@ -12,97 +12,101 @@ import (
 )
 {{ end }}
 
-{{- define "event-input" -}}
+{{ define "get-struct" -}}
+func (x *{{ .Struct }}){{ .Method }}() *{{ .Method }} {
+	i := x.it.At({{ .Index }})
+	return &{{ .Method }}{&i}
+}
+{{ range $i, $c := .Input.Components -}}
+	{{ template "getter" getter $i $.Event $c -}}
+{{ end }}
+{{ end -}}
+
+{{ define "get-list-nested" -}}
+it{{ .Index }} := it{{ sub .Index 1 }}.At(i{{ sub .Index 1 }})
+res{{ .Index }} := make({{ .Type.TemplateSig }}, it{{ .Index }}.Len())
+for i{{ .Index }} := 0; i{{ .Index }} < it{{ .Index }}.Len(); i{{ .Index }}++ {
+	{{ with .Next -}}
+        {{ template "get-list-nested" . }}
+	{{ else -}}
+        res{{ .Index }}[i{{ .Index }}] = it{{ .Index }}.At(i{{ .Index }}).{{ .Type.Elem.TemplateFunc }}()
+    {{ end -}}
+}
+res{{ sub .Index 1}}[i{{ sub .Index 1}}] = res{{ .Index }}
+{{- end -}}
+
+{{ define "get-list" -}}
+func (x *{{ .Struct}}){{ .Method }}() {{ .Type.TemplateSig }} {
+	it0 := x.it.At({{ .Index }})
+	{{ if eq .Type.Length 0 -}}
+		res0 := make({{ .Type.TemplateSig }}, it0.Len())
+	{{ else }}
+		if it0.Len() != {{ .Type.Length }} {
+			panic("genabi: {{ .Struct }}.{{ .Method }} array size mismatch")
+		}
+		var res0 {{ .Type.TemplateSig }}
+	{{ end -}}
+	for i0 := 0; i0 < it0.Len(); i0++ {
+		{{ if gt .Type.Dimension 1 -}}
+			{{ template "get-list-nested" ngetter . }}
+        {{ else -}}
+            res0[i0] = it0.At(i0).{{ .Type.Elem.TemplateFunc }}()
+        {{ end -}}
+    }
+    return res0
+}
+{{ end -}}
+
+{{ define "get" -}}
+func (x *{{ .Struct}}){{ .Method }}() {{ .Type.TemplateType }}{
+	return x.it.At({{ .Index }}).{{ .Type.TemplateFunc }}()
+}
+{{ end -}}
+
+{{ define "getter" }}
+	{{ if eq .Type.Kind 2 -}}
+		{{ template "get-struct" . -}}
+	{{ else if eq .Type.Kind 3 -}}
+		{{ template "get-list" . -}}
+	{{ else  -}}
+		{{ template "get" . -}}
+	{{ end -}}
+{{ end }}
+
+{{- define "input" -}}
 	abi.Input{
 		{{ if eq .Indexed true -}}
 		Indexed: true,
 		{{ end -}}
 		Name: "{{.Name}}",
 		Type: "{{.Type}}",
-		{{ if or (eq .Type "tuple") (eq .Type "tuple[]") -}}
+		{{ if eq .Type "tuple" -}}
 		Components: []abi.Input{
 		{{ range .Components -}}
-		{{ template "event-input" . }}
+		{{ template "input" . }}
 		{{ end }}
 		},
 		{{ end }}
 	},
 {{- end -}}
 
-{{ define "tuples" -}}
+{{ define "structs" -}}
 	{{ range $inp := . -}}
-		{{ if or (eq .Type "tuple") (eq .Type "tuple[]") }}
+		{{ if eq .Type "tuple" }}
 			type {{camel .Name }} struct {
 				it *abi.Item
 			}
-			{{ template "tuples" $inp.Components -}}
+			{{ template "structs" $inp.Components -}}
 		{{ end -}}
 	{{ end -}}
 {{ end -}}
-
-{{ define "accessor" }}
-	{{ if eq .Input.ABIType.Kind 2 -}}
-		func (x *{{ camel .Event.Name }}){{ camel .Input.Name }}() *{{ camel .Input.Name }} {
-			i := x.it.At({{ .Index }})
-			return &{{ camel .Input.Name }}{&i}
-		}
-		{{ range $i, $input := .Input.Components -}}
-			{{ template "accessor" coalesce $i $.Event $input -}}
-		{{ end }}
-	{{ else if eq .Input.ABIType.Kind 3 -}}
-		{{ if gt .Input.ABIType.Length 0 -}}
-			{{ if eq .Input.ABIType.Elem.Kind 2 -}}
-			{{ else -}}
-				func (x *{{ camel .Event.Name }}){{ camel .Input.Name }}() [{{ .Input.ABIType.Length }}]{{ .Input.ABIType.Elem.TemplateType }} {
-					it := x.it.At({{ .Index }})
-					if it.Len() != {{ .Input.ABIType.Length }} {
-						panic("genabi: {{ camel .Event.Name }}.{{ camel .Input.Name }} array size mismatch")
-					}
-					var res [{{ .Input.ABIType.Length }}]{{ .Input.ABIType.Elem.TemplateType }}
-					for i, v := range it.List() {
-						res[i] = v.{{ .Input.ABIType.Elem.TemplateFunc }}()
-					}
-					return res
-				}
-			{{ end -}}
-		{{ else }}
-			{{ if eq .Input.ABIType.Elem.Kind 2 -}}
-				func (x *{{ camel .Event.Name }}){{ camel .Input.Name }}() []*{{ camel .Input.Name }} {
-					it := x.it.At({{ .Index }})
-					res := make([]*{{ camel .Input.Name }}, it.Len())
-					for i, v := range it.List() {
-						si := v.At(i)
-						res[i] = &{{ camel .Input.Name }}{&si}
-					}
-					return res
-				}
-				{{ range $i, $input := .Input.Components -}}
-					{{ template "accessor" coalesce $i $.Event $input -}}
-				{{ end }}
-			{{ else -}}
-				func (x *{{ camel .Event.Name }}){{ camel .Input.Name }}() []{{ .Input.ABIType.Elem.TemplateType }} {
-					it := x.it.At({{ .Index }})
-					res := make([]{{ .Input.ABIType.Elem.TemplateType }}, it.Len())
-					for i, v := range it.List() {
-						res[i] = v.{{ .Input.ABIType.Elem.TemplateFunc }}()
-					}
-					return res
-				}
-			{{ end -}}
-		{{ end }}
-	{{ else  -}}
-		func (x *{{ camel .Event.Name}}){{ camel .Input.Name }}() {{ .Input.ABIType.TemplateType }}{
-			return x.it.At({{ .Index }}).{{ .Input.ABIType.TemplateFunc }}()
-		}
-	{{ end -}}
-{{ end }}
 
 {{- define "event" -}}
 	var {{ camel .Name }}Event = abi.Event{
 		Name: "{{ .Name }}",
 		Inputs: []abi.Input{
 			{{ range .Inputs -}}
-			{{ template "event-input" . }}
+			{{ template "input" . }}
 			{{ end }}
 		},
 	}
@@ -116,10 +120,10 @@ import (
 		return &{{ camel .Name }}{&i}, ok
 	}
 
-	{{ template "tuples" .Inputs -}}
+	{{ template "structs" .Inputs -}}
 
 	{{ $event := . }}
 	{{ range $i, $input := .Inputs -}}
-		{{ template "accessor" coalesce $i $event $input -}}
+		{{ template "getter" getter $i $event $input -}}
 	{{ end -}}
 {{ end -}}

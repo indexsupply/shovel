@@ -111,6 +111,30 @@ func (t Type) Signature() string {
 	}
 }
 
+func (t Type) TemplateSig() string {
+	switch t.Kind {
+	case L:
+		var s strings.Builder
+		s.WriteString("[")
+		if t.Length > 0 {
+			s.WriteString(strconv.Itoa(int(t.Length)))
+		}
+		s.WriteString("]")
+		s.WriteString(t.Elem.TemplateSig())
+		return s.String()
+	default:
+		return t.TemplateType
+	}
+}
+
+func (t Type) Dimension() int {
+	var d int
+	for e := &t; e.Elem != nil; e = e.Elem {
+		d++
+	}
+	return d
+}
+
 var (
 	Address = Type{
 		Name:         "address",
