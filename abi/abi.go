@@ -220,10 +220,6 @@ func (it Item) Len() int {
 	return len(it.d)
 }
 
-func (it Item) List() []Item {
-	return it.l
-}
-
 func Tuple(items ...Item) Item {
 	var types []abit.Type
 	for i := range items {
