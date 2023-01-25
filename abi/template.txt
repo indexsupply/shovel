@@ -27,7 +27,7 @@ it{{ .Index }} := it{{ sub .Index 1 }}.At(i{{ sub .Index 1 }})
 res{{ .Index }} := make({{ .Type.TemplateSig }}, it{{ .Index }}.Len())
 for i{{ .Index }} := 0; i{{ .Index }} < it{{ .Index }}.Len(); i{{ .Index }}++ {
 	{{ with .Next -}}
-        {{ template "get-list-nested" . }}
+		{{ template "get-list-nested" . }}
 	{{ else -}}
         res{{ .Index }}[i{{ .Index }}] = it{{ .Index }}.At(i{{ .Index }}).{{ .Type.Elem.TemplateFunc }}()
     {{ end -}}
