@@ -111,20 +111,12 @@ func (t Type) Signature() string {
 	}
 }
 
-func (t Type) TemplateSig() string {
-	switch t.Kind {
-	case L:
-		var s strings.Builder
-		s.WriteString("[")
-		if t.Length > 0 {
-			s.WriteString(strconv.Itoa(int(t.Length)))
-		}
-		s.WriteString("]")
-		s.WriteString(t.Elem.TemplateSig())
-		return s.String()
-	default:
-		return t.TemplateType
+func (t Type) Elems() []Type {
+	var res []Type
+	for e := &t; e != nil; e = e.Elem {
+		res = append(res, *e)
 	}
+	return res
 }
 
 func (t Type) Dimension() int {
@@ -133,6 +125,14 @@ func (t Type) Dimension() int {
 		d++
 	}
 	return d
+}
+
+func (t Type) Root() Type {
+	elems := t.Elems()
+	if len(elems) == 0 {
+		return Type{}
+	}
+	return elems[len(elems)-1]
 }
 
 var (

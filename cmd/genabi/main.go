@@ -34,11 +34,10 @@ func main() {
 	js, err := os.ReadFile(*input)
 	check(err)
 	code, err := abi.Gen(*pkgName, js)
-	check(err)
-
 	if *output != "" {
 		check(os.WriteFile(*output, code, 0644))
+		fmt.Printf("%s\n", err)
 		return
 	}
-	fmt.Printf("%s\n", code)
+	fmt.Printf("%s\n%s\n", code, err)
 }

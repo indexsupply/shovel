@@ -35,36 +35,6 @@ func TestDimension(t *testing.T) {
 	}
 }
 
-func TestTemplateSig(t *testing.T) {
-	cases := []struct {
-		t    Type
-		want string
-	}{
-		{
-			t:    Uint8,
-			want: "uint8",
-		},
-		{
-			t:    List(Uint8),
-			want: "[]uint8",
-		},
-		{
-			t:    List(List(Uint8)),
-			want: "[][]uint8",
-		},
-		{
-			t:    List(List(List(Uint8))),
-			want: "[][][]uint8",
-		},
-	}
-	for _, tc := range cases {
-		got := tc.t.TemplateSig()
-		if got != tc.want {
-			t.Errorf("got: %s want: %s", got, tc.want)
-		}
-	}
-}
-
 func TestResolve(t *testing.T) {
 	cases := []struct {
 		desc string

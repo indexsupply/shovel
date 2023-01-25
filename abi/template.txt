@@ -13,54 +13,67 @@ import (
 {{ end }}
 
 {{ define "get-struct" -}}
-func (x *{{ .Struct }}){{ .Method }}() *{{ .Method }} {
-	i := x.it.At({{ .Index }})
-	return &{{ .Method }}{&i}
-}
-{{ range $i, $c := .Input.Components -}}
-	{{ template "getter" getter $i $.Event $c -}}
-{{ end }}
+	func (x *{{ .Receiver }}){{ .ReturnType }}() *{{ .ReturnType }} {
+		i := x.it.At({{ .Index }})
+		return &{{ .ReturnType }}{&i}
+	}
+	{{ range $i, $c := .Input.Components -}}
+		{{ template "getter" getter $i $.ReturnType $c -}}
+	{{ end }}
 {{ end -}}
 
 {{ define "get-list-nested" -}}
-it{{ .Index }} := it{{ sub .Index 1 }}.At(i{{ sub .Index 1 }})
-res{{ .Index }} := make({{ .Type.TemplateSig }}, it{{ .Index }}.Len())
-for i{{ .Index }} := 0; i{{ .Index }} < it{{ .Index }}.Len(); i{{ .Index }}++ {
-	{{ with .Next -}}
-		{{ template "get-list-nested" . }}
-	{{ else -}}
-        res{{ .Index }}[i{{ .Index }}] = it{{ .Index }}.At(i{{ .Index }}).{{ .Type.Elem.TemplateFunc }}()
-    {{ end -}}
-}
-res{{ sub .Index 1}}[i{{ sub .Index 1}}] = res{{ .Index }}
+	it{{ .Index }} := it{{ sub .Index 1 }}.At(i{{ sub .Index 1 }})
+	res{{ .Index }} := make({{ .ReturnType }}, it{{ .Index }}.Len())
+	for i{{ .Index }} := 0; i{{ .Index }} < it{{ .Index }}.Len(); i{{ .Index }}++ {
+		{{ with .Next -}}
+			{{ template "get-list-nested" . }}
+		{{ else -}}
+			{{ if eq .Type.Elem.Kind  2 -}}
+				it := it{{ .Index }}.At(i{{ .Index }})
+				res{{ .Index }}[i{{ .Index }}] = {{ .New }}{&it}
+			{{ else -}}
+				res{{ .Index }}[i{{ .Index }}] = it{{ .Index }}.At(i{{ .Index }}).{{ .New }}()
+			{{ end -}}
+		{{ end -}}
+	}
+	res{{ sub .Index 1}}[i{{ sub .Index 1}}] = res{{ .Index }}
 {{- end -}}
 
 {{ define "get-list" -}}
-func (x *{{ .Struct}}){{ .Method }}() {{ .Type.TemplateSig }} {
-	it0 := x.it.At({{ .Index }})
-	{{ if eq .Type.Length 0 -}}
-		res0 := make({{ .Type.TemplateSig }}, it0.Len())
-	{{ else }}
-		if it0.Len() != {{ .Type.Length }} {
-			panic("genabi: {{ .Struct }}.{{ .Method }} array size mismatch")
+	func (x *{{ .Receiver }}){{ .Method }}() {{ .ReturnType }} {
+		it0 := x.it.At({{ .Index }})
+		{{ if eq .Type.Length 0 -}}
+			res0 := make({{ .ReturnType }}, it0.Len())
+		{{ else }}
+			if it0.Len() != {{ .Type.Length }} {
+				panic("genabi: {{ .Receiver }}.{{ .Method }} array size mismatch")
+			}
+			var res0 {{ .ReturnType }}
+		{{ end -}}
+		for i0 := 0; i0 < it0.Len(); i0++ {
+			{{ if gt .Type.Dimension 1 -}}
+				{{ template "get-list-nested" nctx . }}
+			{{ else -}}
+				{{ if eq .Type.Elem.Kind  2 -}}
+					it := it0.At(i0)
+					res0[i0] = {{ .New }}{&it}
+				{{ else -}}
+					res0[i0] = it0.At(i0).{{ .New }}()
+				{{ end -}}
+			{{ end -}}
 		}
-		var res0 {{ .Type.TemplateSig }}
-	{{ end -}}
-	for i0 := 0; i0 < it0.Len(); i0++ {
-		{{ if gt .Type.Dimension 1 -}}
-			{{ template "get-list-nested" ngetter . }}
-        {{ else -}}
-            res0[i0] = it0.At(i0).{{ .Type.Elem.TemplateFunc }}()
-        {{ end -}}
-    }
-    return res0
-}
+		return res0
+	}
+	{{ range $i, $c := .Input.Components -}}
+		{{ template "getter" getter $i $.Input.Name $c -}}
+	{{ end }}
 {{ end -}}
 
 {{ define "get" -}}
-func (x *{{ .Struct}}){{ .Method }}() {{ .Type.TemplateType }}{
-	return x.it.At({{ .Index }}).{{ .Type.TemplateFunc }}()
-}
+	func (x *{{ .Receiver }}){{ .Method }}() {{ .ReturnType }}{
+		return x.it.At({{ .Index }}).{{ .New }}()
+	}
 {{ end -}}
 
 {{ define "getter" }}
@@ -91,12 +104,12 @@ func (x *{{ .Struct}}){{ .Method }}() {{ .Type.TemplateType }}{
 {{- end -}}
 
 {{ define "structs" -}}
-	{{ range $inp := . -}}
-		{{ if eq .Type "tuple" }}
+	{{ range . -}}
+		{{ if gt (len .Components) 0 -}}
 			type {{camel .Name }} struct {
 				it *abi.Item
 			}
-			{{ template "structs" $inp.Components -}}
+			{{ template "structs" .Components -}}
 		{{ end -}}
 	{{ end -}}
 {{ end -}}
@@ -111,19 +124,18 @@ func (x *{{ .Struct}}){{ .Method }}() {{ .Type.TemplateType }}{
 		},
 	}
 
-	type {{ camel .Name }} struct {
-		it *abi.Item
-	}
-
 	func Match{{ camel .Name }}(l abi.Log) (*{{ camel .Name }}, bool) {
 		i, ok := abi.Match(l, {{ camel .Name }}Event)
 		return &{{ camel .Name }}{&i}, ok
 	}
 
+	type {{ camel .Name }} struct {
+		it *abi.Item
+	}
 	{{ template "structs" .Inputs -}}
 
 	{{ $event := . }}
 	{{ range $i, $input := .Inputs -}}
-		{{ template "getter" getter $i $event $input -}}
+		{{ template "getter" getter $i $event.Name $input -}}
 	{{ end -}}
 {{ end -}}

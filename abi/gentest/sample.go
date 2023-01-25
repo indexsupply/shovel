@@ -72,7 +72,11 @@ var EEvent = abi.Event{
 			Type: "uint256[]",
 		},
 		abi.Input{
-			Name: "i2",
+			Name: "list_of_tuples",
+			Type: "tuple[][]",
+		},
+		abi.Input{
+			Name: "nested_tuple",
 			Type: "tuple",
 			Components: []abi.Input{
 				abi.Input{
@@ -98,19 +102,20 @@ var EEvent = abi.Event{
 	},
 }
 
-type E struct {
-	it *abi.Item
-}
-
 func MatchE(l abi.Log) (*E, bool) {
 	i, ok := abi.Match(l, EEvent)
 	return &E{&i}, ok
 }
 
-type I2 struct {
+type E struct {
 	it *abi.Item
 }
-
+type ListOfTuples struct {
+	it *abi.Item
+}
+type NestedTuple struct {
+	it *abi.Item
+}
 type F3 struct {
 	it *abi.Item
 }
@@ -219,16 +224,35 @@ func (x *E) Uint256List() []*big.Int {
 	return res0
 }
 
-func (x *E) I2() *I2 {
-	i := x.it.At(15)
-	return &I2{&i}
+func (x *E) ListOfTuples() [][]ListOfTuples {
+	it0 := x.it.At(15)
+	res0 := make([][]ListOfTuples, it0.Len())
+	for i0 := 0; i0 < it0.Len(); i0++ {
+		it1 := it0.At(i0)
+		res1 := make([]ListOfTuples, it1.Len())
+		for i1 := 0; i1 < it1.Len(); i1++ {
+			it := it1.At(i1)
+			res1[i1] = ListOfTuples{&it}
+		}
+		res0[i0] = res1
+	}
+	return res0
 }
 
-func (x *E) F1() [20]byte {
+func (x *ListOfTuples) Lot1() [20]byte {
 	return x.it.At(0).Address()
 }
 
-func (x *E) F2() [][20]byte {
+func (x *E) NestedTuple() *NestedTuple {
+	i := x.it.At(16)
+	return &NestedTuple{&i}
+}
+
+func (x *NestedTuple) F1() [20]byte {
+	return x.it.At(0).Address()
+}
+
+func (x *NestedTuple) F2() [][20]byte {
 	it0 := x.it.At(1)
 	res0 := make([][20]byte, it0.Len())
 	for i0 := 0; i0 < it0.Len(); i0++ {
@@ -237,12 +261,12 @@ func (x *E) F2() [][20]byte {
 	return res0
 }
 
-func (x *E) F3() *F3 {
+func (x *NestedTuple) F3() *F3 {
 	i := x.it.At(2)
 	return &F3{&i}
 }
 
-func (x *E) F4() [20]byte {
+func (x *F3) F4() [20]byte {
 	return x.it.At(0).Address()
 }
 
@@ -261,13 +285,13 @@ var FooEvent = abi.Event{
 	},
 }
 
-type Foo struct {
-	it *abi.Item
-}
-
 func MatchFoo(l abi.Log) (*Foo, bool) {
 	i, ok := abi.Match(l, FooEvent)
 	return &Foo{&i}, ok
+}
+
+type Foo struct {
+	it *abi.Item
 }
 
 func (x *Foo) Bar() uint64 {
@@ -293,13 +317,13 @@ var BarEvent = abi.Event{
 	},
 }
 
-type Bar struct {
-	it *abi.Item
-}
-
 func MatchBar(l abi.Log) (*Bar, bool) {
 	i, ok := abi.Match(l, BarEvent)
 	return &Bar{&i}, ok
+}
+
+type Bar struct {
+	it *abi.Item
 }
 
 func (x *Bar) Bar() uint64 {

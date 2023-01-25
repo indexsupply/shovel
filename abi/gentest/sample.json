@@ -19,9 +19,17 @@
             {"indexed": false, "name": "uint64_list", "type": "uint64[]"},
             {"indexed": false, "name": "uint256", "type": "uint256"},
             {"indexed": false, "name": "uint256_list", "type": "uint256[]"},
+			{
+				"indexed": false,
+				"name": "list_of_tuples",
+				"type": "tuple[][]",
+				"components": [
+					{"indexed": false, "name": "lot1", "type": "address"}
+				]
+			},
             {
                 "indexed": false,
-                "name": "i2",
+                "name": "nested_tuple",
                 "type": "tuple",
                 "components": [
                     {"indexed": false, "name": "f1", "type": "address"},

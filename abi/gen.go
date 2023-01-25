@@ -4,8 +4,9 @@ import (
 	"bytes"
 	_ "embed"
 	"encoding/json"
-	"fmt"
 	"go/format"
+	"strconv"
+	"strings"
 	"text/template"
 	"unicode"
 
@@ -48,58 +49,128 @@ func templateType(inputs []Input) map[string]struct{} {
 	return types
 }
 
-type nestedGetter struct {
-	g     getter
+type nctx struct {
+	getter
 	Type  abit.Type
 	Index int
 }
 
-func newNestedGetter(g getter) nestedGetter {
-	return nestedGetter{
-		g:     g,
-		Type:  *g.Input.ABIType().Elem,
-		Index: 1,
+func nestCtx(g getter) nctx {
+	return nctx{
+		getter: g,
+		Type:   *g.Input.ABIType().Elem,
+		Index:  1,
 	}
 }
 
-func (ng nestedGetter) Next() *nestedGetter {
-	if ng.Type.Elem == nil {
+func (n nctx) ReturnType() string {
+	switch t := n.Type; t.Kind {
+	case abit.L:
+		var s strings.Builder
+		elems := t.Elems()
+		root, elems := elems[len(elems)-1], elems[:len(elems)-1]
+		for _, e := range elems {
+			s.WriteString("[")
+			if e.Length > 0 {
+				s.WriteString(strconv.Itoa(int(e.Length)))
+			}
+			s.WriteString("]")
+		}
+		switch root.Kind {
+		case abit.T:
+			s.WriteString(camel(n.Input.Name))
+		default:
+			s.WriteString(root.TemplateType)
+		}
+		return s.String()
+	case abit.T:
+		return camel(n.Input.Name)
+	default:
+		return t.TemplateType
+	}
+}
+
+func (n nctx) Next() *nctx {
+	if n.Type.Elem == nil {
 		return nil
 	}
-	if ng.Type.Elem.Kind != abit.L {
+	if n.Type.Elem.Kind != abit.L {
 		return nil
 	}
-	return &nestedGetter{
-		g:     ng.g,
-		Type:  *ng.Type.Elem,
-		Index: ng.Index + 1,
+	return &nctx{
+		getter: n.getter,
+		Type:   *n.Type.Elem,
+		Index:  n.Index + 1,
 	}
 }
 
 // used to aggregate template data in template.txt
 type getter struct {
-	Event Event
-	Input Input
-	Index int
+	receiver string
+	Input    Input
+	Index    int
 }
 
-func (g getter) Struct() string {
-	return camel(g.Event.Name)
+func (g getter) Receiver() string {
+	return camel(g.receiver)
 }
 
 func (g getter) Method() string {
 	return camel(g.Input.Name)
 }
 
+func (g getter) ReturnType() string {
+	switch t := g.Input.ABIType(); t.Kind {
+	case abit.L:
+		var s strings.Builder
+		elems := t.Elems()
+		root, elems := elems[len(elems)-1], elems[:len(elems)-1]
+		for _, e := range elems {
+			s.WriteString("[")
+			if e.Length > 0 {
+				s.WriteString(strconv.Itoa(int(e.Length)))
+			}
+			s.WriteString("]")
+		}
+		switch root.Kind {
+		case abit.T:
+			s.WriteString(camel(g.Input.Name))
+		default:
+			s.WriteString(root.TemplateType)
+		}
+		return s.String()
+	case abit.T:
+		return camel(g.Input.Name)
+	default:
+		return t.TemplateType
+	}
+}
+
+func (g getter) New() string {
+	switch t := g.Input.ABIType(); t.Kind {
+	case abit.T:
+		return g.Input.Name
+	case abit.L:
+		switch r := t.Root(); r.Kind {
+		case abit.T:
+			return camel(g.Input.Name)
+		default:
+			return r.TemplateFunc
+		}
+	default:
+		return t.TemplateFunc
+	}
+}
+
 func (g getter) Type() abit.Type {
 	return g.Input.ABIType()
 }
 
-func newGetter(i int, event Event, input Input) getter {
+func newGetter(i int, s string, it Input) getter {
 	return getter{
-		Index: i,
-		Event: event,
-		Input: input,
+		Index:    i,
+		receiver: s,
+		Input:    it,
 	}
 }
 
@@ -129,9 +200,9 @@ func Gen(pkg string, js []byte) ([]byte, error) {
 	}
 
 	t := template.New("abi").Funcs(template.FuncMap{
-		"camel":   camel,
-		"getter":  newGetter,
-		"ngetter": newNestedGetter,
+		"camel":  camel,
+		"getter": newGetter,
+		"nctx":   nestCtx,
 		"sub": func(x, y int) int {
 			return x - y
 		},
@@ -162,8 +233,7 @@ func Gen(pkg string, js []byte) ([]byte, error) {
 	}
 	code, err := format.Source(b.Bytes())
 	if err != nil {
-		fmt.Printf("%s\n", b.Bytes())
-		return nil, isxerrors.Errorf("formatting source: %w", err)
+		return b.Bytes(), isxerrors.Errorf("formatting source: %w", err)
 	}
 	return code, nil
 }
