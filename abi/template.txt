@@ -53,7 +53,7 @@ import (
 		{{ end -}}
 		for i0 := 0; i0 < it0.Len(); i0++ {
 			{{ if gt .Type.Dimension 1 -}}
-				{{ template "get-list-nested" nctx . }}
+				{{ template "get-list-nested" .Nest }}
 			{{ else -}}
 				{{ if eq .Type.Elem.Kind  2 -}}
 					it := it0.At(i0)

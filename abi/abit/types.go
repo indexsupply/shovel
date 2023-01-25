@@ -113,26 +113,22 @@ func (t Type) Signature() string {
 
 func (t Type) Elems() []Type {
 	var res []Type
-	for e := &t; e != nil; e = e.Elem {
+	for e := &t; e.Elem != nil; e = e.Elem {
 		res = append(res, *e)
 	}
 	return res
 }
 
 func (t Type) Dimension() int {
-	e := t.Elems()
-	if len(e) == 0 {
-		return 0
-	}
-	return len(e) - 1
+	return len(t.Elems())
 }
 
 func (t Type) Root() Type {
-	e := t.Elems()
-	if len(e) == 0 {
-		return Type{}
+	for e := &t; ; e = e.Elem {
+		if e.Elem == nil {
+			return *e
+		}
 	}
-	return e[len(e)-1]
 }
 
 var (

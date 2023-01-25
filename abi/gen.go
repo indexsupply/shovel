@@ -49,45 +49,61 @@ func templateType(inputs []Input) map[string]struct{} {
 	return types
 }
 
-type nctx struct {
-	getter
-	Type  abit.Type
-	Index int
-}
-
-func nestCtx(g getter) nctx {
-	return nctx{
-		getter: g,
-		Type:   *g.Input.ABIType().Elem,
-		Index:  1,
-	}
-}
-
-func (n nctx) ReturnType() string {
-	switch t := n.Type; t.Kind {
+func returnType(t abit.Type, input Input) string {
+	switch t.Kind {
+	case abit.S, abit.D:
+		return t.TemplateType
+	case abit.T:
+		return camel(input.Name)
 	case abit.L:
 		var s strings.Builder
-		elems := t.Elems()
-		root, elems := elems[len(elems)-1], elems[:len(elems)-1]
-		for _, e := range elems {
+		for _, e := range t.Elems() {
 			s.WriteString("[")
 			if e.Length > 0 {
 				s.WriteString(strconv.Itoa(int(e.Length)))
 			}
 			s.WriteString("]")
 		}
-		switch root.Kind {
+		switch r := t.Root(); r.Kind {
 		case abit.T:
-			s.WriteString(camel(n.Input.Name))
+			s.WriteString(camel(input.Name))
 		default:
-			s.WriteString(root.TemplateType)
+			s.WriteString(r.TemplateType)
 		}
 		return s.String()
-	case abit.T:
-		return camel(n.Input.Name)
 	default:
-		return t.TemplateType
+		panic("returnType must have kind: S,D,T, or L")
 	}
+}
+
+func newType(input Input) string {
+	switch t := input.ABIType(); t.Kind {
+	case abit.S, abit.D:
+		return t.TemplateFunc
+	case abit.T:
+		return camel(input.Name)
+	case abit.L:
+		if t.Root().Kind == abit.T {
+			return camel(input.Name)
+		}
+		return t.Root().TemplateFunc
+	default:
+		panic("newType must have kind: S,D,T, or L")
+	}
+}
+
+type nctx struct {
+	Input Input
+	Type  abit.Type
+	Index int
+}
+
+func (n nctx) New() string {
+	return newType(n.Input)
+}
+
+func (n nctx) ReturnType() string {
+	return returnType(n.Type, n.Input)
 }
 
 func (n nctx) Next() *nctx {
@@ -98,9 +114,9 @@ func (n nctx) Next() *nctx {
 		return nil
 	}
 	return &nctx{
-		getter: n.getter,
-		Type:   *n.Type.Elem,
-		Index:  n.Index + 1,
+		Input: n.Input,
+		Type:  *n.Type.Elem,
+		Index: n.Index + 1,
 	}
 }
 
@@ -111,6 +127,14 @@ type getter struct {
 	Index    int
 }
 
+func (g getter) Nest() nctx {
+	return nctx{
+		Input: g.Input,
+		Type:  *g.Input.ABIType().Elem,
+		Index: 1,
+	}
+}
+
 func (g getter) Receiver() string {
 	return camel(g.receiver)
 }
@@ -119,59 +143,16 @@ func (g getter) Method() string {
 	return camel(g.Input.Name)
 }
 
-func (g getter) ReturnType() string {
-	switch t := g.Input.ABIType(); t.Kind {
-	case abit.L:
-		var s strings.Builder
-		elems := t.Elems()
-		root, elems := elems[len(elems)-1], elems[:len(elems)-1]
-		for _, e := range elems {
-			s.WriteString("[")
-			if e.Length > 0 {
-				s.WriteString(strconv.Itoa(int(e.Length)))
-			}
-			s.WriteString("]")
-		}
-		switch root.Kind {
-		case abit.T:
-			s.WriteString(camel(g.Input.Name))
-		default:
-			s.WriteString(root.TemplateType)
-		}
-		return s.String()
-	case abit.T:
-		return camel(g.Input.Name)
-	default:
-		return t.TemplateType
-	}
+func (g getter) New() string {
+	return newType(g.Input)
 }
 
-func (g getter) New() string {
-	switch t := g.Input.ABIType(); t.Kind {
-	case abit.T:
-		return g.Input.Name
-	case abit.L:
-		switch r := t.Root(); r.Kind {
-		case abit.T:
-			return camel(g.Input.Name)
-		default:
-			return r.TemplateFunc
-		}
-	default:
-		return t.TemplateFunc
-	}
+func (g getter) ReturnType() string {
+	return returnType(g.Input.ABIType(), g.Input)
 }
 
 func (g getter) Type() abit.Type {
 	return g.Input.ABIType()
-}
-
-func newGetter(i int, s string, it Input) getter {
-	return getter{
-		Index:    i,
-		receiver: s,
-		Input:    it,
-	}
 }
 
 func camel(str string) string {
@@ -200,9 +181,14 @@ func Gen(pkg string, js []byte) ([]byte, error) {
 	}
 
 	t := template.New("abi").Funcs(template.FuncMap{
-		"camel":  camel,
-		"getter": newGetter,
-		"nctx":   nestCtx,
+		"camel": camel,
+		"getter": func(i int, s string, it Input) getter {
+			return getter{
+				Index:    i,
+				receiver: s,
+				Input:    it,
+			}
+		},
 		"sub": func(x, y int) int {
 			return x - y
 		},
