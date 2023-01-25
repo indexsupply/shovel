@@ -41,6 +41,14 @@
                         "components": [
                             {"indexed": false, "name": "f4", "type": "address"}
                         ]
+                    },
+                    {
+                        "indexed": false,
+                        "name": "f5",
+                        "type": "tuple[][]",
+                        "components": [
+                            {"indexed": false, "name": "f6", "type": "address"}
+                        ]
                     }
                 ]
             }

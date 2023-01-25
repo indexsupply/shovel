@@ -55,6 +55,9 @@ func TestZero(t *testing.T) {
 	if !reflect.DeepEqual(e.Uint256List(), []*big.Int{}) {
 		t.Error("expected empty slice of big ints")
 	}
+	if !reflect.DeepEqual(e.NestedTuple().F5(), [][]F5{}) {
+		t.Error("expected empty 2-dim slice of F5s")
+	}
 }
 
 func TestMatch(t *testing.T) {

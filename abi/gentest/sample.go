@@ -103,6 +103,16 @@ var EEvent = abi.Event{
 						},
 					},
 				},
+				abi.Input{
+					Name: "f5",
+					Type: "tuple[][]",
+					Components: []abi.Input{
+						abi.Input{
+							Name: "f6",
+							Type: "address",
+						},
+					},
+				},
 			},
 		},
 	},
@@ -126,6 +136,10 @@ type NestedTuple struct {
 }
 
 type F3 struct {
+	it *abi.Item
+}
+
+type F5 struct {
 	it *abi.Item
 }
 
@@ -275,6 +289,25 @@ func (x *NestedTuple) F3() *F3 {
 }
 
 func (x *F3) F4() [20]byte {
+	return x.it.At(0).Address()
+}
+
+func (x *NestedTuple) F5() [][]F5 {
+	it0 := x.it.At(3)
+	res0 := make([][]F5, it0.Len())
+	for i0 := 0; i0 < it0.Len(); i0++ {
+		it1 := it0.At(i0)
+		res1 := make([]F5, it1.Len())
+		for i1 := 0; i1 < it1.Len(); i1++ {
+			it := it1.At(i1)
+			res1[i1] = F5{&it}
+		}
+		res0[i0] = res1
+	}
+	return res0
+}
+
+func (x *F5) F6() [20]byte {
 	return x.it.At(0).Address()
 }
 
