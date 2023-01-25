@@ -116,12 +116,15 @@ func MatchE(l abi.Log) (*E, bool) {
 type E struct {
 	it *abi.Item
 }
+
 type ListOfTuples struct {
 	it *abi.Item
 }
+
 type NestedTuple struct {
 	it *abi.Item
 }
+
 type F3 struct {
 	it *abi.Item
 }
@@ -141,7 +144,6 @@ func (x *E) AddressList() [][20]byte {
 
 func (x *E) AddressList4() [4][20]byte {
 	it0 := x.it.At(2)
-
 	if it0.Len() != 4 {
 		panic("genabi: E.AddressList4 array size mismatch")
 	}

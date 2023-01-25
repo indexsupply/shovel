@@ -45,7 +45,7 @@ import (
 		it0 := x.it.At({{ .Index }})
 		{{ if eq .Type.Length 0 -}}
 			res0 := make({{ .ReturnType }}, it0.Len())
-		{{ else }}
+		{{ else -}}
 			if it0.Len() != {{ .Type.Length }} {
 				panic("genabi: {{ .Receiver }}.{{ .Method }} array size mismatch")
 			}
@@ -105,7 +105,7 @@ import (
 
 {{ define "structs" -}}
 	{{ range . -}}
-		{{ if gt (len .Components) 0 -}}
+		{{ if gt (len .Components) 0 }}
 			type {{camel .Name }} struct {
 				it *abi.Item
 			}
