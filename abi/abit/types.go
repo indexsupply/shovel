@@ -120,19 +120,19 @@ func (t Type) Elems() []Type {
 }
 
 func (t Type) Dimension() int {
-	var d int
-	for e := &t; e.Elem != nil; e = e.Elem {
-		d++
+	e := t.Elems()
+	if len(e) == 0 {
+		return 0
 	}
-	return d
+	return len(e) - 1
 }
 
 func (t Type) Root() Type {
-	elems := t.Elems()
-	if len(elems) == 0 {
+	e := t.Elems()
+	if len(e) == 0 {
 		return Type{}
 	}
-	return elems[len(elems)-1]
+	return e[len(e)-1]
 }
 
 var (
