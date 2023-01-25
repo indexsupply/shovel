@@ -74,6 +74,12 @@ var EEvent = abi.Event{
 		abi.Input{
 			Name: "list_of_tuples",
 			Type: "tuple[][]",
+			Components: []abi.Input{
+				abi.Input{
+					Name: "lot1",
+					Type: "address",
+				},
+			},
 		},
 		abi.Input{
 			Name: "nested_tuple",

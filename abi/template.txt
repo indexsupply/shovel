@@ -93,7 +93,7 @@ import (
 		{{ end -}}
 		Name: "{{.Name}}",
 		Type: "{{.Type}}",
-		{{ if eq .Type "tuple" -}}
+		{{ if gt (len .Components) 0 -}}
 		Components: []abi.Input{
 		{{ range .Components -}}
 		{{ template "input" . }}
