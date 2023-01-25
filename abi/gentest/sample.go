@@ -124,31 +124,31 @@ func MatchE(l abi.Log) (*E, bool) {
 }
 
 type E struct {
-	it *abi.Item
+	*abi.Item
 }
 
 type ListOfTuples struct {
-	it *abi.Item
+	*abi.Item
 }
 
 type NestedTuple struct {
-	it *abi.Item
+	*abi.Item
 }
 
 type F3 struct {
-	it *abi.Item
+	*abi.Item
 }
 
 type F5 struct {
-	it *abi.Item
+	*abi.Item
 }
 
 func (x *E) Address() [20]byte {
-	return x.it.At(0).Address()
+	return x.At(0).Address()
 }
 
 func (x *E) AddressList() [][20]byte {
-	it0 := x.it.At(1)
+	it0 := x.At(1)
 	res0 := make([][20]byte, it0.Len())
 	for i0 := 0; i0 < it0.Len(); i0++ {
 		res0[i0] = it0.At(i0).Address()
@@ -157,7 +157,7 @@ func (x *E) AddressList() [][20]byte {
 }
 
 func (x *E) AddressList4() [4][20]byte {
-	it0 := x.it.At(2)
+	it0 := x.At(2)
 	if it0.Len() != 4 {
 		panic("genabi: E.AddressList4 array size mismatch")
 	}
@@ -169,11 +169,11 @@ func (x *E) AddressList4() [4][20]byte {
 }
 
 func (x *E) Bool() bool {
-	return x.it.At(3).Bool()
+	return x.At(3).Bool()
 }
 
 func (x *E) BoolList() []bool {
-	it0 := x.it.At(4)
+	it0 := x.At(4)
 	res0 := make([]bool, it0.Len())
 	for i0 := 0; i0 < it0.Len(); i0++ {
 		res0[i0] = it0.At(i0).Bool()
@@ -182,11 +182,11 @@ func (x *E) BoolList() []bool {
 }
 
 func (x *E) Bytes() []byte {
-	return x.it.At(5).Bytes()
+	return x.At(5).Bytes()
 }
 
 func (x *E) BytesList() [][]byte {
-	it0 := x.it.At(6)
+	it0 := x.At(6)
 	res0 := make([][]byte, it0.Len())
 	for i0 := 0; i0 < it0.Len(); i0++ {
 		res0[i0] = it0.At(i0).Bytes()
@@ -195,11 +195,11 @@ func (x *E) BytesList() [][]byte {
 }
 
 func (x *E) String() string {
-	return x.it.At(7).String()
+	return x.At(7).String()
 }
 
 func (x *E) StringList() []string {
-	it0 := x.it.At(8)
+	it0 := x.At(8)
 	res0 := make([]string, it0.Len())
 	for i0 := 0; i0 < it0.Len(); i0++ {
 		res0[i0] = it0.At(i0).String()
@@ -208,11 +208,11 @@ func (x *E) StringList() []string {
 }
 
 func (x *E) Uint8() uint8 {
-	return x.it.At(9).Uint8()
+	return x.At(9).Uint8()
 }
 
 func (x *E) Uint8List() []uint8 {
-	it0 := x.it.At(10)
+	it0 := x.At(10)
 	res0 := make([]uint8, it0.Len())
 	for i0 := 0; i0 < it0.Len(); i0++ {
 		res0[i0] = it0.At(i0).Uint8()
@@ -221,11 +221,11 @@ func (x *E) Uint8List() []uint8 {
 }
 
 func (x *E) Uint64() uint64 {
-	return x.it.At(11).Uint64()
+	return x.At(11).Uint64()
 }
 
 func (x *E) Uint64List() []uint64 {
-	it0 := x.it.At(12)
+	it0 := x.At(12)
 	res0 := make([]uint64, it0.Len())
 	for i0 := 0; i0 < it0.Len(); i0++ {
 		res0[i0] = it0.At(i0).Uint64()
@@ -234,11 +234,11 @@ func (x *E) Uint64List() []uint64 {
 }
 
 func (x *E) Uint256() *big.Int {
-	return x.it.At(13).BigInt()
+	return x.At(13).BigInt()
 }
 
 func (x *E) Uint256List() []*big.Int {
-	it0 := x.it.At(14)
+	it0 := x.At(14)
 	res0 := make([]*big.Int, it0.Len())
 	for i0 := 0; i0 < it0.Len(); i0++ {
 		res0[i0] = it0.At(i0).BigInt()
@@ -247,7 +247,7 @@ func (x *E) Uint256List() []*big.Int {
 }
 
 func (x *E) ListOfTuples() [][]ListOfTuples {
-	it0 := x.it.At(15)
+	it0 := x.At(15)
 	res0 := make([][]ListOfTuples, it0.Len())
 	for i0 := 0; i0 < it0.Len(); i0++ {
 		it1 := it0.At(i0)
@@ -262,20 +262,20 @@ func (x *E) ListOfTuples() [][]ListOfTuples {
 }
 
 func (x *ListOfTuples) Lot1() [20]byte {
-	return x.it.At(0).Address()
+	return x.At(0).Address()
 }
 
 func (x *E) NestedTuple() *NestedTuple {
-	i := x.it.At(16)
+	i := x.At(16)
 	return &NestedTuple{&i}
 }
 
 func (x *NestedTuple) F1() [20]byte {
-	return x.it.At(0).Address()
+	return x.At(0).Address()
 }
 
 func (x *NestedTuple) F2() [][20]byte {
-	it0 := x.it.At(1)
+	it0 := x.At(1)
 	res0 := make([][20]byte, it0.Len())
 	for i0 := 0; i0 < it0.Len(); i0++ {
 		res0[i0] = it0.At(i0).Address()
@@ -284,16 +284,16 @@ func (x *NestedTuple) F2() [][20]byte {
 }
 
 func (x *NestedTuple) F3() *F3 {
-	i := x.it.At(2)
+	i := x.At(2)
 	return &F3{&i}
 }
 
 func (x *F3) F4() [20]byte {
-	return x.it.At(0).Address()
+	return x.At(0).Address()
 }
 
 func (x *NestedTuple) F5() [][]F5 {
-	it0 := x.it.At(3)
+	it0 := x.At(3)
 	res0 := make([][]F5, it0.Len())
 	for i0 := 0; i0 < it0.Len(); i0++ {
 		it1 := it0.At(i0)
@@ -308,7 +308,7 @@ func (x *NestedTuple) F5() [][]F5 {
 }
 
 func (x *F5) F6() [20]byte {
-	return x.it.At(0).Address()
+	return x.At(0).Address()
 }
 
 var FooEvent = abi.Event{
@@ -332,15 +332,15 @@ func MatchFoo(l abi.Log) (*Foo, bool) {
 }
 
 type Foo struct {
-	it *abi.Item
+	*abi.Item
 }
 
 func (x *Foo) Bar() uint64 {
-	return x.it.At(0).Uint64()
+	return x.At(0).Uint64()
 }
 
 func (x *Foo) Baz() string {
-	return x.it.At(1).String()
+	return x.At(1).String()
 }
 
 var BarEvent = abi.Event{
@@ -364,15 +364,15 @@ func MatchBar(l abi.Log) (*Bar, bool) {
 }
 
 type Bar struct {
-	it *abi.Item
+	*abi.Item
 }
 
 func (x *Bar) Bar() uint64 {
-	return x.it.At(0).Uint64()
+	return x.At(0).Uint64()
 }
 
 func (x *Bar) Baz() [][][]string {
-	it0 := x.it.At(1)
+	it0 := x.At(1)
 	res0 := make([][][]string, it0.Len())
 	for i0 := 0; i0 < it0.Len(); i0++ {
 		it1 := it0.At(i0)

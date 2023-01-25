@@ -14,7 +14,7 @@ import (
 
 {{ define "get-struct" -}}
 	func (x *{{ .Receiver }}){{ .ReturnType }}() *{{ .ReturnType }} {
-		i := x.it.At({{ .Index }})
+		i := x.At({{ .Index }})
 		return &{{ .ReturnType }}{&i}
 	}
 	{{ range $i, $c := .Input.Components -}}
@@ -42,7 +42,7 @@ import (
 
 {{ define "get-list" -}}
 	func (x *{{ .Receiver }}){{ .Method }}() {{ .ReturnType }} {
-		it0 := x.it.At({{ .Index }})
+		it0 := x.At({{ .Index }})
 		{{ if eq .Type.Length 0 -}}
 			res0 := make({{ .ReturnType }}, it0.Len())
 		{{ else -}}
@@ -72,7 +72,7 @@ import (
 
 {{ define "get" -}}
 	func (x *{{ .Receiver }}){{ .Method }}() {{ .ReturnType }}{
-		return x.it.At({{ .Index }}).{{ .New }}()
+		return x.At({{ .Index }}).{{ .New }}()
 	}
 {{ end -}}
 
@@ -107,7 +107,7 @@ import (
 	{{ range . -}}
 		{{ if gt (len .Components) 0 }}
 			type {{camel .Name }} struct {
-				it *abi.Item
+				*abi.Item
 			}
 			{{ template "structs" .Components -}}
 		{{ end -}}
@@ -130,7 +130,7 @@ import (
 	}
 
 	type {{ camel .Name }} struct {
-		it *abi.Item
+		*abi.Item
 	}
 	{{ template "structs" .Inputs -}}
 
