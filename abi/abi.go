@@ -38,7 +38,7 @@ func Match(l Log, e Event) (Item, bool) {
 			unindexed = append(unindexed, inp.ABIType())
 			continue
 		}
-		items[i] = Bytes(l.Topics[i+1][:])
+		items[i] = Bytes(l.Topics[i][:])
 	}
 	item := Decode(l.Data, abit.Tuple(unindexed...))
 	for i, j := 0, 0; i < len(e.Inputs); i++ {
@@ -132,6 +132,17 @@ func (it Item) Bytes() []byte {
 	return it.d
 }
 
+func Bytes32(d []byte) Item {
+	return Item{Type: abit.Bytes32, d: rpad(32, d)}
+}
+
+func (it Item) Bytes32() [32]byte {
+	if len(it.d) < 32 {
+		return [32]byte{}
+	}
+	return *(*[32]byte)(it.d)
+}
+
 func (it Item) Address() [20]byte {
 	if len(it.d) < 32 {
 		return [20]byte{}
@@ -198,6 +209,9 @@ func (it Item) Uint8() uint8 {
 }
 
 func List(items ...Item) Item {
+	if len(items) == 0 {
+		return Item{}
+	}
 	return Item{
 		Type: abit.List(items[0].Type),
 		l:    items,
@@ -248,16 +262,29 @@ func Encode(it Item) []byte {
 		var c [32]byte
 		bint.Encode(c[:], uint64(len(it.d)))
 		return append(c[:], rpad(32, it.d)...)
-	case abit.L:
-		var c [32]byte
-		bint.Encode(c[:], uint64(len(it.l)))
-		return append(c[:], Encode(Tuple(it.l...))...)
-	case abit.T:
+	case abit.T, abit.L:
 		var head, tail []byte
+		if it.Kind == abit.L && it.Length == 0 {
+			var c [32]byte
+			bint.Encode(c[:], uint64(len(it.l)))
+			head = append(head, c[:]...)
+		}
 		for i := range it.l {
 			switch it.l[i].Kind {
 			case abit.S:
 				head = append(head, Encode(it.l[i])...)
+			case abit.T:
+				for j := range it.l[i].l {
+					switch it.l[i].l[j].Kind {
+					case abit.S:
+						head = append(head, Encode(it.l[i])...)
+					default:
+						var offset [32]byte
+						bint.Encode(offset[:], uint64(len(it.l)*32+len(tail)))
+						head = append(head, offset[:]...)
+						tail = append(tail, Encode(it.l[i])...)
+					}
+				}
 			default:
 				var offset [32]byte
 				bint.Encode(offset[:], uint64(len(it.l)*32+len(tail)))
@@ -282,16 +309,21 @@ func Decode(input []byte, t abit.Type) Item {
 		count := bint.Decode(input[:32])
 		return Item{Type: t, d: input[32 : 32+count]}
 	case abit.L:
-		count := bint.Decode(input[:32])
+		n := uint64(32)
+		count := bint.Decode(input[:n])
 		items := make([]Item, count)
 		for i := uint64(0); i < count; i++ {
-			n := 32 + (32 * i) //skip count (head)
 			switch t.Elem.Kind {
 			case abit.S:
 				items[i] = Decode(input[n:], *t.Elem)
-			default:
-				offset := 32 + bint.Decode(input[n:n+32])
-				items[i] = Decode(input[offset:], *t.Elem)
+				n += 32
+			case abit.T:
+				items[i] = Decode(input[n:], *t.Elem)
+				n += uint64(32 * len(t.Elem.Fields))
+			case abit.D, abit.L:
+				offset := bint.Decode(input[n : n+32])
+				items[i] = Decode(input[32+offset:], *t.Elem)
+				n += 32
 			}
 		}
 		return List(items...)
@@ -301,7 +333,7 @@ func Decode(input []byte, t abit.Type) Item {
 			n := 32 * i
 			switch f.Kind {
 			case abit.S:
-				items[i] = Decode(input[n:n+32], *f)
+				items[i] = Decode(input[n:], *f)
 			default:
 				offset := bint.Decode(input[n : n+32])
 				items[i] = Decode(input[offset:], *f)

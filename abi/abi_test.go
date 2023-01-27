@@ -235,7 +235,11 @@ func TestDecode(t *testing.T) {
 		},
 		{
 			desc: "tuple tuple list",
-			want: Tuple(Uint64(0), Tuple(String("hello")), List(Uint64(1))),
+			want: Tuple(
+				Uint64(5),
+				Tuple(String("hello")),
+				List(Uint64(1)),
+			),
 			t: abit.Tuple(
 				abit.Uint64,
 				abit.Tuple(
@@ -244,21 +248,34 @@ func TestDecode(t *testing.T) {
 				abit.List(abit.Uint64),
 			),
 		},
+		{
+			desc: "tuple with list of tuples",
+			want: Tuple(
+				Uint8(6),
+				List(Tuple(Uint8(7))),
+				List(Tuple(Uint8(8))),
+			),
+			t: abit.Tuple(
+				abit.Uint8,
+				abit.List(abit.Tuple(abit.Uint8)),
+				abit.List(abit.Tuple(abit.Uint8)),
+			),
+		},
 	}
 	for _, c := range cases {
-		got := Decode(debug(t, Encode(c.want)), c.t)
+		got := Decode(debug(c.desc, t, Encode(c.want)), c.t)
 		if !reflect.DeepEqual(c.want, got) {
 			t.Errorf("decode %q want: %#v got: %#v", c.desc, c.want, got)
 		}
 	}
 }
 
-func debug(t *testing.T, b []byte) []byte {
+func debug(desc string, t *testing.T, b []byte) []byte {
 	t.Helper()
 	out := fmt.Sprintf("len: %d\n", len(b))
 	for i := 0; i < len(b); i += 32 {
 		out += fmt.Sprintf("%x\n", b[i:i+32])
 	}
-	t.Logf("debug:\n%s\n", out)
+	t.Logf("debug:%q\n%s\n", desc, out)
 	return b
 }
