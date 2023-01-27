@@ -262,34 +262,32 @@ func TestDecode(t *testing.T) {
 				abit.List(abit.Tuple(abit.Uint8)),
 			),
 		},
-		/*
-			{
-				desc: "tuple with list of tuples that contain tuples",
-				want: Tuple(
-					Uint8(6),
-					List(
-						Tuple(String("hello"), Uint8(7)),
-						Tuple(String("world"), Uint8(7)),
-					),
-					List(Tuple(Uint8(8))),
+		{
+			desc: "tuple with list of tuples that contain tuples",
+			want: Tuple(
+				Uint8(6),
+				List(
+					Tuple(String("hello"), Uint8(7)),
+					Tuple(String("world"), Uint8(7)),
 				),
-				t: abit.Tuple(
-					abit.Uint8,
-					abit.List(
-						abit.Tuple(
-							abit.String,
-							abit.Uint8,
-						),
+				List(Tuple(Uint8(8))),
+			),
+			t: abit.Tuple(
+				abit.Uint8,
+				abit.List(
+					abit.Tuple(
+						abit.String,
+						abit.Uint8,
 					),
-					abit.List(abit.Tuple(abit.Uint8)),
 				),
-			},
-		*/
+				abit.List(abit.Tuple(abit.Uint8)),
+			),
+		},
 	}
 	for _, c := range cases {
 		got := Decode(debug(c.desc, t, Encode(c.want)), c.t)
 		if !reflect.DeepEqual(c.want, got) {
-			t.Errorf("decode %q want: %#v got: %#v", c.desc, c.want, got)
+			t.Errorf("decode %q want: %# v got: %# v", c.desc, c.want, got)
 		}
 	}
 }
