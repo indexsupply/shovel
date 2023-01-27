@@ -166,6 +166,7 @@ func TestSolidityVectors(t *testing.T) {
 		want, err := hex.DecodeString(c.want)
 		tc.NoErr(t, err)
 		got := Encode(c.input)
+		debug("solidit", t, got)
 		if !bytes.Equal(want, got) {
 			t.Errorf("want: %x got: %x", want, got)
 		}
@@ -261,6 +262,29 @@ func TestDecode(t *testing.T) {
 				abit.List(abit.Tuple(abit.Uint8)),
 			),
 		},
+		/*
+			{
+				desc: "tuple with list of tuples that contain tuples",
+				want: Tuple(
+					Uint8(6),
+					List(
+						Tuple(String("hello"), Uint8(7)),
+						Tuple(String("world"), Uint8(7)),
+					),
+					List(Tuple(Uint8(8))),
+				),
+				t: abit.Tuple(
+					abit.Uint8,
+					abit.List(
+						abit.Tuple(
+							abit.String,
+							abit.Uint8,
+						),
+					),
+					abit.List(abit.Tuple(abit.Uint8)),
+				),
+			},
+		*/
 	}
 	for _, c := range cases {
 		got := Decode(debug(c.desc, t, Encode(c.want)), c.t)

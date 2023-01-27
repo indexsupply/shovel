@@ -267,30 +267,17 @@ func Encode(it Item) []byte {
 		if it.Kind == abit.L && it.Length == 0 {
 			var c [32]byte
 			bint.Encode(c[:], uint64(len(it.l)))
-			head = append(head, c[:]...)
+			head = append(c[:], head...)
 		}
 		for i := range it.l {
-			switch it.l[i].Kind {
-			case abit.S:
+			if it.l[i].Static() {
 				head = append(head, Encode(it.l[i])...)
-			case abit.T:
-				for j := range it.l[i].l {
-					switch it.l[i].l[j].Kind {
-					case abit.S:
-						head = append(head, Encode(it.l[i])...)
-					default:
-						var offset [32]byte
-						bint.Encode(offset[:], uint64(len(it.l)*32+len(tail)))
-						head = append(head, offset[:]...)
-						tail = append(tail, Encode(it.l[i])...)
-					}
-				}
-			default:
-				var offset [32]byte
-				bint.Encode(offset[:], uint64(len(it.l)*32+len(tail)))
-				head = append(head, offset[:]...)
-				tail = append(tail, Encode(it.l[i])...)
+				continue
 			}
+			var offset [32]byte
+			bint.Encode(offset[:], uint64(len(it.l)*32+len(tail)))
+			head = append(head, offset[:]...)
+			tail = append(tail, Encode(it.l[i])...)
 		}
 		return append(head, tail...)
 	default:

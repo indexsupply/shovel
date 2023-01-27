@@ -111,6 +111,24 @@ func (t Type) Signature() string {
 	}
 }
 
+func (t Type) Static() bool {
+	if t.Kind == D {
+		return false
+	}
+	if t.Elem != nil && t.Length > 0 && t.Elem.Kind == D {
+		return false
+	}
+	if t.Elem != nil && t.Length == 0 {
+		return false
+	}
+	for _, f := range t.Fields {
+		if f.Kind != S {
+			return false
+		}
+	}
+	return true
+}
+
 func (t Type) Elems() []Type {
 	var res []Type
 	for e := &t; e.Elem != nil; e = e.Elem {
