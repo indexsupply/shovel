@@ -262,13 +262,16 @@ func Encode(it Item) []byte {
 		var c [32]byte
 		bint.Encode(c[:], uint64(len(it.d)))
 		return append(c[:], rpad(32, it.d)...)
-	case abit.T, abit.L:
-		var head, tail []byte
-		if it.Kind == abit.L && it.Length == 0 {
+	case abit.L:
+		it.Type = abit.Tuple(*it.Elem)
+		if it.Length == 0 {
 			var c [32]byte
 			bint.Encode(c[:], uint64(len(it.l)))
-			head = append(c[:], head...)
+			return append(c[:], Encode(it)...)
 		}
+		return Encode(it)
+	case abit.T:
+		var head, tail []byte
 		for i := range it.l {
 			if it.l[i].Static() {
 				head = append(head, Encode(it.l[i])...)
