@@ -133,7 +133,7 @@ func (it Item) Bytes() []byte {
 }
 
 func Bytes32(d []byte) Item {
-	return Item{Type: abit.Bytes32, d: rpad(32, d)}
+	return Item{Type: abit.Bytes32, d: d}
 }
 
 func (it Item) Bytes32() [32]byte {
@@ -299,16 +299,18 @@ func Decode(input []byte, t abit.Type) Item {
 		count := bint.Decode(input[:32])
 		return Item{Type: t, d: input[32 : 32+count]}
 	case abit.L:
-		count := bint.Decode(input[:32])
+		n := 32
+		count := bint.Decode(input[:n])
 		items := make([]Item, count)
 		for i := uint64(0); i < count; i++ {
-			n := 32 + (32 * i)
 			if t.Elem.Static() {
 				items[i] = Decode(input[n:], *t.Elem)
+				n += size(*t.Elem)
 				continue
 			}
 			offset := bint.Decode(input[n : n+32])
 			items[i] = Decode(input[32+offset:], *t.Elem)
+			n += 32
 		}
 		return List(items...)
 	case abit.T:
@@ -325,5 +327,18 @@ func Decode(input []byte, t abit.Type) Item {
 		return Tuple(items...)
 	default:
 		panic("abi: encode: unkown type")
+	}
+}
+
+func size(t abit.Type) int {
+	switch t.Kind {
+	case abit.S:
+		return 32
+	case abit.T:
+		return 32 * len(t.Fields)
+	case abit.L:
+		return 32 * int(t.Length)
+	default:
+		return 0
 	}
 }
