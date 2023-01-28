@@ -33,12 +33,13 @@ func Match(l Log, e Event) (Item, bool) {
 		items     = make([]Item, len(e.Inputs))
 		unindexed []abit.Type
 	)
-	for i, inp := range e.Inputs {
-		if !inp.Indexed {
-			unindexed = append(unindexed, inp.ABIType())
+	for i, j := 0, 0; i < len(e.Inputs); i++ {
+		if e.Inputs[i].Indexed {
+			items[i] = Bytes32(l.Topics[j+1][:])
+			j++
 			continue
 		}
-		items[i] = Bytes(l.Topics[i][:])
+		unindexed = append(unindexed, e.Inputs[i].ABIType())
 	}
 	item := Decode(l.Data, abit.Tuple(unindexed...))
 	for i, j := 0, 0; i < len(e.Inputs); i++ {
