@@ -9,7 +9,128 @@ import (
 
 	"github.com/indexsupply/x/abi/abit"
 	"github.com/indexsupply/x/tc"
+	"github.com/kr/pretty"
 )
+
+func h232b(s string) [32]byte {
+	b, _ := hex.DecodeString(s)
+	return *(*[32]byte)(b)
+}
+
+func TestMatch(t *testing.T) {
+	cases := []struct {
+		desc string
+		l    Log
+		e    Event
+		ok   bool
+		want Item
+	}{
+		{
+			desc: "zero",
+			l: Log{
+				Topics: [4][32]byte{},
+				Data:   []byte{},
+			},
+			e: Event{
+				Anonymous: true,
+				Inputs:    []Input{},
+			},
+			ok:   true,
+			want: Tuple([]Item{}...),
+		},
+		{
+			desc: "one indexed event",
+			l: Log{
+				Topics: [4][32]byte{
+					h232b("91376cf23f43e2a9c3647f44b00086ec05ac93e8a8fbca53a196250877534e82"),
+					h232b("0000000000000000000000000000000000000000000000000000000000000042"),
+				},
+				Data: []byte{},
+			},
+			e: Event{
+				Inputs: []Input{
+					Input{
+						Indexed: true,
+						Name:    "foo",
+						Type:    "bytes32",
+					},
+				},
+			},
+			ok: true,
+			want: Tuple(Bytes32(
+				h232b("0000000000000000000000000000000000000000000000000000000000000042"),
+			)),
+		},
+		{
+			desc: "invalid signature",
+			l: Log{
+				Topics: [4][32]byte{
+					h232b("deadbeef3f43e2a9c3647f44b00086ec05ac93e8a8fbca53a196250877534e82"),
+					h232b("0000000000000000000000000000000000000000000000000000000000000042"),
+				},
+				Data: []byte{},
+			},
+			e: Event{
+				Inputs: []Input{
+					Input{
+						Indexed: true,
+						Name:    "foo",
+						Type:    "bytes32",
+					},
+				},
+			},
+			ok:   false,
+			want: Tuple([]Item{}...),
+		},
+		{
+			desc: "invalid signature",
+			l: Log{
+				Topics: [4][32]byte{
+					h232b("0f96ed1b236328f1d2894cbda9d0f2795aefae71821755f5b7d524822393dcae"),
+					h232b("0000000000000000000000000000000000000000000000000000000000000042"),
+				},
+				Data: Encode(Tuple(
+					Bytes([]byte("foo")),
+					Bytes([]byte("baz")),
+				)),
+			},
+			e: Event{
+				Inputs: []Input{
+					Input{
+						Indexed: false,
+						Name:    "foo",
+						Type:    "bytes",
+					},
+					Input{
+						Indexed: true,
+						Name:    "bar",
+						Type:    "bytes32",
+					},
+					Input{
+						Indexed: false,
+						Name:    "baz",
+						Type:    "bytes",
+					},
+				},
+			},
+			ok: true,
+			want: Tuple(
+				Bytes([]byte("foo")),
+				Bytes32(h232b("0000000000000000000000000000000000000000000000000000000000000042")),
+				Bytes([]byte("baz")),
+			),
+		},
+	}
+	for _, tc := range cases {
+		got, ok := Match(tc.l, tc.e)
+		if ok != tc.ok {
+			t.Errorf("%q match got: %t want: %t", tc.desc, ok, tc.ok)
+		}
+		if !reflect.DeepEqual(got, tc.want) {
+			t.Errorf("%q item got: %# v want: %# v", tc.desc, pretty.Formatter(got), pretty.Formatter(tc.want))
+		}
+	}
+}
 
 func TestABIType(t *testing.T) {
 	cases := []struct {

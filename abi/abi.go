@@ -26,19 +26,23 @@ type Log struct {
 // A false return value indicates the first log topic doesn't match
 // the event's [Event.SignatureHash].
 func Match(l Log, e Event) (Item, bool) {
-	if e.SignatureHash() != l.Topics[0] {
-		return Item{}, false
+	if !e.Anonymous && e.SignatureHash() != l.Topics[0] {
+		return Tuple([]Item{}...), false
 	}
 	var (
 		items     = make([]Item, len(e.Inputs))
 		unindexed []abit.Type
 	)
-	for i, inp := range e.Inputs {
-		if !inp.Indexed {
-			unindexed = append(unindexed, inp.ABIType())
+	for i, j := 0, 0; i < len(e.Inputs); i++ {
+		if e.Inputs[i].Indexed {
+			items[i] = Bytes32(l.Topics[j+1])
+			j++
 			continue
 		}
-		items[i] = Bytes(l.Topics[i+1][:])
+		unindexed = append(unindexed, e.Inputs[i].ABIType())
+	}
+	if len(unindexed) == 0 {
+		return Tuple(items...), true
 	}
 	item := Decode(l.Data, abit.Tuple(unindexed...))
 	for i, j := 0, 0; i < len(e.Inputs); i++ {
@@ -127,6 +131,17 @@ func Bytes(d []byte) Item {
 
 func (it Item) Bytes() []byte {
 	return it.d
+}
+
+func Bytes32(d [32]byte) Item {
+	return Item{Type: abit.Bytes, d: d[:]}
+}
+
+func (it Item) Bytes32() [32]byte {
+	if len(it.d) < 32 {
+		return [32]byte{}
+	}
+	return *(*[32]byte)(it.d)
 }
 
 func (it Item) BytesSlice() [][]byte {
