@@ -5,6 +5,106 @@ import (
 	"testing"
 )
 
+func TestSize(t *testing.T) {
+	cases := []struct {
+		desc string
+		t    Type
+		want int
+	}{
+		{
+			desc: "simple static",
+			t:    Uint8,
+			want: 32,
+		},
+		{
+			desc: "fixed size list of fixed size types",
+			t:    ListK(2, Uint8),
+			want: 64,
+		},
+		{
+			desc: "dynamic sized list of static types",
+			t:    List(Uint8),
+			want: 0,
+		},
+		{
+			desc: "tuple with static fields",
+			t:    Tuple(Uint8),
+			want: 32,
+		},
+		{
+			desc: "tuple with dynamic fields",
+			t:    Tuple(Bytes),
+			want: 0,
+		},
+	}
+	for _, tc := range cases {
+		got := tc.t.Size()
+		if got != tc.want {
+			t.Errorf("%q got: %d want: %d", tc.desc, got, tc.want)
+		}
+	}
+}
+
+func TestStatic(t *testing.T) {
+	cases := []struct {
+		desc string
+		t    Type
+		want bool
+	}{
+		{
+			desc: "simple static",
+			t:    Uint8,
+			want: true,
+		},
+		{
+			desc: "simple dynamic",
+			t:    Bytes,
+			want: false,
+		},
+		{
+			desc: "static size list with static elements",
+			t:    ListK(1, Uint8),
+			want: true,
+		},
+		{
+			desc: "static size list with dynamic elements",
+			t:    ListK(1, Bytes),
+			want: false,
+		},
+		{
+			desc: "dynamic size list with static elements",
+			t:    List(Uint8),
+			want: false,
+		},
+		{
+			desc: "dynamic size list with dynamic elements",
+			t:    List(Bytes),
+			want: false,
+		},
+		{
+			desc: "tuple list with static fields",
+			t:    Tuple(Uint8),
+			want: true,
+		},
+		{
+			desc: "tuple list with dynamic fields",
+			t:    Tuple(Bytes),
+			want: false,
+		},
+		{
+			desc: "tuple list with dynamic & static fields",
+			t:    Tuple(Uint8, Bytes),
+			want: false,
+		},
+	}
+	for _, tc := range cases {
+		got := tc.t.Static()
+		if got != tc.want {
+			t.Errorf("%q got: %t want: %t", tc.desc, got, tc.want)
+		}
+	}
+}
+
 func TestResolve(t *testing.T) {
 	cases := []struct {
 		desc string
@@ -32,11 +132,11 @@ func TestResolve(t *testing.T) {
 		},
 		{
 			desc: "address[6]",
-			want: ListK(Address, 6),
+			want: ListK(6, Address),
 		},
 		{
 			desc: "address[][6]",
-			want: ListK(List(Address), 6),
+			want: ListK(6, List(Address)),
 		},
 	}
 	for _, tc := range cases {
@@ -69,7 +169,7 @@ func TestSignature(t *testing.T) {
 			want: "address[]",
 		},
 		{
-			t:    ListK(Address, 8),
+			t:    ListK(8, Address),
 			want: "address[8]",
 		},
 	}

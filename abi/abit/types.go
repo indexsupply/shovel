@@ -33,7 +33,7 @@ func Resolve(desc string, fields ...Type) Type {
 			//errors when parsing logs. See: #61
 			panic("list length descriptor is not a number")
 		}
-		return ListK(Resolve(desc[:a], fields...), uint(k))
+		return ListK(uint(k), Resolve(desc[:a], fields...))
 	}
 	switch desc {
 	case "address":
@@ -106,6 +106,52 @@ func (t Type) Signature() string {
 	}
 }
 
+// A type is conidered static if the following conditions are met:
+// 1. Fixed size type (eg Uint256 or Bytes32)
+// 2. Fixed size list containing fixed size types (eg ListK(1, Uint256))
+// 3. Tuple containing only fixed sized types (eg Tuple(Uint256))
+// All other types are considered dynamic.
+//
+// See the Types section of the spec for more discussion:
+// https://docs.soliditylang.org/en/v0.8.17/abi-spec.html#types
+func (t Type) Static() bool {
+	if t.Kind == D {
+		return false
+	}
+	if t.Elem != nil && t.Length > 0 && t.Elem.Kind == D {
+		return false
+	}
+	if t.Elem != nil && t.Length == 0 {
+		return false
+	}
+	for _, f := range t.Fields {
+		if f.Kind != S {
+			return false
+		}
+	}
+	return true
+}
+
+// Returns the number of bytes that the type will
+// occupy if the type is static.
+//
+// Returns 0 if the type is dynamic.
+func (t Type) Size() int {
+	if !t.Static() {
+		return 0
+	}
+	switch t.Kind {
+	case S:
+		return 32
+	case T:
+		return 32 * len(t.Fields)
+	case L:
+		return 32 * int(t.Length)
+	default:
+		return 0
+	}
+}
+
 var (
 	Address = Type{
 		Name: "address",
@@ -149,8 +195,8 @@ func List(et Type) Type {
 	}
 }
 
-// Fixed list of length k
-func ListK(et Type, k uint) Type {
+// Fixed sized list of length k
+func ListK(k uint, et Type) Type {
 	return Type{
 		Name:   "list",
 		Kind:   L,
