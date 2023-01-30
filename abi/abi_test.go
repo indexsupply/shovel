@@ -442,6 +442,29 @@ func TestEncode(t *testing.T) {
 				68656c6c6f000000000000000000000000000000000000000000000000000000
 			`),
 		},
+		{
+			desc:  "nested static tuples",
+			input: Tuple(Tuple(Uint8(42), Uint8(43), Tuple(Uint8(44), Uint8(45)))),
+			want: hb(`
+				000000000000000000000000000000000000000000000000000000000000002a
+				000000000000000000000000000000000000000000000000000000000000002b
+				000000000000000000000000000000000000000000000000000000000000002c
+				000000000000000000000000000000000000000000000000000000000000002d
+			`),
+		},
+		{
+			desc:  "nested dynamic tuples",
+			input: Tuple(Tuple(Uint8(42), Tuple(Uint8(43), String("foo")))),
+			want: hb(`
+				0000000000000000000000000000000000000000000000000000000000000020
+				000000000000000000000000000000000000000000000000000000000000002a
+				0000000000000000000000000000000000000000000000000000000000000040
+				000000000000000000000000000000000000000000000000000000000000002b
+				0000000000000000000000000000000000000000000000000000000000000040
+				0000000000000000000000000000000000000000000000000000000000000003
+				666f6f0000000000000000000000000000000000000000000000000000000000
+			`),
+		},
 	}
 	for _, tc := range cases {
 		got := Encode(tc.input)
@@ -524,6 +547,30 @@ func TestDecode(t *testing.T) {
 					abit.String,
 				),
 				abit.List(abit.Uint64),
+			),
+		},
+		{
+			desc: "tuple with nested static tuple",
+			want: Tuple(Uint8(42), Uint8(43), Tuple(Uint8(44), Uint8(45))),
+			t: abit.Tuple(
+				abit.Uint8,
+				abit.Uint8,
+				abit.Tuple(
+					abit.Uint8,
+					abit.Uint8,
+				),
+			),
+		},
+		{
+			desc: "tuple with nested dynamic tuple",
+			want: Tuple(Uint8(42), String("foo"), Tuple(Uint8(44), String("bar"))),
+			t: abit.Tuple(
+				abit.Uint8,
+				abit.String,
+				abit.Tuple(
+					abit.Uint8,
+					abit.String,
+				),
 			),
 		},
 	}
