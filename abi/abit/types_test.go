@@ -96,6 +96,11 @@ func TestStatic(t *testing.T) {
 			t:    Tuple(Uint8, Bytes),
 			want: false,
 		},
+		{
+			desc: "tuple with nested static tuple",
+			t:    Tuple(Uint8, Tuple(Uint8)),
+			want: true,
+		},
 	}
 	for _, tc := range cases {
 		got := tc.t.Static()

@@ -109,7 +109,7 @@ func (t Type) Signature() string {
 // A type is conidered static if the following conditions are met:
 // 1. Fixed size type (eg Uint256 or Bytes32)
 // 2. Fixed size list containing fixed size types (eg ListK(1, Uint256))
-// 3. Tuple containing only fixed sized types (eg Tuple(Uint256))
+// 3. Tuple containing only fixed sized types (eg Tuple(Tuple(Uint256)))
 // All other types are considered dynamic.
 //
 // See the Types section of the spec for more discussion:
@@ -125,7 +125,7 @@ func (t Type) Static() bool {
 		return false
 	}
 	for _, f := range t.Fields {
-		if f.Kind != S {
+		if !f.Static() {
 			return false
 		}
 	}
