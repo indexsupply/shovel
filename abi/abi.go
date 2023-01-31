@@ -360,20 +360,23 @@ func Decode(input []byte, t abit.Type) Item {
 		count := bint.Decode(input[:32])
 		return Item{Type: t, d: input[32 : 32+count]}
 	case abit.L:
-		n := 32
-		count := bint.Decode(input[:n])
-		items := make([]Item, count)
-		for i := uint64(0); i < count; i++ {
-			if t.Elem.Static() {
-				items[i] = Decode(input[n:], *t.Elem)
-				n += t.Elem.Size()
-				continue
+		switch t.Length {
+		case 0: //dynamic sized list
+			count := bint.Decode(input[:32])
+			types := make([]abit.Type, count)
+			for i := uint64(0); i < count; i++ {
+				types[i] = *t.Elem
 			}
-			offset := bint.Decode(input[n : n+32])
-			items[i] = Decode(input[32+offset:], *t.Elem)
-			n += 32
+			tuple := Decode(input[32:], abit.Tuple(types...))
+			return List(tuple.l...)
+		default: //fixed size list
+			types := make([]abit.Type, t.Length)
+			for i := uint(0); i < t.Length; i++ {
+				types[i] = *t.Elem
+			}
+			tuple := Decode(input, abit.Tuple(types...))
+			return ListK(t.Length, tuple.l...)
 		}
-		return List(items...)
 	case abit.T:
 		items := make([]Item, len(t.Fields))
 		for i, f := range t.Fields {
