@@ -524,6 +524,11 @@ func TestDecode(t *testing.T) {
 			t:    abit.List(abit.String),
 		},
 		{
+			desc: "fixed size list of static types",
+			want: ListK(2, Uint8(42), Uint8(43)),
+			t:    abit.ListK(2, abit.Uint8),
+		},
+		{
 			desc: "tuple static",
 			want: Tuple(Uint64(0)),
 			t:    abit.Tuple(abit.Uint64),

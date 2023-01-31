@@ -132,26 +132,6 @@ func (t Type) Static() bool {
 	return true
 }
 
-// Returns the number of bytes that the type will
-// occupy if the type is static.
-//
-// Returns 0 if the type is dynamic.
-func (t Type) Size() int {
-	if !t.Static() {
-		return 0
-	}
-	switch t.Kind {
-	case S:
-		return 32
-	case T:
-		return 32 * len(t.Fields)
-	case L:
-		return 32 * int(t.Length)
-	default:
-		return 0
-	}
-}
-
 var (
 	Address = Type{
 		Name: "address",

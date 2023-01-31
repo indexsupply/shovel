@@ -5,46 +5,6 @@ import (
 	"testing"
 )
 
-func TestSize(t *testing.T) {
-	cases := []struct {
-		desc string
-		t    Type
-		want int
-	}{
-		{
-			desc: "simple static",
-			t:    Uint8,
-			want: 32,
-		},
-		{
-			desc: "fixed size list of fixed size types",
-			t:    ListK(2, Uint8),
-			want: 64,
-		},
-		{
-			desc: "dynamic sized list of static types",
-			t:    List(Uint8),
-			want: 0,
-		},
-		{
-			desc: "tuple with static fields",
-			t:    Tuple(Uint8),
-			want: 32,
-		},
-		{
-			desc: "tuple with dynamic fields",
-			t:    Tuple(Bytes),
-			want: 0,
-		},
-	}
-	for _, tc := range cases {
-		got := tc.t.Size()
-		if got != tc.want {
-			t.Errorf("%q got: %d want: %d", tc.desc, got, tc.want)
-		}
-	}
-}
-
 func TestStatic(t *testing.T) {
 	cases := []struct {
 		desc string
