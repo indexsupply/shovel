@@ -52,6 +52,8 @@ func Resolve(desc string, fields ...Type) Type {
 		return Uint8
 	case "uint64":
 		return Uint64
+	case "uint120":
+		return Uint120
 	case "uint256":
 		return Uint256
 	default:
@@ -178,6 +180,10 @@ var (
 	}
 	Uint64 = Type{
 		Name: "uint64",
+		Kind: S,
+	}
+	Uint120 = Type{
+		Name: "uint120",
 		Kind: S,
 	}
 	Uint256 = Type{

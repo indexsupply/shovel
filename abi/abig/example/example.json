@@ -1,0 +1,31 @@
+[
+	{
+		"name": "transfer",
+		"type": "event",
+		"anonymous": false,
+		"inputs": [
+			{"indexed": true, "type": "address", "name": "from"},
+			{"indexed": true, "type": "address", "name": "to"},
+			{"indexed": true, "type": "uint256", "name": "id"},
+			{
+				"indexed": false,
+				"type": "tuple[][]",
+				"name": "details",
+				"components": [
+					{"indexed": false, "type": "address", "name": "other"},
+					{"indexed": false, "type": "bytes32", "name": "key"},
+					{"indexed": false, "type": "bytes",   "name": "value"},
+					{
+						"indexed": false,
+						"type": "tuple",
+						"name": "geo",
+						"components": [
+							{"indexed": false, "type": "uint8", "name": "x"},
+							{"indexed": false, "type": "uint8", "name": "y"}
+						]
+					}
+				]
+			}
+		]
+	}
+]
