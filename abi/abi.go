@@ -152,6 +152,10 @@ func (it Item) BytesSlice() [][]byte {
 	return res
 }
 
+func Address(a [20]byte) Item {
+	return Item{Type: abit.Address, d: a[:]}
+}
+
 func (it Item) Address() [20]byte {
 	if len(it.d) < 32 {
 		return [20]byte{}
@@ -273,6 +277,9 @@ func ListK(k uint, items ...Item) Item {
 }
 
 func List(items ...Item) Item {
+	if len(items) == 0 {
+		return Item{}
+	}
 	return Item{
 		Type: abit.List(items[0].Type),
 		l:    items,
