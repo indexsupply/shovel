@@ -378,15 +378,17 @@ func Decode(input []byte, t abit.Type) Item {
 			return ListK(t.Length, tuple.l...)
 		}
 	case abit.T:
+		var n int
 		items := make([]Item, len(t.Fields))
 		for i, f := range t.Fields {
-			n := 32 * i
 			if f.Static() {
 				items[i] = Decode(input[n:], *f)
+				n += f.Size()
 				continue
 			}
 			offset := bint.Decode(input[n : n+32])
 			items[i] = Decode(input[offset:], *f)
+			n += 32
 		}
 		return Tuple(items...)
 	default:
