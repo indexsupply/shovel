@@ -132,6 +132,25 @@ func (t Type) Static() bool {
 	return true
 }
 
+// Returns number of bytes used by t if t is [Static]
+// Otherwise returns 0
+func (t Type) Size() int {
+	switch t.Kind {
+	case S:
+		return 32
+	case T:
+		var n int
+		for _, f := range t.Fields {
+			n += f.Size()
+		}
+		return n
+	case L:
+		return 32 * int(t.Length)
+	default:
+		return 0
+	}
+}
+
 var (
 	Address = Type{
 		Name: "address",
