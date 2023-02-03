@@ -94,10 +94,6 @@ func itemFunc(t abit.Type) string {
 		return "BigInt()"
 	case "uint256":
 		return "BigInt()"
-	case "tuple":
-		return "NewDetails()"
-	case "list":
-		return itemFunc(root(t))
 	default:
 		panic(fmt.Sprintf("unkown type: %s", t.Name))
 	}
