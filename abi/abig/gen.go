@@ -232,6 +232,20 @@ func Gen(pkg string, js []byte) ([]byte, error) {
 		"add": func(x, y int) int {
 			return x + y
 		},
+		"signature": func(e abi.Event) string {
+			return abi.Signature(e)
+		},
+		"signatureHash": func(e abi.Event) string {
+			b := abi.SignatureHash(e)
+			var s string
+			for i := range b {
+				s += fmt.Sprintf("0x%x", b[i])
+				if i != len(b) {
+					s += ", "
+				}
+			}
+			return s
+		},
 	})
 	t, err = t.Parse(abitemp)
 	if err != nil {

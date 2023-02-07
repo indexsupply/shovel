@@ -26,7 +26,7 @@ type Log struct {
 // A false return value indicates the first log topic doesn't match
 // the event's [Event.SignatureHash].
 func Match(l Log, e Event) (Item, bool) {
-	if !e.Anonymous && e.SignatureHash() != l.Topics[0] {
+	if !e.Anonymous && e.SignatureHash != l.Topics[0] {
 		return Tuple([]Item{}...), false
 	}
 	var (
@@ -80,8 +80,8 @@ func (inp *Input) ABIType() abit.Type {
 }
 
 type Event struct {
-	sig     string
-	sigHash [32]byte
+	Signature     string
+	SignatureHash [32]byte
 
 	Name      string
 	Type      string //event
@@ -89,11 +89,7 @@ type Event struct {
 	Inputs    []Input
 }
 
-// Computes signature (eg name(type1,type2)). Caches result on e
-func (e *Event) Signature() string {
-	if e.sig != "" {
-		return e.sig
-	}
+func Signature(e Event) string {
 	var s strings.Builder
 	s.WriteString(e.Name)
 	s.WriteString("(")
@@ -104,17 +100,11 @@ func (e *Event) Signature() string {
 		}
 	}
 	s.WriteString(")")
-	e.sig = s.String()
-	return e.sig
+	return s.String()
 }
 
-// Computes keccak hash over [Event.Signature]. Caches result on e
-func (e *Event) SignatureHash() [32]byte {
-	if e.sigHash != [32]byte{} {
-		return e.sigHash
-	}
-	e.sigHash = isxhash.Keccak32([]byte(e.Signature()))
-	return e.sigHash
+func SignatureHash(e Event) [32]byte {
+	return isxhash.Keccak32([]byte(Signature(e)))
 }
 
 type Item struct {

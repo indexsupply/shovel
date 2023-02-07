@@ -83,6 +83,8 @@ import (
 {{- define "event" -}}
 	var {{ camel .Name }}Event = abi.Event{
 		Name: "{{ .Name }}",
+		Signature: "{{ signature . }}",
+		SignatureHash: [32]byte{ {{ signatureHash . }} },
 		Inputs: []abi.Input{
 			{{ range .Inputs -}}
 			{{ template "input" . }}

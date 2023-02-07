@@ -54,6 +54,7 @@ func TestMatch(t *testing.T) {
 				Data: []byte{},
 			},
 			e: Event{
+				SignatureHash: h232b("91376cf23f43e2a9c3647f44b00086ec05ac93e8a8fbca53a196250877534e82"),
 				Inputs: []Input{
 					Input{
 						Indexed: true,
@@ -71,12 +72,13 @@ func TestMatch(t *testing.T) {
 			desc: "invalid signature",
 			l: Log{
 				Topics: [4][32]byte{
-					h232b("deadbeef3f43e2a9c3647f44b00086ec05ac93e8a8fbca53a196250877534e82"),
+					h232b("deadbeef00000000000000000000000000000000000000000000000000000000"),
 					h232b("0000000000000000000000000000000000000000000000000000000000000042"),
 				},
 				Data: []byte{},
 			},
 			e: Event{
+				SignatureHash: h232b("91376cf23f43e2a9c3647f44b00086ec05ac93e8a8fbca53a196250877534e82"),
 				Inputs: []Input{
 					Input{
 						Indexed: true,
@@ -89,7 +91,7 @@ func TestMatch(t *testing.T) {
 			want: Tuple([]Item{}...),
 		},
 		{
-			desc: "invalid signature",
+			desc: "valid signature",
 			l: Log{
 				Topics: [4][32]byte{
 					h232b("0f96ed1b236328f1d2894cbda9d0f2795aefae71821755f5b7d524822393dcae"),
@@ -101,6 +103,7 @@ func TestMatch(t *testing.T) {
 				)),
 			},
 			e: Event{
+				SignatureHash: h232b("0f96ed1b236328f1d2894cbda9d0f2795aefae71821755f5b7d524822393dcae"),
 				Inputs: []Input{
 					Input{
 						Indexed: false,
