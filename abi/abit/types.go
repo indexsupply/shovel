@@ -42,6 +42,8 @@ func Resolve(desc string, fields ...Type) Type {
 		return Bool
 	case "bytes":
 		return Bytes
+	case "bytes4":
+		return Bytes4
 	case "bytes32":
 		return Bytes32
 	case "string":
@@ -168,6 +170,10 @@ var (
 	}
 	Bytes32 = Type{
 		Name: "bytes32",
+		Kind: S,
+	}
+	Bytes4 = Type{
+		Name: "bytes4",
 		Kind: S,
 	}
 	String = Type{
