@@ -144,6 +144,17 @@ func (it Item) Bytes32() [32]byte {
 	return *(*[32]byte)(it.d)
 }
 
+func Bytes4(d [4]byte) Item {
+	return Item{Type: abit.Bytes4, d: d[:]}
+}
+
+func (it Item) Bytes4() [4]byte {
+	if len(it.d) < 4 {
+		return [4]byte{}
+	}
+	return [4]byte(it.d)
+}
+
 func Address(a [20]byte) Item {
 	return Item{Type: abit.Address, d: a[:]}
 }

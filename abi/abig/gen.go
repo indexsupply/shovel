@@ -86,6 +86,8 @@ func itemFunc(t abit.Type) string {
 		return "Bytes()"
 	case "bytes32":
 		return "Bytes32()"
+	case "bytes4":
+		return "Bytes4()"
 	case "uint8":
 		return "Uint8()"
 	case "uint64":
@@ -109,6 +111,8 @@ func goType(input abi.Input) string {
 		return "[]byte"
 	case "bytes32":
 		return "[32]byte"
+	case "bytes4":
+		return "[4]byte"
 	case "tuple":
 		return camel(input.Name)
 	case "list":
