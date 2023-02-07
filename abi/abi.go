@@ -134,7 +134,7 @@ func (it Item) Bytes() []byte {
 }
 
 func Bytes32(d [32]byte) Item {
-	return Item{Type: abit.Bytes, d: d[:]}
+	return Item{Type: abit.Bytes32, d: d[:]}
 }
 
 func (it Item) Bytes32() [32]byte {
