@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/indexsupply/x/abi/abig"
+	"github.com/indexsupply/x/genabi"
 )
 
 var (
@@ -33,7 +33,7 @@ func main() {
 
 	js, err := os.ReadFile(*input)
 	check(err)
-	code, err := abig.Gen(*pkgName, js)
+	code, err := genabi.Gen(*pkgName, js)
 	if *output != "" {
 		check(os.WriteFile(*output, code, 0644))
 		if err != nil {

@@ -11,40 +11,22 @@ import (
 )
 {{ end }}
 
-{{- define "input" -}}
-	abi.Input{
-		{{ if eq .Indexed true -}}
-		Indexed: true,
-		{{ end -}}
-		Name: "{{.Name}}",
-		Type: "{{.Type}}",
-		{{ if gt (len .Components) 0 -}}
-		Components: []abi.Input{
-		{{ range .Components -}}
-		{{ template "input" . }}
-		{{ end }}
-		},
-		{{ end }}
-	},
-{{- end -}}
-
 {{ define "struct" -}}
 	type {{camel .Name }} struct {
-		Item abi.Item
 		{{ range .Inputs -}}
 			{{ camel .Name }} {{ goType . }}
 		{{ end -}}
 	}
 	func New{{ camel .Name }}(item abi.Item) {{ camel .Name }} {
 		x := {{ camel .Name }}{}
-		{{ range $index, $inp := .Inputs -}}
-			{{ if eq $inp.ABIType.Kind 2 -}}
+		{{ range $index, $inp := (unindexed .Inputs) -}}
+			{{ if isTuple $inp -}}
 				x.{{ camel $inp.Name }} = New{{ camel $inp.Name }}(item.At({{ $index }}))
-			{{ else if eq $inp.ABIType.Kind 3 -}}
-				{{ template "list" tinput $index $inp -}}
+			{{ else if isArray $inp -}}
+				{{ template "list" listHelper $index $inp -}}
 				x.{{ camel $inp.Name }} = {{ $inp.Name }}0
 			{{ else -}}
-				x.{{ camel $inp.Name }} = item.At({{ $index }}).{{ itemFunc $inp.ABIType }}
+				x.{{ camel $inp.Name }} = item.At({{ $index }}).{{ itemFunc $inp }}
 			{{ end -}}
 		{{ end -}}
 		return x
@@ -52,7 +34,7 @@ import (
 
 	{{ range $index, $inp := .Inputs -}}
 		{{ if gt (len $inp.Components) 0  -}}
-			{{ template "struct" tstruct $inp.Name $inp.Components -}}
+			{{ template "struct" structHelper $inp.Name $inp.Components -}}
 		{{ end -}}
 	{{ end -}}
 {{ end -}}
@@ -63,7 +45,7 @@ import (
 	{{ else -}}
 		{{ .Input.Name }}Item{{ .Index }} := item.At({{ .ItemIndex }})
 	{{ end -}}
-	{{ .Input.Name }}{{ .Index }} := make({{ .Dim }}{{ camel .Input.Name }}, {{ .Input.Name }}Item{{ .Index }}.Len())
+	{{ .Input.Name }}{{ .Index }} := make({{ .Dimension }}{{ camel .Input.Name }}, {{ .Input.Name }}Item{{ .Index }}.Len())
 	{{ if .HasNext -}}
 		for i{{ .Index }} := 0; i{{ .Index }} < {{ .Input.Name }}Item{{ .Index }}.Len(); i{{ .Index }}++ {
 			{{ template "list" .Next -}}
@@ -71,34 +53,38 @@ import (
 		}
 	{{ else -}}
 		for i{{ .Index }} := 0; i{{ .Index }} < {{ .Input.Name }}Item{{ .Index }}.Len(); i{{ .Index }}++ {
-			{{ if eq .Type.Elem.Kind 2 -}}
+			{{ if hasTuple .Input -}}
 				{{ .Input.Name}}{{ .Index }}[i{{ .Index }}] = New{{ camel .Input.Name }}({{ .Input.Name }}Item{{ .Index }}.At(i{{ .Index}}))
 			{{ else -}}
-				{{ .Input.Name}}{{ .Index }}[i{{ .Index }}] = {{ .Input.Name }}Item{{ .Index }}.{{ itemFunc .Type }}
+				{{ .Input.Name}}{{ .Index }}[i{{ .Index }}] = {{ .Input.Name }}Item{{ .Index }}.{{ itemFunc .Input }}
 			{{ end -}}
 		}
 	{{ end -}}
 {{ end -}}
 
 {{- define "event" -}}
-	var {{ camel .Name }}Event = abi.Event{
-		Name: "{{ .Name }}",
-		Signature: "{{ signature . }}",
-		SignatureHash: [32]byte{ {{ signatureHash . }} },
-		Inputs: []abi.Input{
-			{{ range .Inputs -}}
-			{{ template "input" . }}
-			{{ end }}
-		},
-	}
+	{{ template "struct" structHelper .Name .Inputs -}}
 
-	{{ template "struct" tstruct .Name .Inputs -}}
+	// {{ .Signature }}
+	// {{ printf "%x" .SignatureHash }}
+	var (
+		{{ camel .Name }}Signature = {{ .SigHashLiteral }}
+		{{ camel .Name }}Schema = schema.Parse("{{ .SchemaSignature }}")
+	)
 
 	func Match{{ camel .Name }}(l abi.Log) ({{ camel .Name}}, bool) {
-		it, ok := abi.Match(l, {{ camel .Name }}Event)
-		if !ok {
+		if {{ camel .Name }}Signature != l.Topics[0] {
 			return {{ camel .Name }}{}, false
 		}
-		return New{{ camel .Name}}(it), true
+		{{ if gt (len (unindexed .Inputs)) 0 -}}
+			item := abi.Decode(l.Data, {{camel .Name }}Schema)
+			res := New{{ camel .Name}}(item)
+		{{ else -}}
+			res := {{ camel .Name}}{}
+		{{ end -}}
+		{{ range $index, $inp := (indexed .Inputs) -}}
+			res.{{ camel $inp.Name }} = abi.Bytes(l.Topics[{{ add $index  1 }}][:]).{{ itemFunc $inp }}
+		{{ end -}}
+		return res, true
 	}
 {{ end -}}
