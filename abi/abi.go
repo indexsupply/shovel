@@ -20,9 +20,6 @@ type Log struct {
 	Data    []byte
 }
 
-// Matches event data in a log. Sets decoded data on e.
-// Use [Input]'s Item field to read decoded data.
-//
 // A false return value indicates the first log topic doesn't match
 // the event's [Event.SignatureHash].
 func Match(l Log, e Event) (Item, bool) {
@@ -55,10 +52,7 @@ func Match(l Log, e Event) (Item, bool) {
 	return Tuple(items...), true
 }
 
-// Optionally contains a decoded Item. See: [Match].
 type Input struct {
-	Item *Item
-
 	Indexed    bool
 	Name       string
 	Type       string
