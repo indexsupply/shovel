@@ -37,11 +37,13 @@ func Array(e Type) Type {
 }
 
 func ArrayK(k int, e Type) Type {
-	return Type{
-		Kind:   'a',
-		Elem:   &e,
-		Length: k,
+	t := Type{Kind: 'a', Elem: &e, Length: k}
+	if !e.static() {
+		return t
 	}
+	t.Static = true
+	t.Size = k * e.size()
+	return t
 }
 
 func Tuple(fields ...Type) Type {
@@ -81,8 +83,8 @@ func (t Type) size() int {
 		return 0
 	}
 	switch {
-	case t.Kind == 'a' && t.Elem.Kind == 's':
-		return t.Length * 32
+	case t.Kind == 'a' && t.Elem.static():
+		return t.Length * t.Elem.size()
 	case t.Kind == 't':
 		var n int
 		for _, t := range t.Fields {
