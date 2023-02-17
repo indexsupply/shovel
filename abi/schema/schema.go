@@ -1,6 +1,7 @@
 package schema
 
 import (
+	"strconv"
 	"strings"
 )
 
@@ -95,8 +96,22 @@ func (t Type) size() int {
 
 func Parse(s string) Type {
 	switch {
-	case strings.HasSuffix(s, "[]"):
-		return Array(Parse(strings.TrimSuffix(s, "[]")))
+	case strings.HasSuffix(s, "]"):
+		var num string
+		for i := len(s) - 2; i != 0; i-- {
+			if s[i] == '[' {
+				break
+			}
+			num += string(s[i])
+		}
+		if len(num) == 0 {
+			return Array(Parse(s[:len(s)-2]))
+		}
+		k, err := strconv.Atoi(num)
+		if err != nil {
+			panic("abi/schema: array contains non-number length")
+		}
+		return ArrayK(k, Parse(s[:len(s)-len(num)-2]))
 	case strings.HasPrefix(s, "("):
 		var (
 			types []Type

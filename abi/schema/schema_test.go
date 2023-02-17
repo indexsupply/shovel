@@ -38,6 +38,11 @@ func TestParse(t *testing.T) {
 			want:  Tuple(Static(), Dynamic()),
 		},
 		{
+			desc:  "fixed size array",
+			input: "(bytes32,bytes)[2]",
+			want:  ArrayK(2, Tuple(Static(), Dynamic())),
+		},
+		{
 			desc:  "array",
 			input: "(bytes32,bytes)[]",
 			want:  Array(Tuple(Static(), Dynamic())),
