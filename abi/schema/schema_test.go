@@ -212,3 +212,39 @@ func TestTuple(t *testing.T) {
 		diff.Test(t, t.Errorf, tc.tuple, tc.want)
 	}
 }
+
+func TestSize(t *testing.T) {
+	cases := []struct {
+		t    Type
+		want int
+	}{
+		{
+			Static(),
+			32,
+		},
+		{
+			Dynamic(),
+			0,
+		},
+		{
+			Array(Static()),
+			0,
+		},
+		{
+			Array(Dynamic()),
+			0,
+		},
+		{
+			ArrayK(2, Static()),
+			64,
+		},
+		{
+			ArrayK(3, ArrayK(2, Static())),
+			192,
+		},
+	}
+	for _, tc := range cases {
+		got := tc.t.size()
+		diff.Test(t, t.Errorf, got, tc.want)
+	}
+}
