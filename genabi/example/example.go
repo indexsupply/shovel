@@ -11,12 +11,24 @@ type Transfer struct {
 	From    [20]byte
 	To      [20]byte
 	Id      *big.Int
+	Extra   [3][2]uint8
 	Details [][]Details
 }
 
 func NewTransfer(item abi.Item) Transfer {
 	x := Transfer{}
-	detailsItem0 := item.At(0)
+	extraItem0 := item.At(0)
+	extra0 := [3][2]uint8{}
+	for i0 := 0; i0 < extraItem0.Len(); i0++ {
+		extraItem1 := extraItem0.At(i0)
+		extra1 := [2]uint8{}
+		for i1 := 0; i1 < extraItem1.Len(); i1++ {
+			extra1[i1] = extraItem1.Uint8()
+		}
+		extra0[i0] = extra1
+	}
+	x.Extra = extra0
+	detailsItem0 := item.At(1)
 	details0 := make([][]Details, detailsItem0.Len())
 	for i0 := 0; i0 < detailsItem0.Len(); i0++ {
 		detailsItem1 := detailsItem0.At(i0)
@@ -58,11 +70,11 @@ func NewGeo(item abi.Item) Geo {
 	return x
 }
 
-// transfer(address,address,uint256,(address,bytes32,bytes,(uint8,uint8))[][])
-// d18faf791871f68e0fa4d1faca22ed4bee53d9d7897b8e773ff616fffdced2be
+// transfer(address,address,uint256,uint8[2][3],(address,bytes32,bytes,(uint8,uint8))[][])
+// 70711f9efd2d568665592c1d6245e892eab7d9e56c76714682526066ca69d65e
 var (
-	TransferSignature = [32]byte{0xd1, 0x8f, 0xaf, 0x79, 0x18, 0x71, 0xf6, 0x8e, 0xf, 0xa4, 0xd1, 0xfa, 0xca, 0x22, 0xed, 0x4b, 0xee, 0x53, 0xd9, 0xd7, 0x89, 0x7b, 0x8e, 0x77, 0x3f, 0xf6, 0x16, 0xff, 0xfd, 0xce, 0xd2, 0xbe}
-	TransferSchema    = schema.Parse("((address,bytes32,bytes,(uint8,uint8))[][])")
+	TransferSignature = [32]byte{0x70, 0x71, 0x1f, 0x9e, 0xfd, 0x2d, 0x56, 0x86, 0x65, 0x59, 0x2c, 0x1d, 0x62, 0x45, 0xe8, 0x92, 0xea, 0xb7, 0xd9, 0xe5, 0x6c, 0x76, 0x71, 0x46, 0x82, 0x52, 0x60, 0x66, 0xca, 0x69, 0xd6, 0x5e}
+	TransferSchema    = schema.Parse("(uint8[2][3],(address,bytes32,bytes,(uint8,uint8))[][])")
 )
 
 func MatchTransfer(l abi.Log) (Transfer, bool) {

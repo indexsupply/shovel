@@ -45,7 +45,11 @@ import (
 	{{ else -}}
 		{{ .Input.Name }}Item{{ .Index }} := item.At({{ .ItemIndex }})
 	{{ end -}}
-	{{ .Input.Name }}{{ .Index }} := make({{ .Dimension }}{{ camel .Input.Name }}, {{ .Input.Name }}Item{{ .Index }}.Len())
+	{{ if .FixedLength -}}
+		{{ .Input.Name }}{{ .Index }} := {{ .MakeArg }}{}
+	{{ else -}}
+		{{ .Input.Name }}{{ .Index }} := make({{ .MakeArg }}, {{ .Input.Name }}Item{{ .Index }}.Len())
+	{{ end -}}
 	{{ if .HasNext -}}
 		for i{{ .Index }} := 0; i{{ .Index }} < {{ .Input.Name }}Item{{ .Index }}.Len(); i{{ .Index }}++ {
 			{{ template "list" .Next -}}
