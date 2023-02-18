@@ -51,7 +51,8 @@ func templateType(inputs []Input) map[string]struct{} {
 }
 
 func itemFunc(input Input) string {
-	switch input.Type {
+	t, _, _ := strings.Cut(input.Type, "[")
+	switch t {
 	case "address":
 		return "Address()"
 	case "bool":
@@ -73,22 +74,28 @@ func itemFunc(input Input) string {
 	case "uint120", "uint256":
 		return "BigInt()"
 	default:
-		panic(fmt.Sprintf("unkown type: %s", input.Type))
+		panic(fmt.Sprintf("unkown type: %s", t))
 	}
 }
 
-func goType(input Input) string {
-	if isTuple(input) {
-		return camel(input.Name)
+func goType(inp Input) string {
+	if strings.HasSuffix(inp.Type, "tuple") {
+		return camel(inp.Name)
 	}
-	if isArray(input) {
-		var t string
-		for i := 0; i < dimension(input); i++ {
-			t += "[]"
+	if strings.HasSuffix(inp.Type, "]") {
+		var (
+			elem, _, _ = strings.Cut(inp.Type, "[")
+			dims       string
+			t          = inp.Type
+		)
+		// reverse array notation
+		for i := 0; i <= strings.Count(t, "]"); i++ {
+			o, c := strings.Index(t, "["), strings.Index(t, "]")
+			dims, t = t[o:c+1]+dims, t[c+1:]
 		}
-		return t + camel(input.Name)
+		return dims + goType(Input{Type: elem, Name: inp.Name})
 	}
-	switch input.Type {
+	switch inp.Type {
 	case "address":
 		return "[20]byte"
 	case "bool":
@@ -108,7 +115,7 @@ func goType(input Input) string {
 	case "uint256":
 		return "*big.Int"
 	default:
-		panic(fmt.Sprintf("unkown type: %s", input.Type))
+		panic(fmt.Sprintf("unkown type: %s", inp.Type))
 	}
 }
 
@@ -124,16 +131,6 @@ func isArray(input Input) bool {
 	return strings.HasSuffix(input.Type, "]")
 }
 
-func dimension(input Input) int {
-	var n int
-	for _, c := range input.Type {
-		if c == rune('[') {
-			n++
-		}
-	}
-	return n
-}
-
 // used to aggregate template data in template.txt
 type listHelper struct {
 	Input      Input
@@ -142,8 +139,14 @@ type listHelper struct {
 	inputIndex int
 }
 
-func (t listHelper) HasNext() bool {
-	return (dimension(t.Input) - 1 - t.Index) != 0
+func (lh listHelper) HasNext() bool {
+	var dimension int
+	for _, c := range lh.Input.Type {
+		if c == rune('[') {
+			dimension++
+		}
+	}
+	return dimension > lh.Index+1
 }
 
 func (lh listHelper) ItemIndex() int {
@@ -161,12 +164,22 @@ func (lh listHelper) Next() listHelper {
 	}
 }
 
-func (lh listHelper) Dimension() string {
-	var out string
-	for i := lh.Index; i < dimension(lh.Input); i++ {
-		out += "[]"
+func (lh listHelper) MakeArg() string {
+	a := goType(lh.Input)
+	for i := 0; i < lh.Index; i++ {
+		k := strings.Index(a, "]")
+		a = a[k+1:]
 	}
-	return out
+	return a
+}
+
+func (lh listHelper) FixedLength() bool {
+	for i := 0; i < len(lh.Input.Type); i++ {
+		if lh.Input.Type[i] == ']' && lh.Input.Type[i-1] != '[' {
+			return true
+		}
+	}
+	return false
 }
 
 // We generate structs for Event.Inputs and

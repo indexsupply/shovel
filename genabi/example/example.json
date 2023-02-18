@@ -7,6 +7,7 @@
 			{"indexed": true, "type": "address", "name": "from"},
 			{"indexed": true, "type": "address", "name": "to"},
 			{"indexed": true, "type": "uint256", "name": "id"},
+			{"indexed": false,"type": "uint8[2][3]", "name": "extra"},
 			{
 				"indexed": false,
 				"type": "tuple[][]",

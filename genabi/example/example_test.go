@@ -24,8 +24,8 @@ func TestGenZero(t *testing.T) {
 		t.Errorf("want: %#v got: %#v", [][]Details(nil), x.Details)
 	}
 }
+
 func BenchmarkMatch(b *testing.B) {
-	b.ReportAllocs()
 	l := abi.Log{
 		Topics: [4][32]byte{
 			TransferSignature,
@@ -33,27 +33,35 @@ func BenchmarkMatch(b *testing.B) {
 			[32]byte{},
 			[32]byte{},
 		},
-		Data: abi.Encode(abi.Tuple(abi.Array(abi.Array(
-			abi.Tuple(
-				abi.Address([20]byte{}),
-				abi.Bytes32([32]byte{}),
-				abi.Bytes([]byte{}),
-				abi.Tuple(
-					abi.Uint8(0),
-					abi.Uint8(1),
-				),
+		Data: abi.Encode(abi.Tuple(
+			abi.ArrayK(
+				abi.ArrayK(abi.Uint8(1), abi.Uint8(2)),
+				abi.ArrayK(abi.Uint8(2), abi.Uint8(4)),
+				abi.ArrayK(abi.Uint8(3), abi.Uint8(6)),
 			),
-			abi.Tuple(
-				abi.Address([20]byte{}),
-				abi.Bytes32([32]byte{}),
-				abi.Bytes([]byte{}),
+			abi.Array(abi.Array(
 				abi.Tuple(
-					abi.Uint8(0),
-					abi.Uint8(1),
+					abi.Address([20]byte{}),
+					abi.Bytes32([32]byte{}),
+					abi.Bytes([]byte{}),
+					abi.Tuple(
+						abi.Uint8(0),
+						abi.Uint8(1),
+					),
 				),
-			),
-		)))),
+				abi.Tuple(
+					abi.Address([20]byte{}),
+					abi.Bytes32([32]byte{}),
+					abi.Bytes([]byte{}),
+					abi.Tuple(
+						abi.Uint8(0),
+						abi.Uint8(1),
+					),
+				),
+			)),
+		)),
 	}
+	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
 		MatchTransfer(l)
 	}
