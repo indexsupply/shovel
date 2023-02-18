@@ -380,6 +380,17 @@ func TestDecode(t *testing.T) {
 			),
 		},
 		{
+			desc: "tuple with large (> 32) initial field and dynamic second field",
+			want: Tuple(
+				Tuple(Uint8(42), Uint8(43)),
+				Array(String("foo")),
+			),
+			input: schema.Tuple(
+				schema.Tuple(schema.Static(), schema.Static()),
+				schema.Array(schema.Dynamic()),
+			),
+		},
+		{
 			desc: "tuple with list of tuples",
 			want: Tuple(
 				Uint8(42),
