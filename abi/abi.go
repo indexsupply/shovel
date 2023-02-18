@@ -103,6 +103,15 @@ func Encode(item Item) []byte {
 		item.Kind = 't'
 		return append(res, Encode(item)...)
 	case 't':
+		var hlen int
+		for _, it := range item.l {
+			switch {
+			case it.Static:
+				hlen += it.Size
+			default:
+				hlen += 32
+			}
+		}
 		var head, tail []byte
 		for _, it := range item.l {
 			if it.Static {
@@ -110,7 +119,7 @@ func Encode(item Item) []byte {
 				continue
 			}
 			var offset [32]byte
-			bint.Encode(offset[:], uint64(len(item.l)*32+len(tail)))
+			bint.Encode(offset[:], uint64(hlen+len(tail)))
 			head = append(head, offset[:]...)
 			tail = append(tail, Encode(it)...)
 		}
