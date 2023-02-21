@@ -6,6 +6,57 @@ import (
 	"kr.dev/diff"
 )
 
+func TestSchemaSignature(t *testing.T) {
+	cases := []struct {
+		event Event
+		want  string
+	}{
+		{
+			event: Event{
+				Inputs: []Input{},
+			},
+			want: "()",
+		},
+		{
+			event: Event{
+				Inputs: []Input{
+					Input{Indexed: true, Type: "uint8"},
+				},
+			},
+			want: "()",
+		},
+		{
+			event: Event{
+				Inputs: []Input{
+					Input{Indexed: false, Type: "uint8"},
+				},
+			},
+			want: "(uint8)",
+		},
+		{
+			event: Event{
+				Inputs: []Input{
+					Input{Indexed: true, Type: "uint8"},
+					Input{Indexed: false, Type: "uint8"},
+				},
+			},
+			want: "(uint8)",
+		},
+		{
+			event: Event{
+				Inputs: []Input{
+					Input{Indexed: false, Type: "uint8"},
+					Input{Indexed: true, Type: "uint8"},
+				},
+			},
+			want: "(uint8)",
+		},
+	}
+	for _, tc := range cases {
+		diff.Test(t, t.Errorf, tc.event.SchemaSignature(), tc.want)
+	}
+}
+
 func TestHasNext(t *testing.T) {
 	cases := []struct {
 		lh   listHelper

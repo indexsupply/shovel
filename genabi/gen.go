@@ -219,14 +219,14 @@ func (e Event) Signature() string {
 }
 
 func (e Event) SchemaSignature() string {
-	var s strings.Builder
+	var (
+		s      strings.Builder
+		inputs = unindexed(e.Inputs)
+	)
 	s.WriteString("(")
-	for i, inp := range e.Inputs {
-		if inp.Indexed {
-			continue
-		}
+	for i, inp := range inputs {
 		s.WriteString(inp.Signature())
-		if i+1 < len(e.Inputs) {
+		if i+1 < len(inputs) {
 			s.WriteString(",")
 		}
 	}
@@ -297,6 +297,28 @@ func camel(str string) string {
 	return string(res)
 }
 
+func unindexed(inputs []Input) []Input {
+	var res []Input
+	for _, inp := range inputs {
+		if inp.Indexed {
+			continue
+		}
+		res = append(res, inp)
+	}
+	return res
+}
+
+func indexed(inputs []Input) []Input {
+	var res []Input
+	for _, inp := range inputs {
+		if !inp.Indexed {
+			continue
+		}
+		res = append(res, inp)
+	}
+	return res
+}
+
 func Gen(pkg string, js []byte) ([]byte, error) {
 	events := []Event{}
 	err := json.Unmarshal(js, &events)
@@ -321,29 +343,11 @@ func Gen(pkg string, js []byte) ([]byte, error) {
 		"structHelper": func(name string, inputs []Input) structHelper {
 			return structHelper{Name: name, Inputs: inputs}
 		},
-		"hasTuple": hasTuple,
-		"isTuple":  isTuple,
-		"isArray":  isArray,
-		"unindexed": func(inputs []Input) []Input {
-			var res []Input
-			for _, inp := range inputs {
-				if inp.Indexed {
-					continue
-				}
-				res = append(res, inp)
-			}
-			return res
-		},
-		"indexed": func(inputs []Input) []Input {
-			var res []Input
-			for _, inp := range inputs {
-				if !inp.Indexed {
-					continue
-				}
-				res = append(res, inp)
-			}
-			return res
-		},
+		"hasTuple":  hasTuple,
+		"isTuple":   isTuple,
+		"isArray":   isArray,
+		"unindexed": unindexed,
+		"indexed":   indexed,
 	})
 	t, err = t.Parse(abitemp)
 	if err != nil {
