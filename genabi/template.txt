@@ -81,8 +81,8 @@ import (
 	{{ template "struct" structHelper .Name .Inputs -}}
 
 	var (
-		{{ .Name }}Signature = {{ .SigHashLiteral }}
-		{{ .Name }}Schema = schema.Parse("{{ .SchemaSignature }}")
+		{{ lower .Name }}Signature = {{ .SigHashLiteral }}
+		{{ lower .Name }}Schema = schema.Parse("{{ .SchemaSignature }}")
 	)
 
 	// Event Signature:
@@ -97,11 +97,11 @@ import (
 	// event inputs from the log's data field into [{{ camel .Name }}]:
 	//	{{ .SchemaSignature }}
 	func Match{{ camel .Name }}(l abi.Log) ({{ camel .Name}}, bool) {
-		if {{ .Name }}Signature != l.Topics[0] {
+		if {{ lower .Name }}Signature != l.Topics[0] {
 			return {{ camel .Name }}{}, false
 		}
 		{{ if gt (len (unindexed .Inputs)) 0 -}}
-			item := abi.Decode(l.Data, {{ .Name }}Schema)
+			item := abi.Decode(l.Data, {{ lower .Name }}Schema)
 			res := decode{{ camel .Name}}(item)
 		{{ else -}}
 			res := {{ camel .Name}}{}

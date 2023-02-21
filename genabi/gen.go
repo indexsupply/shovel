@@ -193,6 +193,12 @@ type structHelper struct {
 	Inputs []Input
 }
 
+func lower(str string) string {
+	c := camel(str)
+	u := unicode.ToLower(rune(c[0:1][0]))
+	return string(u) + c[1:]
+}
+
 func camel(str string) string {
 	var (
 		in  = []rune(str)
@@ -296,6 +302,7 @@ func Gen(pkg string, js []byte) ([]byte, error) {
 
 	t := template.New("abi").Funcs(template.FuncMap{
 		"camel":    camel,
+		"lower":    lower,
 		"goType":   goType,
 		"itemFunc": itemFunc,
 		"sub": func(x, y int) int {
