@@ -28,7 +28,7 @@ func TestGenZero(t *testing.T) {
 func BenchmarkMatch(b *testing.B) {
 	l := abi.Log{
 		Topics: [4][32]byte{
-			TransferSignature,
+			transferSignature,
 			[32]byte{},
 			[32]byte{},
 			[32]byte{},
