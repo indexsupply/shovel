@@ -197,30 +197,6 @@ type structHelper struct {
 	Inputs []Input
 }
 
-func lower(str string) string {
-	c := camel(str)
-	u := unicode.ToLower(rune(c[0:1][0]))
-	return string(u) + c[1:]
-}
-
-func camel(str string) string {
-	var (
-		in  = []rune(str)
-		res []rune
-	)
-	for i, r := range in {
-		switch {
-		case r == '_':
-			//skip
-		case i == 0 || in[i-1] == '_':
-			res = append(res, unicode.ToUpper(r))
-		default:
-			res = append(res, r)
-		}
-	}
-	return string(res)
-}
-
 type Event struct {
 	Name      string
 	Type      string //event
@@ -295,6 +271,30 @@ func (inp Input) Signature() string {
 	}
 	s.WriteString(")")
 	return strings.Replace(inp.Type, "tuple", s.String(), 1)
+}
+
+func lower(str string) string {
+	c := camel(str)
+	u := unicode.ToLower(rune(c[0:1][0]))
+	return string(u) + c[1:]
+}
+
+func camel(str string) string {
+	var (
+		in  = []rune(str)
+		res []rune
+	)
+	for i, r := range in {
+		switch {
+		case r == '_':
+			//skip
+		case i == 0 || in[i-1] == '_':
+			res = append(res, unicode.ToUpper(r))
+		default:
+			res = append(res, r)
+		}
+	}
+	return string(res)
 }
 
 func Gen(pkg string, js []byte) ([]byte, error) {
