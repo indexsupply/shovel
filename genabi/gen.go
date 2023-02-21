@@ -63,6 +63,8 @@ func itemFunc(input Input) string {
 		return "Bytes32()"
 	case "bytes4":
 		return "Bytes4()"
+	case "string":
+		return "String()"
 	case "uint8":
 		return "Uint8()"
 	case "uint16":
@@ -106,6 +108,8 @@ func goType(inp Input) string {
 		return "[32]byte"
 	case "bytes4":
 		return "[4]byte"
+	case "string":
+		return "string"
 	case "uint8":
 		return "uint8"
 	case "uint64":
