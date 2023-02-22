@@ -45,7 +45,7 @@ func TestPad(t *testing.T) {
 func TestSolidityVectors(t *testing.T) {
 	cases := []struct {
 		desc  string
-		input Item
+		input *Item
 		want  string
 	}{
 		{
@@ -96,7 +96,7 @@ func TestEncode(t *testing.T) {
 	}
 	cases := []struct {
 		desc  string
-		input Item
+		input *Item
 		want  []byte
 	}{
 		{
@@ -289,7 +289,7 @@ func dump(b []byte) (out string) {
 func TestDecode(t *testing.T) {
 	cases := []struct {
 		desc  string
-		want  Item
+		want  *Item
 		input schema.Type
 	}{
 		{
@@ -435,4 +435,16 @@ func debug(desc string, t *testing.T, b []byte) []byte {
 	}
 	t.Logf("%s\n%s\n", desc, out)
 	return b
+}
+
+func BenchmarkDecode(b *testing.B) {
+	var (
+		input  = Encode(Tuple(String("foo"), Array(String("bar"), String("baz"))))
+		schema = schema.Tuple(schema.Dynamic(), schema.Array(schema.Dynamic()))
+	)
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		item := Decode(input, schema)
+		item.Done()
+	}
 }

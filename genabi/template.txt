@@ -16,6 +16,8 @@ import (
 {{ define "struct" -}}
 	{{ if not .AlreadyDefined -}}
 	type {{camel .Name }} struct {
+		item *abi.Item
+
 		{{ if gt (len (indexed .Inputs)) 0 -}}
 		// Indexed:
 		{{ end -}}
@@ -29,7 +31,12 @@ import (
 			{{ camel .Name }} {{ goType . }}
 		{{ end -}}
 	}
-	func decode{{ camel .Name }}(item abi.Item) {{ camel .Name }} {
+
+	func (x {{ camel .Name }}) Done() {
+		x.item.Done()
+	}
+
+	func decode{{ camel .Name }}(item *abi.Item) {{ camel .Name }} {
 		x := {{ camel .Name }}{}
 		{{ range $index, $inp := (unindexed .Inputs) -}}
 			{{ if isTuple $inp -}}
@@ -105,6 +112,7 @@ import (
 		{{ if gt (len (unindexed .Inputs)) 0 -}}
 			item := abi.Decode(l.Data, {{ lower .Name }}Schema)
 			res := decode{{ camel .Name}}(item)
+			res.item = item
 		{{ else -}}
 			res := {{ camel .Name}}{}
 		{{ end -}}

@@ -7,6 +7,7 @@ package abi
 
 import (
 	"bytes"
+	"sync"
 
 	"github.com/indexsupply/x/abi/schema"
 	"github.com/indexsupply/x/bint"
@@ -21,42 +22,42 @@ type Log struct {
 type Item struct {
 	schema.Type
 	d []byte
-	l []Item
+	l []*Item
 }
 
-func (it Item) At(i int) Item {
+func (it *Item) At(i int) *Item {
 	if len(it.l) <= i {
-		return Item{}
+		return &Item{}
 	}
 	return it.l[i]
 }
 
 // Returns length of list, tuple, or bytes depending
 // on how the item was constructed.
-func (it Item) Len() int {
+func (it *Item) Len() int {
 	if len(it.l) > 0 {
 		return len(it.l)
 	}
 	return len(it.d)
 }
 
-func Tuple(items ...Item) Item {
+func Tuple(items ...*Item) *Item {
 	types := make([]schema.Type, len(items))
 	for i, it := range items {
 		types[i] = it.Type
 	}
-	return Item{Type: schema.Tuple(types...), l: items}
+	return &Item{Type: schema.Tuple(types...), l: items}
 }
 
-func Array(items ...Item) Item {
-	return Item{Type: schema.Array(items[0].Type), l: items}
+func Array(items ...*Item) *Item {
+	return &Item{Type: schema.Array(items[0].Type), l: items}
 }
 
-func ArrayK(items ...Item) Item {
-	return Item{Type: schema.ArrayK(len(items), items[0].Type), l: items}
+func ArrayK(items ...*Item) *Item {
+	return &Item{Type: schema.ArrayK(len(items), items[0].Type), l: items}
 }
 
-func (item Item) Equal(other Item) bool {
+func (item *Item) Equal(other *Item) bool {
 	switch {
 	case len(item.d) == 0 && len(item.l) == 0:
 		return len(other.d) == 0 && len(other.l) == 0
@@ -86,7 +87,7 @@ func rpad(l int, d []byte) []byte {
 }
 
 // ABI encoding. Not packed.
-func Encode(item Item) []byte {
+func Encode(item *Item) []byte {
 	switch item.Kind {
 	case 's':
 		return item.d
@@ -129,47 +130,65 @@ func Encode(item Item) []byte {
 	}
 }
 
+var itemPool = sync.Pool{New: func() any { return &Item{} }}
+
+func (item *Item) Reset() {
+	item.d = item.d[:0]
+	item.l = item.l[:0]
+}
+
+func (item *Item) Done() {
+	for _, i := range item.l {
+		if i != nil {
+			i.Done()
+		}
+	}
+	itemPool.Put(item)
+}
+
 // Decodes ABI encoded bytes into an [Item] according to
 // the 'schema' defined by t. For example:
 //	Decode(b, abit.Tuple(abit.String, abit.Uint256))
-func Decode(input []byte, t schema.Type) Item {
+func Decode(input []byte, t schema.Type) *Item {
+	item := itemPool.Get().(*Item)
+	item.Reset()
 	switch t.Kind {
 	case 's':
-		return Item{d: input[:32]}
+		item.d = input[:32]
+		return item
 	case 'd':
 		count := bint.Decode(input[:32])
-		return Item{d: input[32 : 32+count]}
+		item.d = input[32 : 32+count]
+		return item
 	case 'a':
 		var count, n = t.Length, 0
 		if count <= 0 { // dynamic sized list
 			count, n = int(bint.Decode(input[:32])), 32
 		}
-		items := make([]Item, count)
 		for i := 0; i < count; i++ {
 			if t.Elem.Static {
-				items[i] = Decode(input[n:], *t.Elem)
+				item.l = append(item.l, Decode(input[n:], *t.Elem))
 				n += t.Elem.Size
 				continue
 			}
 			offset := bint.Decode(input[n : n+32])
-			items[i] = Decode(input[32+offset:], *t.Elem)
+			item.l = append(item.l, Decode(input[32+offset:], *t.Elem))
 			n += 32
 		}
-		return Item{l: items}
+		return item
 	case 't':
 		var n int
-		items := make([]Item, len(t.Fields))
-		for i, f := range t.Fields {
+		for _, f := range t.Fields {
 			if f.Static {
-				items[i] = Decode(input[n:], f)
+				item.l = append(item.l, Decode(input[n:], f))
 				n += f.Size
 				continue
 			}
 			offset := bint.Decode(input[n : n+32])
-			items[i] = Decode(input[offset:], f)
+			item.l = append(item.l, Decode(input[offset:], f))
 			n += 32
 		}
-		return Item{l: items}
+		return item
 	default:
 		panic("unknown type")
 	}
