@@ -27,6 +27,8 @@ func imports(events []Event) []string {
 	var imports []string
 	for t, _ := range types {
 		switch t {
+		case "*big.Int":
+			imports = append(imports, "math/big")
 		case "uint256.Int":
 			imports = append(imports, "github.com/holiman/uint256")
 		}
@@ -74,7 +76,7 @@ func itemFunc(input Input) string {
 	case "uint64":
 		return "Uint64()"
 	case "uint120", "uint256":
-		return "Uint256()"
+		return "BigInt()"
 	default:
 		panic(fmt.Sprintf("unkown type: %s", t))
 	}
@@ -119,7 +121,7 @@ func goType(inp Input) string {
 	case "uint64":
 		return "uint64"
 	case "uint120", "uint256":
-		return "uint256.Int"
+		return "*big.Int"
 	default:
 		panic(fmt.Sprintf("unkown type: %s", inp.Type))
 	}
