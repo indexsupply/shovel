@@ -190,6 +190,10 @@ func (lh listHelper) FixedLength() bool {
 	return false
 }
 
+// ABI Inputs can share tuples so when we create a struct
+// from a tuple, we need to ensure we only define the struct once.
+var definedStructs = map[string]struct{}{}
+
 // We generate structs for Event.Inputs and
 // Input.Components. Since both Inputs and Components
 // are just a []Input, structHelper abstracts Event
@@ -199,6 +203,15 @@ func (lh listHelper) FixedLength() bool {
 type structHelper struct {
 	Name   string
 	Inputs []Input
+}
+
+func (sh structHelper) AlreadyDefined() bool {
+	_, exists := definedStructs[sh.Name]
+	if exists {
+		return true
+	}
+	definedStructs[sh.Name] = struct{}{}
+	return false
 }
 
 type Event struct {

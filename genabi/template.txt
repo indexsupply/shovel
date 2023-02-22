@@ -14,6 +14,7 @@ import (
 {{ end }}
 
 {{ define "struct" -}}
+	{{ if not .AlreadyDefined -}}
 	type {{camel .Name }} struct {
 		{{ if gt (len (indexed .Inputs)) 0 -}}
 		// Indexed:
@@ -47,6 +48,7 @@ import (
 		{{ if gt (len $inp.Components) 0  -}}
 			{{ template "struct" structHelper $inp.Name $inp.Components -}}
 		{{ end -}}
+	{{ end -}}
 	{{ end -}}
 {{ end -}}
 
