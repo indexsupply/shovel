@@ -4,6 +4,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/holiman/uint256"
 	"github.com/indexsupply/x/abi"
 )
 
@@ -17,7 +18,7 @@ func TestGenZero(t *testing.T) {
 	if x.To != [20]byte{} {
 		t.Errorf("want: %v got: %v", [20]byte{}, x.To)
 	}
-	if x.Id != nil {
+	if x.Id != (uint256.Int{}) {
 		t.Errorf("want: nil got: %v", x.Id.String())
 	}
 	if !reflect.DeepEqual(x.Details, [][]Details(nil)) {

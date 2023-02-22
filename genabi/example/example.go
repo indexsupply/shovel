@@ -4,22 +4,28 @@
 package example
 
 import (
+	"github.com/holiman/uint256"
 	"github.com/indexsupply/x/abi"
 	"github.com/indexsupply/x/abi/schema"
-	"math/big"
 )
 
 type Transfer struct {
+	item *abi.Item
+
 	// Indexed:
 	From [20]byte
 	To   [20]byte
-	Id   *big.Int
+	Id   uint256.Int
 	// Un-indexed:
 	Extra   [3][2]uint8
 	Details [][]Details
 }
 
-func decodeTransfer(item abi.Item) Transfer {
+func (x Transfer) Done() {
+	x.item.Done()
+}
+
+func decodeTransfer(item *abi.Item) Transfer {
 	x := Transfer{}
 	extraItem0 := item.At(0)
 	extra0 := [3][2]uint8{}
@@ -47,6 +53,8 @@ func decodeTransfer(item abi.Item) Transfer {
 }
 
 type Details struct {
+	item *abi.Item
+
 	// Un-indexed:
 	Other [20]byte
 	Key   [32]byte
@@ -54,7 +62,11 @@ type Details struct {
 	Geo   Geo
 }
 
-func decodeDetails(item abi.Item) Details {
+func (x Details) Done() {
+	x.item.Done()
+}
+
+func decodeDetails(item *abi.Item) Details {
 	x := Details{}
 	x.Other = item.At(0).Address()
 	x.Key = item.At(1).Bytes32()
@@ -64,12 +76,18 @@ func decodeDetails(item abi.Item) Details {
 }
 
 type Geo struct {
+	item *abi.Item
+
 	// Un-indexed:
 	X uint8
 	Y uint8
 }
 
-func decodeGeo(item abi.Item) Geo {
+func (x Geo) Done() {
+	x.item.Done()
+}
+
+func decodeGeo(item *abi.Item) Geo {
 	x := Geo{}
 	x.X = item.At(0).Uint8()
 	x.Y = item.At(1).Uint8()
@@ -98,8 +116,9 @@ func MatchTransfer(l abi.Log) (Transfer, bool) {
 	}
 	item := abi.Decode(l.Data, transferSchema)
 	res := decodeTransfer(item)
+	res.item = item
 	res.From = abi.Bytes(l.Topics[1][:]).Address()
 	res.To = abi.Bytes(l.Topics[2][:]).Address()
-	res.Id = abi.Bytes(l.Topics[3][:]).BigInt()
+	res.Id = abi.Bytes(l.Topics[3][:]).Uint256()
 	return res, true
 }
