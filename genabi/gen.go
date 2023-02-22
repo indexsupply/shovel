@@ -112,6 +112,10 @@ func goType(inp Input) string {
 		return "string"
 	case "uint8":
 		return "uint8"
+	case "uint16":
+		return "uint16"
+	case "uint32":
+		return "uint32"
 	case "uint64":
 		return "uint64"
 	case "uint120":
