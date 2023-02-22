@@ -3,6 +3,7 @@ package abi
 import (
 	"math/big"
 
+	"github.com/holiman/uint256"
 	"github.com/indexsupply/x/abi/schema"
 	"github.com/indexsupply/x/bint"
 )
@@ -18,16 +19,26 @@ func (item Item) Address() [20]byte {
 	return [20]byte(item.d[12:])
 }
 
-func BigInt(i *big.Int) Item {
+func Uint256(i uint256.Int) Item {
+	b := i.Bytes32()
+	return Item{Type: schema.Static(), d: b[:]}
+}
+
+func (item Item) Uint256() uint256.Int {
+	var i uint256.Int
+	i.SetBytes(item.d)
+	return i
+}
+
+func BigInt(i big.Int) Item {
 	var b [32]byte
 	i.FillBytes(b[:])
 	return Item{Type: schema.Static(), d: b[:]}
 }
 
 func (item Item) BigInt() *big.Int {
-	i := &big.Int{}
-	i.SetBytes(item.d)
-	return i
+	i := item.Uint256()
+	return i.ToBig()
 }
 
 func Bool(b bool) Item {

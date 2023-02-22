@@ -12,6 +12,7 @@ require (
 )
 
 require (
+	github.com/holiman/uint256 v1.2.1 // indirect
 	github.com/kr/text v0.2.0 // indirect
 	github.com/pkg/diff v0.0.0-20210226163009-20ebb0f2a09e // indirect
 	github.com/rogpeppe/go-internal v1.9.0 // indirect
