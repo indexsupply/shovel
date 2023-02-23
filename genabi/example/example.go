@@ -110,15 +110,15 @@ var (
 // Uses the the following abi schema to decode the un-indexed
 // event inputs from the log's data field into [Transfer]:
 //	(uint8[2][3],(address,bytes32,bytes,(uint8,uint8))[][])
-func MatchTransfer(topics [][32]byte, data []byte) (Transfer, bool) {
-	if len(topics) > 0 && transferSignature != topics[0] {
+func MatchTransfer(l abi.Log) (Transfer, bool) {
+	if len(l.Topics) > 0 && transferSignature != l.Topics[0] {
 		return Transfer{}, false
 	}
-	item := abi.Decode(data, transferSchema)
+	item := abi.Decode(l.Data, transferSchema)
 	res := decodeTransfer(item)
 	res.item = item
-	res.From = abi.Bytes(topics[1][:]).Address()
-	res.To = abi.Bytes(topics[2][:]).Address()
-	res.Id = abi.Bytes(topics[3][:]).BigInt()
+	res.From = abi.Bytes(l.Topics[1][:]).Address()
+	res.To = abi.Bytes(l.Topics[2][:]).Address()
+	res.Id = abi.Bytes(l.Topics[3][:]).BigInt()
 	return res, true
 }

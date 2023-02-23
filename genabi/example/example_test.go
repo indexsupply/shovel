@@ -26,41 +26,44 @@ func TestGenZero(t *testing.T) {
 }
 
 func BenchmarkMatch(b *testing.B) {
-	topics := [][32]byte{
-		transferSignature,
-		[32]byte{},
-		[32]byte{},
-		[32]byte{},
-	}
-	data := abi.Encode(abi.Tuple(
-		abi.ArrayK(
-			abi.ArrayK(abi.Uint8(1), abi.Uint8(2)),
-			abi.ArrayK(abi.Uint8(2), abi.Uint8(4)),
-			abi.ArrayK(abi.Uint8(3), abi.Uint8(6)),
-		),
-		abi.Array(abi.Array(
-			abi.Tuple(
-				abi.Address([20]byte{}),
-				abi.Bytes32([32]byte{}),
-				abi.Bytes([]byte{}),
-				abi.Tuple(
-					abi.Uint8(0),
-					abi.Uint8(1),
-				),
+	log := abi.Log{
+		Topics: [4][32]byte{
+			transferSignature,
+			[32]byte{},
+			[32]byte{},
+			[32]byte{},
+		},
+		Data: abi.Encode(abi.Tuple(
+			abi.ArrayK(
+				abi.ArrayK(abi.Uint8(1), abi.Uint8(2)),
+				abi.ArrayK(abi.Uint8(2), abi.Uint8(4)),
+				abi.ArrayK(abi.Uint8(3), abi.Uint8(6)),
 			),
-			abi.Tuple(
-				abi.Address([20]byte{}),
-				abi.Bytes32([32]byte{}),
-				abi.Bytes([]byte{}),
+			abi.Array(abi.Array(
 				abi.Tuple(
-					abi.Uint8(0),
-					abi.Uint8(1),
+					abi.Address([20]byte{}),
+					abi.Bytes32([32]byte{}),
+					abi.Bytes([]byte{}),
+					abi.Tuple(
+						abi.Uint8(0),
+						abi.Uint8(1),
+					),
 				),
-			),
+				abi.Tuple(
+					abi.Address([20]byte{}),
+					abi.Bytes32([32]byte{}),
+					abi.Bytes([]byte{}),
+					abi.Tuple(
+						abi.Uint8(0),
+						abi.Uint8(1),
+					),
+				),
+			)),
 		)),
-	))
+	}
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		MatchTransfer(topics, data)
+		t, _ := MatchTransfer(log)
+		t.Done()
 	}
 }
