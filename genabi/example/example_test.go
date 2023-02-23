@@ -4,7 +4,6 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/holiman/uint256"
 	"github.com/indexsupply/x/abi"
 )
 
@@ -18,7 +17,7 @@ func TestGenZero(t *testing.T) {
 	if x.To != [20]byte{} {
 		t.Errorf("want: %v got: %v", [20]byte{}, x.To)
 	}
-	if x.Id != (uint256.Int{}) {
+	if x.Id != nil {
 		t.Errorf("want: nil got: %v", x.Id.String())
 	}
 	if !reflect.DeepEqual(x.Details, [][]Details(nil)) {
@@ -27,43 +26,41 @@ func TestGenZero(t *testing.T) {
 }
 
 func BenchmarkMatch(b *testing.B) {
-	l := abi.Log{
-		Topics: [4][32]byte{
-			transferSignature,
-			[32]byte{},
-			[32]byte{},
-			[32]byte{},
-		},
-		Data: abi.Encode(abi.Tuple(
-			abi.ArrayK(
-				abi.ArrayK(abi.Uint8(1), abi.Uint8(2)),
-				abi.ArrayK(abi.Uint8(2), abi.Uint8(4)),
-				abi.ArrayK(abi.Uint8(3), abi.Uint8(6)),
-			),
-			abi.Array(abi.Array(
-				abi.Tuple(
-					abi.Address([20]byte{}),
-					abi.Bytes32([32]byte{}),
-					abi.Bytes([]byte{}),
-					abi.Tuple(
-						abi.Uint8(0),
-						abi.Uint8(1),
-					),
-				),
-				abi.Tuple(
-					abi.Address([20]byte{}),
-					abi.Bytes32([32]byte{}),
-					abi.Bytes([]byte{}),
-					abi.Tuple(
-						abi.Uint8(0),
-						abi.Uint8(1),
-					),
-				),
-			)),
-		)),
+	topics := [][32]byte{
+		transferSignature,
+		[32]byte{},
+		[32]byte{},
+		[32]byte{},
 	}
+	data := abi.Encode(abi.Tuple(
+		abi.ArrayK(
+			abi.ArrayK(abi.Uint8(1), abi.Uint8(2)),
+			abi.ArrayK(abi.Uint8(2), abi.Uint8(4)),
+			abi.ArrayK(abi.Uint8(3), abi.Uint8(6)),
+		),
+		abi.Array(abi.Array(
+			abi.Tuple(
+				abi.Address([20]byte{}),
+				abi.Bytes32([32]byte{}),
+				abi.Bytes([]byte{}),
+				abi.Tuple(
+					abi.Uint8(0),
+					abi.Uint8(1),
+				),
+			),
+			abi.Tuple(
+				abi.Address([20]byte{}),
+				abi.Bytes32([32]byte{}),
+				abi.Bytes([]byte{}),
+				abi.Tuple(
+					abi.Uint8(0),
+					abi.Uint8(1),
+				),
+			),
+		)),
+	))
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		MatchTransfer(l)
+		MatchTransfer(topics, data)
 	}
 }

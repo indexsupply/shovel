@@ -448,3 +448,8 @@ func BenchmarkDecode(b *testing.B) {
 		item.Done()
 	}
 }
+
+func TestDone(t *testing.T) {
+	var i *Item
+	i.Done()
+}

@@ -138,10 +138,11 @@ func (item *Item) Reset() {
 }
 
 func (item *Item) Done() {
+	if item == nil {
+		return
+	}
 	for _, i := range item.l {
-		if i != nil {
-			i.Done()
-		}
+		i.Done()
 	}
 	itemPool.Put(item)
 }
