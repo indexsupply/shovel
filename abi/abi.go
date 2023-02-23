@@ -150,46 +150,58 @@ func (item *Item) Done() {
 // Decodes ABI encoded bytes into an [Item] according to
 // the 'schema' defined by t. For example:
 //	Decode(b, schema.Tuple(schema.Dynamic(), schema.Static()))
-func Decode(input []byte, t schema.Type) *Item {
+// Returns the item and the number of bytes read from input
+func Decode(input []byte, t schema.Type) (int, *Item) {
 	item := itemPool.Get().(*Item)
 	item.Reset()
 	switch t.Kind {
 	case 's':
 		item.d = input[:32]
-		return item
+		return 32, item
 	case 'd':
-		count := bint.Decode(input[:32])
-		item.d = input[32 : 32+count]
-		return item
+		length := int(bint.Decode(input[:32]))
+		nbytes := length + (32 - (length % 32))
+		item.d = input[32 : 32+length]
+		return 32 + nbytes, item
 	case 'a':
-		var count, n = t.Length, 0
-		if count <= 0 { // dynamic sized array
-			count, n = int(bint.Decode(input[:32])), 32
+		var length, start, nbytes, pos = t.Length, 0, 0, 0
+		if length <= 0 { // dynamic sized array
+			length, start, nbytes, pos = int(bint.Decode(input[:32])), 32, 32, 32
 		}
-		for i := 0; i < count; i++ {
-			if t.Elem.Static {
-				item.l = append(item.l, Decode(input[n:], *t.Elem))
-				n += t.Elem.Size
-				continue
+		for i := 0; i < length; i++ {
+			switch {
+			case t.Elem.Static:
+				n, it := Decode(input[pos:], *t.Elem)
+				item.l = append(item.l, it)
+				pos += t.Elem.Size
+				nbytes += n
+			default:
+				offset := int(bint.Decode(input[pos : pos+32]))
+				n, it := Decode(input[start+offset:], *t.Elem)
+				item.l = append(item.l, it)
+				pos += 32
+				nbytes += 32 + n
 			}
-			offset := bint.Decode(input[n : n+32])
-			item.l = append(item.l, Decode(input[32+offset:], *t.Elem))
-			n += 32
 		}
-		return item
+		return nbytes, item
 	case 't':
-		var n int
+		var pos, nbytes int
 		for _, f := range t.Fields {
-			if f.Static {
-				item.l = append(item.l, Decode(input[n:], f))
-				n += f.Size
-				continue
+			switch {
+			case f.Static:
+				n, it := Decode(input[pos:], f)
+				item.l = append(item.l, it)
+				pos += f.Size
+				nbytes += n
+			default:
+				offset := bint.Decode(input[pos : pos+32])
+				n, it := Decode(input[offset:], f)
+				item.l = append(item.l, it)
+				pos += 32
+				nbytes += 32 + n
 			}
-			offset := bint.Decode(input[n : n+32])
-			item.l = append(item.l, Decode(input[offset:], f))
-			n += 32
 		}
-		return item
+		return nbytes, item
 	default:
 		panic("unknown type")
 	}

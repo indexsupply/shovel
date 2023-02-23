@@ -10,6 +10,7 @@ import (
 	"github.com/indexsupply/x/abi/schema"
 	"github.com/indexsupply/x/tc"
 	"github.com/kr/pretty"
+	"kr.dev/diff"
 )
 
 func TestPad(t *testing.T) {
@@ -328,6 +329,11 @@ func TestDecode(t *testing.T) {
 			input: schema.ArrayK(2, schema.Static()),
 		},
 		{
+			desc:  "fixed size array of dynamic types",
+			want:  ArrayK(String("foo"), String("bar")),
+			input: schema.ArrayK(2, schema.Dynamic()),
+		},
+		{
 			desc:  "tuple static",
 			want:  Tuple(Uint64(0)),
 			input: schema.Tuple(schema.Static()),
@@ -420,11 +426,66 @@ func TestDecode(t *testing.T) {
 		},
 	}
 	for _, tc := range cases {
-		got := Decode(debug(tc.desc, t, Encode(tc.want)), tc.input)
+		_, got := Decode(debug(tc.desc, t, Encode(tc.want)), tc.input)
 		if !got.Equal(tc.want) {
 			t.Errorf("decode %q want: %# v got: %# v", tc.desc, pretty.Formatter(tc.want), pretty.Formatter(got))
 		}
 	}
+}
+
+func TestDecode_NumBytes(t *testing.T) {
+	cases := []struct {
+		item   *Item
+		schema schema.Type
+		want   int
+	}{
+		{
+			item:   Uint8(42),
+			schema: schema.Static(),
+			want:   32,
+		},
+		{
+			item:   String("foo"),
+			schema: schema.Dynamic(),
+			want:   64,
+		},
+		{
+			item:   String("foooooooooooooooooooooooooooooooo"), //len=33
+			schema: schema.Dynamic(),
+			want:   96,
+		},
+		{
+			item:   Tuple(Uint8(42), Uint8(42)),
+			schema: schema.Tuple(schema.Static(), schema.Static()),
+			want:   64,
+		},
+		{
+			item: Tuple(
+				Uint8(42),
+				Array(String("foo"), String("bar")),
+			),
+			schema: schema.Tuple(
+				schema.Static(),
+				schema.Array(schema.Dynamic()),
+			),
+			want: 9 * 32,
+		},
+	}
+	for _, tc := range cases {
+		n, _ := Decode(Encode(tc.item), tc.schema)
+		diff.Test(t, t.Errorf, n, tc.want)
+	}
+}
+
+func TestDecode_ExtraInput(t *testing.T) {
+	want := []byte("extra")
+	data := Encode(Tuple(Uint8(42), Array(String("foo"), String("bar"))))
+	data = append(data, want...)
+	n, _ := Decode(data, schema.Tuple(
+		schema.Static(),
+		schema.Array(schema.Dynamic()),
+	))
+	diff.Test(t, t.Errorf, data[n:], want)
 }
 
 func debug(desc string, t *testing.T, b []byte) []byte {
@@ -444,7 +505,7 @@ func BenchmarkDecode(b *testing.B) {
 	)
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		item := Decode(input, schema)
+		_, item := Decode(input, schema)
 		item.Done()
 	}
 }

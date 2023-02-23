@@ -110,7 +110,7 @@ import (
 			return {{ camel .Name }}{}, false
 		}
 		{{ if gt (len (unindexed .Inputs)) 0 -}}
-			item := abi.Decode(l.Data, {{ lower .Name }}Schema)
+			_, item := abi.Decode(l.Data, {{ lower .Name }}Schema)
 			res := decode{{ camel .Name}}(item)
 			res.item = item
 		{{ else -}}
