@@ -1,4 +1,4 @@
-// ABI encoding/decoding with log parsing
+// ABI encoding/decoding
 //
 // Implementation based on the [ABI Spec].
 //
@@ -149,7 +149,7 @@ func (item *Item) Done() {
 
 // Decodes ABI encoded bytes into an [Item] according to
 // the 'schema' defined by t. For example:
-//	Decode(b, abit.Tuple(abit.String, abit.Uint256))
+//	Decode(b, schema.Tuple(schema.Dynamic(), schema.Static()))
 func Decode(input []byte, t schema.Type) *Item {
 	item := itemPool.Get().(*Item)
 	item.Reset()
@@ -163,7 +163,7 @@ func Decode(input []byte, t schema.Type) *Item {
 		return item
 	case 'a':
 		var count, n = t.Length, 0
-		if count <= 0 { // dynamic sized list
+		if count <= 0 { // dynamic sized array
 			count, n = int(bint.Decode(input[:32])), 32
 		}
 		for i := 0; i < count; i++ {
