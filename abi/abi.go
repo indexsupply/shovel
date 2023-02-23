@@ -132,7 +132,7 @@ func Encode(item *Item) []byte {
 
 var itemPool = sync.Pool{New: func() any { return &Item{} }}
 
-func (item *Item) Reset() {
+func (item *Item) reset() {
 	item.d = item.d[:0]
 	item.l = item.l[:0]
 }
@@ -153,7 +153,7 @@ func (item *Item) Done() {
 // Returns the item and the number of bytes read from input
 func Decode(input []byte, t schema.Type) (int, *Item) {
 	item := itemPool.Get().(*Item)
-	item.Reset()
+	item.reset()
 	switch t.Kind {
 	case 's':
 		item.d = input[:32]
