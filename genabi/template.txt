@@ -92,6 +92,7 @@ import (
 	var (
 		{{ lower .Name }}Signature = {{ .SigHashLiteral }}
 		{{ lower .Name }}Schema = schema.Parse("{{ .SchemaSignature }}")
+		{{ lower .Name }}NumIndexed = int({{ len (indexed .Inputs) }})
 	)
 
 	// Event Signature:
@@ -107,6 +108,9 @@ import (
 	//	{{ .SchemaSignature }}
 	func Match{{ camel .Name }}(l abi.Log) ({{ camel .Name}}, bool) {
 		if len(l.Topics) > 0 && {{ lower .Name }}Signature != l.Topics[0] {
+			return {{ camel .Name }}{}, false
+		}
+		if len(l.Topics) != {{ lower .Name }}NumIndexed {
 			return {{ camel .Name }}{}, false
 		}
 		{{ if gt (len (unindexed .Inputs)) 0 -}}
