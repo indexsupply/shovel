@@ -110,7 +110,7 @@ import (
 		if len(l.Topics) > 0 && {{ lower .Name }}Signature != l.Topics[0] {
 			return {{ camel .Name }}{}, false
 		}
-		if len(l.Topics) != {{ lower .Name }}NumIndexed {
+		if len(l.Topics[1:]) != {{ lower .Name }}NumIndexed {
 			return {{ camel .Name }}{}, false
 		}
 		{{ if gt (len (unindexed .Inputs)) 0 -}}
