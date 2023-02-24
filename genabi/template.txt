@@ -106,15 +106,18 @@ import (
 	// Uses the the following abi schema to decode the un-indexed
 	// event inputs from the log's data field into [{{ camel .Name }}]:
 	//	{{ .SchemaSignature }}
-	func Match{{ camel .Name }}(l abi.Log) ({{ camel .Name}}, bool) {
+	func Match{{ camel .Name }}(l abi.Log) ({{ camel .Name}}, error) {
 		if len(l.Topics) > 0 && {{ lower .Name }}Signature != l.Topics[0] {
-			return {{ camel .Name }}{}, false
+			return {{ camel .Name }}{}, abi.SigMismatch
 		}
 		if len(l.Topics[1:]) != {{ lower .Name }}NumIndexed {
-			return {{ camel .Name }}{}, false
+			return {{ camel .Name }}{}, abi.IndexMismatch
 		}
 		{{ if gt (len (unindexed .Inputs)) 0 -}}
-			_, item := abi.Decode(l.Data, {{ lower .Name }}Schema)
+			item, _, err := abi.Decode(l.Data, {{ lower .Name }}Schema)
+			if err != nil {
+				return {{ camel .Name }}{}, err
+			}
 			res := decode{{ camel .Name}}(item)
 			res.item = item
 		{{ else -}}
@@ -123,6 +126,6 @@ import (
 		{{ range $index, $inp := (indexed .Inputs) -}}
 			res.{{ camel $inp.Name }} = abi.Bytes(l.Topics[{{ add $index  1 }}][:]).{{ itemFunc $inp }}
 		{{ end -}}
-		return res, true
+		return res, nil
 	}
 {{ end -}}
