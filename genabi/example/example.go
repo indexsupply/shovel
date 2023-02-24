@@ -115,7 +115,7 @@ func MatchTransfer(l abi.Log) (Transfer, bool) {
 	if len(l.Topics) > 0 && transferSignature != l.Topics[0] {
 		return Transfer{}, false
 	}
-	if len(l.Topics) != transferNumIndexed {
+	if len(l.Topics[1:]) != transferNumIndexed {
 		return Transfer{}, false
 	}
 	_, item := abi.Decode(l.Data, transferSchema)

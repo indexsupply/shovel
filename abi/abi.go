@@ -15,7 +15,7 @@ import (
 
 type Log struct {
 	Address [20]byte
-	Topics  [4][32]byte
+	Topics  [][32]byte
 	Data    []byte
 }
 
