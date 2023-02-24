@@ -7,6 +7,7 @@ package abi
 
 import (
 	"bytes"
+	"errors"
 	"sync"
 
 	"github.com/indexsupply/x/abi/schema"
@@ -151,57 +152,96 @@ func (item *Item) Done() {
 // the 'schema' defined by t. For example:
 //	Decode(b, schema.Tuple(schema.Dynamic(), schema.Static()))
 // Returns the item and the number of bytes read from input
-func Decode(input []byte, t schema.Type) (int, *Item) {
+func Decode(input []byte, t schema.Type) (int, *Item, error) {
 	item := itemPool.Get().(*Item)
 	item.reset()
 	switch t.Kind {
 	case 's':
+		if len(input) < 32 {
+			return 0, item, errors.New("EOF")
+		}
 		item.d = input[:32]
-		return 32, item
+		return 32, item, nil
 	case 'd':
 		length := int(bint.Decode(input[:32]))
 		nbytes := length + (32 - (length % 32))
+		if len(input) < 32+length {
+			return 0, item, errors.New("EOF")
+		}
 		item.d = input[32 : 32+length]
-		return 32 + nbytes, item
+		return 32 + nbytes, item, nil
 	case 'a':
 		var length, start, nbytes, pos = t.Length, 0, 0, 0
 		if length <= 0 { // dynamic sized array
+			if len(input) < 32 {
+				return 0, item, errors.New("EOF")
+			}
 			length, start, nbytes, pos = int(bint.Decode(input[:32])), 32, 32, 32
 		}
 		for i := 0; i < length; i++ {
 			switch {
 			case t.Elem.Static:
-				n, it := Decode(input[pos:], *t.Elem)
+				if len(input) < pos {
+					return 0, item, errors.New("EOF")
+				}
+				n, it, err := Decode(input[pos:], *t.Elem)
+				if err != nil {
+					return nbytes, item, err
+				}
 				item.l = append(item.l, it)
 				pos += t.Elem.Size
 				nbytes += n
 			default:
+				if len(input) < pos+32 {
+					return nbytes, item, errors.New("EOF")
+				}
 				offset := int(bint.Decode(input[pos : pos+32]))
-				n, it := Decode(input[start+offset:], *t.Elem)
+				if len(input) < start+offset {
+					return nbytes, item, errors.New("EOF")
+				}
+				n, it, err := Decode(input[start+offset:], *t.Elem)
+				if err != nil {
+					return nbytes, item, errors.New("EOF")
+				}
 				item.l = append(item.l, it)
 				pos += 32
 				nbytes += 32 + n
 			}
 		}
-		return nbytes, item
+		return nbytes, item, nil
 	case 't':
 		var pos, nbytes int
 		for _, f := range t.Fields {
 			switch {
 			case f.Static:
-				n, it := Decode(input[pos:], f)
+				if len(input) < pos {
+					return nbytes, item, errors.New("EOF")
+				}
+				n, it, err := Decode(input[pos:], f)
+				if err != nil {
+					return nbytes, item, errors.New("EOF")
+				}
 				item.l = append(item.l, it)
 				pos += f.Size
 				nbytes += n
 			default:
-				offset := bint.Decode(input[pos : pos+32])
-				n, it := Decode(input[offset:], f)
+				if len(input) < pos+32 {
+					return nbytes, item, errors.New("EOF")
+				}
+				offset := int(bint.Decode(input[pos : pos+32]))
+				if len(input) < offset {
+					return nbytes, item, errors.New("EOF")
+				}
+				n, it, err := Decode(input[offset:], f)
+				if err != nil {
+					return nbytes, item, errors.New("EOF")
+				}
 				item.l = append(item.l, it)
 				pos += 32
 				nbytes += 32 + n
 			}
 		}
-		return nbytes, item
+		return nbytes, item, nil
 	default:
 		panic("unknown type")
 	}

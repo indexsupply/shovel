@@ -426,7 +426,7 @@ func TestDecode(t *testing.T) {
 		},
 	}
 	for _, tc := range cases {
-		_, got := Decode(debug(tc.desc, t, Encode(tc.want)), tc.input)
+		_, got, _ := Decode(debug(tc.desc, t, Encode(tc.want)), tc.input)
 		if !got.Equal(tc.want) {
 			t.Errorf("decode %q want: %# v got: %# v", tc.desc, pretty.Formatter(tc.want), pretty.Formatter(got))
 		}
@@ -472,7 +472,7 @@ func TestDecode_NumBytes(t *testing.T) {
 		},
 	}
 	for _, tc := range cases {
-		n, _ := Decode(Encode(tc.item), tc.schema)
+		n, _, _ := Decode(Encode(tc.item), tc.schema)
 		diff.Test(t, t.Errorf, n, tc.want)
 	}
 }
@@ -481,7 +481,7 @@ func TestDecode_ExtraInput(t *testing.T) {
 	want := []byte("extra")
 	data := Encode(Tuple(Uint8(42), Array(String("foo"), String("bar"))))
 	data = append(data, want...)
-	n, _ := Decode(data, schema.Tuple(
+	n, _, _ := Decode(data, schema.Tuple(
 		schema.Static(),
 		schema.Array(schema.Dynamic()),
 	))
@@ -505,7 +505,7 @@ func BenchmarkDecode(b *testing.B) {
 	)
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		_, item := Decode(input, schema)
+		_, item, _ := Decode(input, schema)
 		item.Done()
 	}
 }

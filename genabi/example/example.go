@@ -118,7 +118,7 @@ func MatchTransfer(l abi.Log) (Transfer, bool) {
 	if len(l.Topics[1:]) != transferNumIndexed {
 		return Transfer{}, false
 	}
-	_, item := abi.Decode(l.Data, transferSchema)
+	_, item, _ := abi.Decode(l.Data, transferSchema)
 	res := decodeTransfer(item)
 	res.item = item
 	res.From = abi.Bytes(l.Topics[1][:]).Address()
