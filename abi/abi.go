@@ -14,6 +14,11 @@ import (
 	"github.com/indexsupply/x/bint"
 )
 
+var (
+	SigMismatch   = errors.New("event signature doesn't match topics[0]")
+	IndexMismatch = errors.New("num indexed inputs doesn't match len(topics)")
+)
+
 type Log struct {
 	Address [20]byte
 	Topics  [][32]byte
@@ -152,29 +157,29 @@ func (item *Item) Done() {
 // the 'schema' defined by t. For example:
 //	Decode(b, schema.Tuple(schema.Dynamic(), schema.Static()))
 // Returns the item and the number of bytes read from input
-func Decode(input []byte, t schema.Type) (int, *Item, error) {
+func Decode(input []byte, t schema.Type) (*Item, int, error) {
 	item := itemPool.Get().(*Item)
 	item.reset()
 	switch t.Kind {
 	case 's':
 		if len(input) < 32 {
-			return 0, item, errors.New("EOF")
+			return item, 0, errors.New("EOF")
 		}
 		item.d = input[:32]
-		return 32, item, nil
+		return item, 32, nil
 	case 'd':
 		length := int(bint.Decode(input[:32]))
 		nbytes := length + (32 - (length % 32))
 		if len(input) < 32+length {
-			return 0, item, errors.New("EOF")
+			return item, 0, errors.New("EOF")
 		}
 		item.d = input[32 : 32+length]
-		return 32 + nbytes, item, nil
+		return item, 32 + nbytes, nil
 	case 'a':
 		var length, start, nbytes, pos = t.Length, 0, 0, 0
 		if length <= 0 { // dynamic sized array
 			if len(input) < 32 {
-				return 0, item, errors.New("EOF")
+				return item, 0, errors.New("EOF")
 			}
 			length, start, nbytes, pos = int(bint.Decode(input[:32])), 32, 32, 32
 		}
@@ -182,66 +187,66 @@ func Decode(input []byte, t schema.Type) (int, *Item, error) {
 			switch {
 			case t.Elem.Static:
 				if len(input) < pos {
-					return 0, item, errors.New("EOF")
+					return item, nbytes, errors.New("EOF")
 				}
-				n, it, err := Decode(input[pos:], *t.Elem)
+				it, n, err := Decode(input[pos:], *t.Elem)
 				if err != nil {
-					return nbytes, item, err
+					return item, nbytes, err
 				}
 				item.l = append(item.l, it)
 				pos += t.Elem.Size
 				nbytes += n
 			default:
 				if len(input) < pos+32 {
-					return nbytes, item, errors.New("EOF")
+					return item, nbytes, errors.New("EOF")
 				}
 				offset := int(bint.Decode(input[pos : pos+32]))
 				if len(input) < start+offset {
-					return nbytes, item, errors.New("EOF")
+					return item, nbytes, errors.New("EOF")
 				}
-				n, it, err := Decode(input[start+offset:], *t.Elem)
+				it, n, err := Decode(input[start+offset:], *t.Elem)
 				if err != nil {
-					return nbytes, item, errors.New("EOF")
+					return item, nbytes, errors.New("EOF")
 				}
 				item.l = append(item.l, it)
 				pos += 32
 				nbytes += 32 + n
 			}
 		}
-		return nbytes, item, nil
+		return item, nbytes, nil
 	case 't':
 		var pos, nbytes int
 		for _, f := range t.Fields {
 			switch {
 			case f.Static:
 				if len(input) < pos {
-					return nbytes, item, errors.New("EOF")
+					return item, nbytes, errors.New("EOF")
 				}
-				n, it, err := Decode(input[pos:], f)
+				it, n, err := Decode(input[pos:], f)
 				if err != nil {
-					return nbytes, item, errors.New("EOF")
+					return item, nbytes, errors.New("EOF")
 				}
 				item.l = append(item.l, it)
 				pos += f.Size
 				nbytes += n
 			default:
 				if len(input) < pos+32 {
-					return nbytes, item, errors.New("EOF")
+					return item, nbytes, errors.New("EOF")
 				}
 				offset := int(bint.Decode(input[pos : pos+32]))
 				if len(input) < offset {
-					return nbytes, item, errors.New("EOF")
+					return item, nbytes, errors.New("EOF")
 				}
-				n, it, err := Decode(input[offset:], f)
+				it, n, err := Decode(input[offset:], f)
 				if err != nil {
-					return nbytes, item, errors.New("EOF")
+					return item, nbytes, errors.New("EOF")
 				}
 				item.l = append(item.l, it)
 				pos += 32
 				nbytes += 32 + n
 			}
 		}
-		return nbytes, item, nil
+		return item, nbytes, nil
 	default:
 		panic("unknown type")
 	}
