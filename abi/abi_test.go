@@ -514,3 +514,21 @@ func TestDone(t *testing.T) {
 	var i *Item
 	i.Done()
 }
+
+func TestPartialRead(t *testing.T) {
+	var items = make([]*Item, 100)
+	for i := uint8(0); i < 100; i++ {
+		items[i] = Uint8(i)
+	}
+	d := Encode(Array(items...))
+	item, n, err := Decode(d, schema.ArrayK(1, schema.Static()))
+	if err != nil {
+		t.Fatalf("got: %s want: nil", err)
+	}
+	if n != 32 {
+		t.Fatalf("got: %d want: 32", n)
+	}
+	if len(item.l) != 1 {
+		t.Error("expected returned item to have 1 element")
+	}
+}
