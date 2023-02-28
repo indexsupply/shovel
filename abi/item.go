@@ -57,7 +57,7 @@ func (item *Item) Bool() bool {
 }
 
 func Bytes(d []byte) *Item {
-	return &Item{Type: schema.Static(), d: d}
+	return &Item{Type: schema.Dynamic(), d: d}
 }
 
 func (it *Item) Bytes() []byte {

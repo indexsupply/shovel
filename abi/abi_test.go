@@ -450,6 +450,11 @@ func TestDecode_NumBytes(t *testing.T) {
 			want:   64,
 		},
 		{
+			item:   Bytes([]byte{}),
+			schema: schema.Dynamic(),
+			want:   32,
+		},
+		{
 			item:   String("foooooooooooooooooooooooooooooooo"), //len=33
 			schema: schema.Dynamic(),
 			want:   96,
