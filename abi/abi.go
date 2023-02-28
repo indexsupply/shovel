@@ -169,6 +169,9 @@ func Decode(input []byte, t schema.Type) (*Item, int, error) {
 		return item, 32, nil
 	case 'd':
 		length := int(bint.Decode(input[:32]))
+		if length == 0 {
+			return item, 32, nil
+		}
 		nbytes := length + (32 - (length % 32))
 		if len(input) < 32+length {
 			return item, 0, errors.New("EOF")
