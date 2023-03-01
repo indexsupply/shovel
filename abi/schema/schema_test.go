@@ -63,6 +63,11 @@ func TestParse(t *testing.T) {
 			want:  Tuple(Static(), Tuple(Array(Static()))),
 		},
 		{
+			desc:  "nested tuple with array and extra space",
+			input: "(bytes32, (bytes32[]))",
+			want:  Tuple(Static(), Tuple(Array(Static()))),
+		},
+		{
 			desc:  "complex",
 			input: "((address,bytes32,bytes,(uint8,uint8))[][])",
 			want: Tuple(

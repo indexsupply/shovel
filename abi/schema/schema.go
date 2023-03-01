@@ -97,6 +97,8 @@ func (t Type) size() int {
 }
 
 func Parse(s string) Type {
+	s = strings.ReplaceAll(s, " ", "")
+
 	switch {
 	case strings.HasSuffix(s, "]"):
 		var num string
