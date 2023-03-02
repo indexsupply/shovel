@@ -18,6 +18,11 @@ func TestParse(t *testing.T) {
 			want:  Tuple(Static()),
 		},
 		{
+			desc:  "single static with spaces",
+			input: "( uint8 )",
+			want:  Tuple(Static()),
+		},
+		{
 			desc:  "single dynamic",
 			input: "(bytes)",
 			want:  Tuple(Dynamic()),
@@ -38,6 +43,11 @@ func TestParse(t *testing.T) {
 			want:  Tuple(Static(), Dynamic()),
 		},
 		{
+			desc:  "mixed with spaces",
+			input: "( bytes32, bytes )",
+			want:  Tuple(Static(), Dynamic()),
+		},
+		{
 			desc:  "fixed size array",
 			input: "(bytes32,bytes)[2]",
 			want:  ArrayK(2, Tuple(Static(), Dynamic())),
@@ -45,6 +55,11 @@ func TestParse(t *testing.T) {
 		{
 			desc:  "array",
 			input: "(bytes32,bytes)[]",
+			want:  Array(Tuple(Static(), Dynamic())),
+		},
+		{
+			desc:  "array with spaces",
+			input: "( bytes32 , bytes ) []",
 			want:  Array(Tuple(Static(), Dynamic())),
 		},
 		{
@@ -60,11 +75,6 @@ func TestParse(t *testing.T) {
 		{
 			desc:  "nested tuple with array",
 			input: "(bytes32,(bytes32[]))",
-			want:  Tuple(Static(), Tuple(Array(Static()))),
-		},
-		{
-			desc:  "nested tuple with array and extra space",
-			input: "(bytes32, (bytes32[]))",
 			want:  Tuple(Static(), Tuple(Array(Static()))),
 		},
 		{
