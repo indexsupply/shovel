@@ -31,6 +31,8 @@ func bitIndex(m uint16) uint8 {
 
 // Returns true if the data isn't in the filter.
 // Returns false when the data might be in the filter.
+//
+// Caller is responsible for keccak hashing d
 func (bf Filter) Missing(d []byte) bool {
 	m1, m2, m3 := m(d, 0), m(d, 2), m(d, 4)
 	b1 := bf[byteIndex(m1)]&(1<<(bitIndex(m1))) == 0
@@ -39,6 +41,9 @@ func (bf Filter) Missing(d []byte) bool {
 	return b1 && b2 && b3
 }
 
+// Sets appropriate bits in bf.
+// Caller is responsible for keccak hashing d
+// and concurrency control.
 func (bf *Filter) Add(d []byte) {
 	m1, m2, m3 := m(d, 0), m(d, 2), m(d, 4)
 	bf[byteIndex(m1)] |= (1 << bitIndex(m1))
