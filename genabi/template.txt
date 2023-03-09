@@ -107,6 +107,9 @@ import (
 	// event inputs from the log's data field into [{{ camel .Name }}]:
 	//	{{ .SchemaSignature }}
 	func Match{{ camel .Name }}(l abi.Log) ({{ camel .Name}}, error) {
+		if len(l.Topics) == 0 {
+			return {{ camel .Name }}{}, abi.NoTopics
+		}
 		if len(l.Topics) > 0 && {{ lower .Name }}Signature != l.Topics[0] {
 			return {{ camel .Name }}{}, abi.SigMismatch
 		}

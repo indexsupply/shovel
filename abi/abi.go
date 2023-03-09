@@ -15,6 +15,7 @@ import (
 )
 
 var (
+	NoTopics      = errors.New("no data in topics")
 	SigMismatch   = errors.New("event signature doesn't match topics[0]")
 	IndexMismatch = errors.New("num indexed inputs doesn't match len(topics)")
 )
