@@ -4,7 +4,7 @@
 package bloom
 
 /*
-Bloom filter implementation based on the Yello Paper/4.3.1:
+Bloom filter implementation based on the Yellow Paper/4.3.1:
 
 	M3:2048 is a specialised Bloom filter that sets three
 	bits out of 2048, given an arbitrary byte sequence. It does
