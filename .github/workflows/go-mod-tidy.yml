@@ -6,7 +6,7 @@ on:
   pull_request:
     branches: [main]
 jobs:
-  name: go mod tidy
+  name: "go mod tidy"
   runs-on: ubuntu-latest
   steps:
     - uses: actions/checkout@v2
