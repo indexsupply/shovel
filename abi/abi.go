@@ -154,6 +154,13 @@ func (item *Item) Done() {
 	itemPool.Put(item)
 }
 
+func max(x, y int) int {
+	if x > y {
+		return x
+	}
+	return y
+}
+
 // Decodes ABI encoded bytes into an [Item] according to
 // the 'schema' defined by t. For example:
 //	Decode(b, schema.Tuple(schema.Dynamic(), schema.Static()))
@@ -173,12 +180,12 @@ func Decode(input []byte, t schema.Type) (*Item, int, error) {
 		if length == 0 {
 			return item, 32, nil
 		}
-		nbytes := length + (32 - (length % 32))
 		if len(input) < 32+length {
 			return item, 0, errors.New("EOF")
 		}
 		item.d = input[32 : 32+length]
-		return item, 32 + nbytes, nil
+		nbytes := 32 + (32 * max(1, length/32))
+		return item, nbytes, nil
 	case 'a':
 		var length, start, nbytes, pos = t.Length, 0, 0, 0
 		if length <= 0 { // dynamic sized array

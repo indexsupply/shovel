@@ -457,12 +457,17 @@ func TestDecode_NumBytes(t *testing.T) {
 		{
 			item:   String("foooooooooooooooooooooooooooooooo"), //len=33
 			schema: schema.Dynamic(),
-			want:   96,
+			want:   64,
 		},
 		{
 			item:   Tuple(Uint8(42), Uint8(42)),
 			schema: schema.Tuple(schema.Static(), schema.Static()),
 			want:   64,
+		},
+		{
+			item:   Tuple(Uint8(42), String("foooooooooooooooooooooooooooooooo")),
+			schema: schema.Tuple(schema.Static(), schema.Dynamic()),
+			want:   128,
 		},
 		{
 			item: Tuple(
