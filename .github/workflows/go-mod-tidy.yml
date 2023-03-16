@@ -6,27 +6,28 @@ on:
   pull_request:
     branches: [main]
 jobs:
-  name: "go mod tidy"
-  runs-on: ubuntu-latest
-  steps:
-    - uses: actions/checkout@v2
-    - name: Set up Go
-      uses: actions/setup-go@v3
-      with:
-        go-version: "1.20"
-    # Cache Go modules if go.sum is unchanged.
-    # Docs here: https://github.com/actions/cache/blob/9c7b3e90bdf39569c497c98e469f8a00e061c43f/examples.md#linux-1
-    - uses: actions/cache@v3
-      with:
-        path: |
-          ~/.cache/go-build
-          ~/go/pkg/mod
-        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
-        restore-keys: |
-          ${{ runner.os }}-go-
-    - name: check 'go mod tidy'
-      run: |
-        go mod tidy
-        echo
-        echo
-        git diff --name-only --exit-code || (echo "Please run 'go mod tidy'."; exit 1)
+  build:
+    name: "go mod tidy"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Set up Go
+        uses: actions/setup-go@v3
+        with:
+          go-version: "1.20"
+      # Cache Go modules if go.sum is unchanged.
+      # Docs here: https://github.com/actions/cache/blob/9c7b3e90bdf39569c497c98e469f8a00e061c43f/examples.md#linux-1
+      - uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+      - name: check 'go mod tidy'
+        run: |
+          go mod tidy
+          echo
+          echo
+          git diff --name-only --exit-code || (echo "Please run 'go mod tidy'."; exit 1)
