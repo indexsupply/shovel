@@ -75,7 +75,7 @@ func itemFunc(input Input) string {
 		return "Uint32()"
 	case "uint64":
 		return "Uint64()"
-	case "uint120", "uint256":
+	case "uint96", "uint120", "uint256":
 		return "BigInt()"
 	default:
 		panic(fmt.Sprintf("unkown type: %s", t))
@@ -120,7 +120,7 @@ func goType(inp Input) string {
 		return "uint32"
 	case "uint64":
 		return "uint64"
-	case "uint120", "uint256":
+	case "uint96", "uint120", "uint256":
 		return "*big.Int"
 	default:
 		panic(fmt.Sprintf("unkown type: %s", inp.Type))
