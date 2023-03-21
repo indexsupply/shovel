@@ -71,11 +71,15 @@ func itemFunc(input Input) string {
 		return "Uint8()"
 	case "uint16":
 		return "Uint16()"
-	case "uint32":
+	case "uint24", "uint32":
 		return "Uint32()"
-	case "uint64":
+	case "uint40", "uint48", "uint56", "uint64":
 		return "Uint64()"
-	case "uint96", "uint120", "uint256":
+	case "uint72", "uint80", "uint88", "uint96", "uint104",
+		"uint112", "uint120", "uint128", "uint136", "uint144",
+		"uint152", "uint160", "uint168", "uint176", "uint184",
+		"uint192", "uint200", "uint208", "uint216", "uint224",
+		"uint232", "uint240", "uint248", "uint256":
 		return "BigInt()"
 	default:
 		panic(fmt.Sprintf("unkown type: %s", t))
@@ -116,11 +120,15 @@ func goType(inp Input) string {
 		return "uint8"
 	case "uint16":
 		return "uint16"
-	case "uint32":
+	case "uint24", "uint32":
 		return "uint32"
-	case "uint64":
+	case "uint40", "uint48", "uint56", "uint64":
 		return "uint64"
-	case "uint96", "uint120", "uint256":
+	case "uint72", "uint80", "uint88", "uint96", "uint104",
+		"uint112", "uint120", "uint128", "uint136", "uint144",
+		"uint152", "uint160", "uint168", "uint176", "uint184",
+		"uint192", "uint200", "uint208", "uint216", "uint224",
+		"uint232", "uint240", "uint248", "uint256":
 		return "*big.Int"
 	default:
 		panic(fmt.Sprintf("unkown type: %s", inp.Type))
