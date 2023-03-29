@@ -25,6 +25,23 @@ func TestGenZero(t *testing.T) {
 	}
 }
 
+func TestNestedSlices(t *testing.T) {
+	log := abi.Log{
+		Topics: [][32]byte{nestedSlicesSignature},
+		Data: abi.Encode(abi.Tuple(
+			abi.Array(abi.String("foo"), abi.String("bar")),
+		)),
+	}
+	got, err := MatchNestedSlices(log)
+	if err != nil {
+		t.Errorf("want: nil got: %v", err)
+	}
+	want := []string{"foo", "bar"}
+	if !reflect.DeepEqual(want, got.Strings) {
+		t.Errorf("want: %v got: %v", want, got.Strings)
+	}
+}
+
 func BenchmarkMatch(b *testing.B) {
 	log := abi.Log{
 		Topics: [][32]byte{

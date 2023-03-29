@@ -9,6 +9,64 @@ import (
 	"math/big"
 )
 
+type NestedSlices struct {
+	item *abi.Item
+
+	// Un-indexed:
+	Strings []string
+}
+
+func (x NestedSlices) Done() {
+	x.item.Done()
+}
+
+func decodeNestedSlices(item *abi.Item) NestedSlices {
+	x := NestedSlices{}
+	stringsItem0 := item.At(0)
+	strings0 := make([]string, stringsItem0.Len())
+	for i0 := 0; i0 < stringsItem0.Len(); i0++ {
+		strings0[i0] = stringsItem0.At(i0).String()
+	}
+	x.Strings = strings0
+	return x
+}
+
+var (
+	nestedSlicesSignature  = [32]byte{0xee, 0x41, 0x3f, 0x81, 0xe1, 0x39, 0xc0, 0xfa, 0xea, 0xfa, 0xeb, 0xcd, 0x24, 0x55, 0x1f, 0x44, 0x4, 0x1a, 0x81, 0x69, 0xd6, 0x6c, 0x58, 0x8c, 0xe7, 0x71, 0x24, 0x99, 0xda, 0xf4, 0x96, 0x13}
+	nestedSlicesSchema     = schema.Parse("(string[])")
+	nestedSlicesNumIndexed = int(0)
+)
+
+// Event Signature:
+//	nestedSlices(string[])
+// Checks the first log topic against the signature hash:
+//	ee413f81e139c0faeafaebcd24551f44041a8169d66c588ce7712499daf49613
+//
+// Copies indexed event inputs from the remaining topics
+// into [NestedSlices]
+//
+// Uses the the following abi schema to decode the un-indexed
+// event inputs from the log's data field into [NestedSlices]:
+//	(string[])
+func MatchNestedSlices(l abi.Log) (NestedSlices, error) {
+	if len(l.Topics) == 0 {
+		return NestedSlices{}, abi.NoTopics
+	}
+	if len(l.Topics) > 0 && nestedSlicesSignature != l.Topics[0] {
+		return NestedSlices{}, abi.SigMismatch
+	}
+	if len(l.Topics[1:]) != nestedSlicesNumIndexed {
+		return NestedSlices{}, abi.IndexMismatch
+	}
+	item, _, err := abi.Decode(l.Data, nestedSlicesSchema)
+	if err != nil {
+		return NestedSlices{}, err
+	}
+	res := decodeNestedSlices(item)
+	res.item = item
+	return res, nil
+}
+
 type Transfer struct {
 	item *abi.Item
 
@@ -33,7 +91,7 @@ func decodeTransfer(item *abi.Item) Transfer {
 		extraItem1 := extraItem0.At(i0)
 		extra1 := [2]uint8{}
 		for i1 := 0; i1 < extraItem1.Len(); i1++ {
-			extra1[i1] = extraItem1.Uint8()
+			extra1[i1] = extraItem1.At(i1).Uint8()
 		}
 		extra0[i0] = extra1
 	}
@@ -112,6 +170,9 @@ var (
 // event inputs from the log's data field into [Transfer]:
 //	(uint8[2][3],(address,bytes32,bytes,(uint8,uint8))[][])
 func MatchTransfer(l abi.Log) (Transfer, error) {
+	if len(l.Topics) == 0 {
+		return Transfer{}, abi.NoTopics
+	}
 	if len(l.Topics) > 0 && transferSignature != l.Topics[0] {
 		return Transfer{}, abi.SigMismatch
 	}
