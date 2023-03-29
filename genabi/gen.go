@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"go/format"
+	"os"
 	"strings"
 	"text/template"
 	"unicode"
@@ -17,10 +18,13 @@ import (
 //go:embed template.txt
 var abitemp string
 
-func imports(events []Event) []string {
+func imports(descriptors []Descriptor) []string {
 	var types = map[string]struct{}{}
-	for _, event := range events {
-		for t, _ := range templateType(event.Inputs) {
+	for _, desc := range descriptors {
+		for t, _ := range templateType(desc.Inputs) {
+			types[t] = struct{}{}
+		}
+		for t, _ := range templateType(desc.Outputs) {
 			types[t] = struct{}{}
 		}
 	}
@@ -33,14 +37,20 @@ func imports(events []Event) []string {
 			imports = append(imports, "github.com/holiman/uint256")
 		}
 	}
+	for _, desc := range descriptors {
+		if desc.StateMutability == "view" {
+			imports = append(imports, "github.com/indexsupply/x/jrpc")
+			break
+		}
+	}
 	imports = append(imports, "github.com/indexsupply/x/abi")
 	imports = append(imports, "github.com/indexsupply/x/abi/schema")
 	return imports
 }
 
-func templateType(inputs []Input) map[string]struct{} {
+func templateType(fields []Field) map[string]struct{} {
 	var types = map[string]struct{}{}
-	for _, input := range inputs {
+	for _, input := range fields {
 		if len(input.Components) == 0 {
 			types[goType(input)] = struct{}{}
 			continue
@@ -52,41 +62,41 @@ func templateType(inputs []Input) map[string]struct{} {
 	return types
 }
 
-func itemFunc(input Input) string {
+func itemFunc(input Field) string {
 	t, _, _ := strings.Cut(input.Type, "[")
 	switch t {
 	case "address":
-		return "Address()"
+		return "Address"
 	case "bool":
-		return "Bool()"
+		return "Bool"
 	case "bytes":
-		return "Bytes()"
+		return "Bytes"
 	case "bytes32":
-		return "Bytes32()"
+		return "Bytes32"
 	case "bytes4":
-		return "Bytes4()"
+		return "Bytes4"
 	case "string":
-		return "String()"
+		return "String"
 	case "uint8":
-		return "Uint8()"
+		return "Uint8"
 	case "uint16":
-		return "Uint16()"
+		return "Uint16"
 	case "uint24", "uint32":
-		return "Uint32()"
+		return "Uint32"
 	case "uint40", "uint48", "uint56", "uint64":
-		return "Uint64()"
+		return "Uint64"
 	case "uint72", "uint80", "uint88", "uint96", "uint104",
 		"uint112", "uint120", "uint128", "uint136", "uint144",
 		"uint152", "uint160", "uint168", "uint176", "uint184",
 		"uint192", "uint200", "uint208", "uint216", "uint224",
 		"uint232", "uint240", "uint248", "uint256":
-		return "BigInt()"
+		return "BigInt"
 	default:
 		panic(fmt.Sprintf("unkown type: %s", t))
 	}
 }
 
-func goType(inp Input) string {
+func goType(inp Field) string {
 	if strings.HasSuffix(inp.Type, "tuple") {
 		return camel(inp.Name)
 	}
@@ -101,7 +111,7 @@ func goType(inp Input) string {
 			o, c := strings.Index(t, "["), strings.Index(t, "]")
 			dims, t = t[o:c+1]+dims, t[c+1:]
 		}
-		return dims + goType(Input{Type: elem, Name: inp.Name})
+		return dims + goType(Field{Type: elem, Name: inp.Name})
 	}
 	switch inp.Type {
 	case "address":
@@ -135,21 +145,21 @@ func goType(inp Input) string {
 	}
 }
 
-func hasTuple(input Input) bool {
+func hasTuple(input Field) bool {
 	return strings.HasPrefix(input.Type, "tuple")
 }
 
-func isTuple(input Input) bool {
+func isTuple(input Field) bool {
 	return strings.HasSuffix(input.Type, "tuple")
 }
 
-func isArray(input Input) bool {
+func isArray(input Field) bool {
 	return strings.HasSuffix(input.Type, "]")
 }
 
 // used to aggregate template data in template.txt
 type listHelper struct {
-	Input      Input
+	Field      Field
 	Index      int
 	Nested     bool
 	inputIndex int
@@ -157,7 +167,7 @@ type listHelper struct {
 
 func (lh listHelper) HasNext() bool {
 	var dimension int
-	for _, c := range lh.Input.Type {
+	for _, c := range lh.Field.Type {
 		if c == rune('[') {
 			dimension++
 		}
@@ -175,13 +185,13 @@ func (lh listHelper) ItemIndex() int {
 func (lh listHelper) Next() listHelper {
 	return listHelper{
 		Nested: true,
-		Input:  lh.Input,
+		Field:  lh.Field,
 		Index:  lh.Index + 1,
 	}
 }
 
 func (lh listHelper) MakeArg() string {
-	a := goType(lh.Input)
+	a := goType(lh.Field)
 	for i := 0; i < lh.Index; i++ {
 		k := strings.Index(a, "]")
 		a = a[k+1:]
@@ -190,27 +200,27 @@ func (lh listHelper) MakeArg() string {
 }
 
 func (lh listHelper) FixedLength() bool {
-	for i := 0; i < len(lh.Input.Type); i++ {
-		if lh.Input.Type[i] == ']' && lh.Input.Type[i-1] != '[' {
+	for i := 0; i < len(lh.Field.Type); i++ {
+		if lh.Field.Type[i] == ']' && lh.Field.Type[i-1] != '[' {
 			return true
 		}
 	}
 	return false
 }
 
-// ABI Inputs can share tuples so when we create a struct
+// ABI Fields can share tuples so when we create a struct
 // from a tuple, we need to ensure we only define the struct once.
 var definedStructs = map[string]struct{}{}
 
-// We generate structs for Event.Inputs and
-// Input.Components. Since both Inputs and Components
-// are just a []Input, structHelper abstracts Event
-// and Input away so that the struct template can
-// simply iterate over structHelper.Inputs.
-// Name can either be Event.Name or Input.Name.
+// We generate structs for Descriptor.Fields and
+// Field.Components. Since both Fields and Components
+// are just a []Field, structHelper abstracts Descriptor
+// and Field away so that the struct template can
+// simply iterate over structHelper.Fields.
+// Name can either be Descriptor.Name or Field.Name.
 type structHelper struct {
 	Name   string
-	Inputs []Input
+	Fields []Field
 }
 
 func (sh structHelper) AlreadyDefined() bool {
@@ -222,20 +232,22 @@ func (sh structHelper) AlreadyDefined() bool {
 	return false
 }
 
-type Event struct {
-	Name      string
-	Type      string //event
-	Anonymous bool
-	Inputs    []Input
+type Descriptor struct {
+	Name            string
+	Type            string //event, function, or error
+	StateMutability string
+	Anonymous       bool
+	Inputs          []Field
+	Outputs         []Field
 }
 
-func (e Event) Signature() string {
+func (desc Descriptor) InputSignature() string {
 	var s strings.Builder
-	s.WriteString(e.Name)
+	s.WriteString(desc.Name)
 	s.WriteString("(")
-	for i := range e.Inputs {
-		s.WriteString(e.Inputs[i].Signature())
-		if i+1 < len(e.Inputs) {
+	for i := range desc.Inputs {
+		s.WriteString(desc.Inputs[i].Signature())
+		if i+1 < len(desc.Inputs) {
 			s.WriteString(",")
 		}
 	}
@@ -243,15 +255,12 @@ func (e Event) Signature() string {
 	return s.String()
 }
 
-func (e Event) SchemaSignature() string {
-	var (
-		s      strings.Builder
-		inputs = unindexed(e.Inputs)
-	)
+func (desc Descriptor) OutputSignature() string {
+	var s strings.Builder
 	s.WriteString("(")
-	for i, inp := range inputs {
-		s.WriteString(inp.Signature())
-		if i+1 < len(inputs) {
+	for i := range desc.Outputs {
+		s.WriteString(desc.Outputs[i].Signature())
+		if i+1 < len(desc.Outputs) {
 			s.WriteString(",")
 		}
 	}
@@ -259,43 +268,55 @@ func (e Event) SchemaSignature() string {
 	return s.String()
 }
 
-func (e Event) SignatureHash() [32]byte {
-	return isxhash.Keccak32([]byte(e.Signature()))
+func keccak(s string) [32]byte {
+	return isxhash.Keccak32([]byte(s))
 }
 
-func (e Event) SigHashLiteral() string {
-	b := e.SignatureHash()
+func schema(fields []Field) string {
+	var s strings.Builder
+	s.WriteString("(")
+	for i, f := range fields {
+		s.WriteString(f.Signature())
+		if i+1 < len(fields) {
+			s.WriteString(",")
+		}
+	}
+	s.WriteString(")")
+	return s.String()
+}
+
+func hashLiteral(h [32]byte) string {
 	s := "[32]byte{"
-	for i := range b {
-		s += fmt.Sprintf("0x%x", b[i])
-		if i != len(b) {
+	for i := range h {
+		s += fmt.Sprintf("0x%x", h[i])
+		if i != len(h) {
 			s += ", "
 		}
 	}
 	return s + "}"
 }
 
-type Input struct {
+type Field struct {
 	Indexed    bool
 	Name       string
 	Type       string
-	Components []Input
+	Components []Field
 }
 
-func (inp Input) Signature() string {
-	if !strings.HasPrefix(inp.Type, "tuple") {
-		return inp.Type
+func (f Field) Signature() string {
+	if !strings.HasPrefix(f.Type, "tuple") {
+		return f.Type
 	}
 	var s strings.Builder
 	s.WriteString("(")
-	for i, c := range inp.Components {
+	for i, c := range f.Components {
 		s.WriteString(c.Signature())
-		if i+1 < len(inp.Components) {
+		if i+1 < len(f.Components) {
 			s.WriteString(",")
 		}
 	}
 	s.WriteString(")")
-	return strings.Replace(inp.Type, "tuple", s.String(), 1)
+	return strings.Replace(f.Type, "tuple", s.String(), 1)
 }
 
 func lower(str string) string {
@@ -322,57 +343,139 @@ func camel(str string) string {
 	return string(res)
 }
 
-func unindexed(inputs []Input) []Input {
-	var res []Input
-	for _, inp := range inputs {
-		if inp.Indexed {
+func unindexed(fields []Field) []Field {
+	var res []Field
+	for _, f := range fields {
+		if f.Indexed {
 			continue
 		}
-		res = append(res, inp)
+		res = append(res, f)
 	}
 	return res
 }
 
-func indexed(inputs []Input) []Input {
-	var res []Input
-	for _, inp := range inputs {
-		if !inp.Indexed {
+func indexed(fields []Field) []Field {
+	var res []Field
+	for _, f := range fields {
+		if !f.Indexed {
 			continue
 		}
-		res = append(res, inp)
+		res = append(res, f)
 	}
 	return res
 }
 
-func Gen(pkg string, js []byte) ([]byte, error) {
-	events := []Event{}
-	err := json.Unmarshal(js, &events)
+func updateFieldName(m map[string]int, f *Field) {
+	if f.Name == "" {
+		f.Name = "output"
+	}
+	n, exists := m[f.Name]
+	if exists {
+		n++
+		f.Name = fmt.Sprintf("%s%d", f.Name, n)
+		m[f.Name] = n
+	}
+	for _, c := range f.Components {
+		updateFieldName(m, &c)
+	}
+}
+
+func updateDescName(m map[string]int, d *Descriptor) {
+	n, exists := m[d.Name]
+	if !exists {
+		m[d.Name] = 1
+		return
+	}
+	n++
+	d.Name = fmt.Sprintf("%s%d", d.Name, n)
+	m[d.Name] = n
+}
+
+// Reads file at path and calls [Gen]
+func GenFile(pkgName string, path string) ([]byte, error) {
+	js, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	return Gen(pkgName, path, js)
+}
+
+// Generates formatted source code with log matchers and function callers
+// based on the JSON format for a contract’s interface.
+//
+// pkgName is the package name that will be used when generating code
+//
+// inputFileName is used to generate a package comment to indicate
+// the source of the generated code.
+//
+// js the the parsed abi json file
+func Gen(pkgName string, inputFileName string, js []byte) ([]byte, error) {
+	descriptors := []Descriptor{}
+	err := json.Unmarshal(js, &descriptors)
 	if err != nil {
 		return nil, isxerrors.Errorf("parsing abi json: %w", err)
 	}
 
+	if len(descriptors) == 0 {
+		return nil, fmt.Errorf("no descriptors in json file %q", inputFileName)
+	}
+
+	// Some functions will have the same name
+	// but different inputs/outputs. In this case
+	// we will append a sequential integer onto the name
+	// eg Transfer, Transfer2, Transfer3, etc...
+	unique := map[string]int{}
+	for i := range descriptors {
+		updateDescName(unique, &descriptors[i])
+	}
+	unique = map[string]int{}
+	for i := range descriptors {
+		// Some inputs/outputs will have a single item
+		// schema and that single item will have a blank
+		// name. In those cases, we reuse the descriptor
+		// name. Eg totalSupply with a single, unnamed
+		// uint256 output will be renamed to totalSupply.
+		if len(descriptors[i].Inputs) == 1 && descriptors[i].Inputs[0].Name == "" {
+			descriptors[i].Inputs[0].Name = descriptors[i].Name
+		}
+		if len(descriptors[i].Outputs) == 1 && descriptors[i].Outputs[0].Name == "" {
+			descriptors[i].Outputs[0].Name = descriptors[i].Name
+		}
+		// If a field name is duplicated, we will
+		// append a sequential integer onto the name.
+		for j := range descriptors[i].Inputs {
+			updateFieldName(unique, &descriptors[i].Inputs[j])
+		}
+		for j := range descriptors[i].Outputs {
+			updateFieldName(unique, &descriptors[i].Outputs[j])
+		}
+	}
+
 	t := template.New("abi").Funcs(template.FuncMap{
-		"camel":    camel,
-		"lower":    lower,
-		"goType":   goType,
-		"itemFunc": itemFunc,
+		"camel":       camel,
+		"lower":       lower,
+		"hashLiteral": hashLiteral,
+		"keccak":      keccak,
+		"schema":      schema,
+		"goType":      goType,
+		"itemFunc":    itemFunc,
+		"hasTuple":    hasTuple,
+		"isTuple":     isTuple,
+		"isArray":     isArray,
+		"unindexed":   unindexed,
+		"indexed":     indexed,
 		"sub": func(x, y int) int {
 			return x - y
 		},
 		"add": func(x, y int) int {
 			return x + y
 		},
-		"listHelper": func(i int, it Input) listHelper {
-			return listHelper{Input: it, inputIndex: i}
+		"listHelper": func(i int, f Field) listHelper {
+			return listHelper{Field: f, inputIndex: i}
 		},
-		"structHelper": func(name string, inputs []Input) structHelper {
-			return structHelper{Name: name, Inputs: inputs}
+		"structHelper": func(name string, fields []Field) structHelper {
+			return structHelper{Name: name, Fields: fields}
 		},
-		"hasTuple":  hasTuple,
-		"isTuple":   isTuple,
-		"isArray":   isArray,
-		"unindexed": unindexed,
-		"indexed":   indexed,
 	})
 	t, err = t.Parse(abitemp)
 	if err != nil {
@@ -380,22 +483,30 @@ func Gen(pkg string, js []byte) ([]byte, error) {
 	}
 
 	var b bytes.Buffer
-	err = t.ExecuteTemplate(&b, "package", pkg)
+	err = t.ExecuteTemplate(&b, "package", struct {
+		PackageName string
+		InputFile   string
+	}{pkgName, inputFileName})
 	if err != nil {
 		return nil, isxerrors.Errorf("executing package template: %w", err)
 	}
-	err = t.ExecuteTemplate(&b, "imports", imports(events))
+	err = t.ExecuteTemplate(&b, "imports", imports(descriptors))
 	if err != nil {
 		return nil, isxerrors.Errorf("executing imports template: %w", err)
 	}
 
-	for _, event := range events {
-		if event.Type != "event" {
-			continue
-		}
-		err = t.ExecuteTemplate(&b, "event", event)
-		if err != nil {
-			return nil, isxerrors.Errorf("executing event template: %w", err)
+	for _, desc := range descriptors {
+		switch desc.Type {
+		case "event":
+			err = t.ExecuteTemplate(&b, "event", desc)
+			if err != nil {
+				return nil, isxerrors.Errorf("executing event template: %w", err)
+			}
+		case "function":
+			err = t.ExecuteTemplate(&b, "function", desc)
+			if err != nil {
+				return nil, isxerrors.Errorf("executing function template: %w", err)
+			}
 		}
 	}
 	code, err := format.Source(b.Bytes())

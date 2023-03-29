@@ -6,54 +6,54 @@ import (
 	"kr.dev/diff"
 )
 
-func TestSchemaSignature(t *testing.T) {
+func TestSchema(t *testing.T) {
 	cases := []struct {
-		event Event
+		event Descriptor
 		want  string
 	}{
 		{
-			event: Event{
-				Inputs: []Input{},
+			event: Descriptor{
+				Inputs: []Field{},
 			},
 			want: "()",
 		},
 		{
-			event: Event{
-				Inputs: []Input{
-					Input{Indexed: true, Type: "uint8"},
+			event: Descriptor{
+				Inputs: []Field{
+					Field{Indexed: true, Type: "uint8"},
 				},
 			},
 			want: "()",
 		},
 		{
-			event: Event{
-				Inputs: []Input{
-					Input{Indexed: false, Type: "uint8"},
+			event: Descriptor{
+				Inputs: []Field{
+					Field{Indexed: false, Type: "uint8"},
 				},
 			},
 			want: "(uint8)",
 		},
 		{
-			event: Event{
-				Inputs: []Input{
-					Input{Indexed: true, Type: "uint8"},
-					Input{Indexed: false, Type: "uint8"},
+			event: Descriptor{
+				Inputs: []Field{
+					Field{Indexed: true, Type: "uint8"},
+					Field{Indexed: false, Type: "uint8"},
 				},
 			},
 			want: "(uint8)",
 		},
 		{
-			event: Event{
-				Inputs: []Input{
-					Input{Indexed: false, Type: "uint8"},
-					Input{Indexed: true, Type: "uint8"},
+			event: Descriptor{
+				Inputs: []Field{
+					Field{Indexed: false, Type: "uint8"},
+					Field{Indexed: true, Type: "uint8"},
 				},
 			},
 			want: "(uint8)",
 		},
 	}
 	for _, tc := range cases {
-		diff.Test(t, t.Errorf, tc.event.SchemaSignature(), tc.want)
+		diff.Test(t, t.Errorf, schema(unindexed(tc.event.Inputs)), tc.want)
 	}
 }
 
@@ -63,19 +63,19 @@ func TestHasNext(t *testing.T) {
 		want bool
 	}{
 		{
-			lh:   listHelper{Input: Input{Type: "uint8"}},
+			lh:   listHelper{Field: Field{Type: "uint8"}},
 			want: false,
 		},
 		{
-			lh:   listHelper{Input: Input{Type: "uint8[][][]"}, Index: 0},
+			lh:   listHelper{Field: Field{Type: "uint8[][][]"}, Index: 0},
 			want: true,
 		},
 		{
-			lh:   listHelper{Input: Input{Type: "uint8[][][]"}, Index: 1},
+			lh:   listHelper{Field: Field{Type: "uint8[][][]"}, Index: 1},
 			want: true,
 		},
 		{
-			lh:   listHelper{Input: Input{Type: "uint8[][][]"}, Index: 2},
+			lh:   listHelper{Field: Field{Type: "uint8[][][]"}, Index: 2},
 			want: false,
 		},
 	}
@@ -90,19 +90,19 @@ func TestFixedLength(t *testing.T) {
 		want bool
 	}{
 		{
-			lh:   listHelper{Input: Input{Type: "uint8"}},
+			lh:   listHelper{Field: Field{Type: "uint8"}},
 			want: false,
 		},
 		{
-			lh:   listHelper{Input: Input{Type: "uint8[]"}},
+			lh:   listHelper{Field: Field{Type: "uint8[]"}},
 			want: false,
 		},
 		{
-			lh:   listHelper{Input: Input{Type: "uint8[2]"}},
+			lh:   listHelper{Field: Field{Type: "uint8[2]"}},
 			want: true,
 		},
 		{
-			lh:   listHelper{Input: Input{Type: "uint8[200]"}},
+			lh:   listHelper{Field: Field{Type: "uint8[200]"}},
 			want: true,
 		},
 	}
@@ -117,35 +117,35 @@ func TestMakeArg(t *testing.T) {
 		want string
 	}{
 		{
-			lh:   listHelper{Input: Input{Type: "uint8"}},
+			lh:   listHelper{Field: Field{Type: "uint8"}},
 			want: "uint8",
 		},
 		{
-			lh:   listHelper{Input: Input{Type: "uint8[]"}},
+			lh:   listHelper{Field: Field{Type: "uint8[]"}},
 			want: "[]uint8",
 		},
 		{
-			lh:   listHelper{Input: Input{Type: "uint8[2]"}},
+			lh:   listHelper{Field: Field{Type: "uint8[2]"}},
 			want: "[2]uint8",
 		},
 		{
-			lh:   listHelper{Input: Input{Type: "uint8[2][3]"}},
+			lh:   listHelper{Field: Field{Type: "uint8[2][3]"}},
 			want: "[3][2]uint8",
 		},
 		{
-			lh:   listHelper{Input: Input{Type: "uint8[][]"}},
+			lh:   listHelper{Field: Field{Type: "uint8[][]"}},
 			want: "[][]uint8",
 		},
 		{
-			lh:   listHelper{Input: Input{Type: "uint8[][]"}, Index: 0},
+			lh:   listHelper{Field: Field{Type: "uint8[][]"}, Index: 0},
 			want: "[][]uint8",
 		},
 		{
-			lh:   listHelper{Input: Input{Type: "uint8[][]"}, Index: 1},
+			lh:   listHelper{Field: Field{Type: "uint8[][]"}, Index: 1},
 			want: "[]uint8",
 		},
 		{
-			lh:   listHelper{Input: Input{Type: "uint8[][]"}, Index: 2},
+			lh:   listHelper{Field: Field{Type: "uint8[][]"}, Index: 2},
 			want: "uint8",
 		},
 	}

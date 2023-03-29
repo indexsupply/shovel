@@ -31,9 +31,7 @@ func main() {
 		check(errors.New("missing -p (package name) arg"))
 	}
 
-	js, err := os.ReadFile(*input)
-	check(err)
-	code, err := genabi.Gen(*pkgName, js)
+	code, err := genabi.GenFile(*pkgName, *input)
 	if *output != "" {
 		check(os.WriteFile(*output, code, 0644))
 		if err != nil {
