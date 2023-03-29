@@ -1,5 +1,12 @@
 [
 	{
+		"name": "nestedSlices",
+		"type": "event",
+		"inputs": [
+			{"type": "string[]", "name": "strings"}
+		]
+	},
+	{
 		"name": "transfer",
 		"type": "event",
 		"anonymous": false,
