@@ -80,7 +80,7 @@ import (
 			{{ if hasTuple .Input -}}
 				{{ .Input.Name}}{{ .Index }}[i{{ .Index }}] = decode{{ camel .Input.Name }}({{ .Input.Name }}Item{{ .Index }}.At(i{{ .Index}}))
 			{{ else -}}
-				{{ .Input.Name}}{{ .Index }}[i{{ .Index }}] = {{ .Input.Name }}Item{{ .Index }}.{{ itemFunc .Input }}
+				{{ .Input.Name}}{{ .Index }}[i{{ .Index }}] = {{ .Input.Name }}Item{{ .Index }}.At(i{{ .Index}}).{{ itemFunc .Input }}
 			{{ end -}}
 		}
 	{{ end -}}
