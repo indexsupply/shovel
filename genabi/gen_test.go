@@ -188,11 +188,11 @@ func TestCamel(t *testing.T) {
 		},
 		{
 			input: "_",
-			want:  "",
+			want:  "_",
 		},
 		{
 			input: "__",
-			want:  "",
+			want:  "_",
 		},
 		{
 			input: "Foo",
@@ -216,7 +216,7 @@ func TestCamel(t *testing.T) {
 		},
 		{
 			input: "_foo_bar_",
-			want:  "FooBar",
+			want:  "_FooBar",
 		},
 	}
 	for _, tc := range cases {

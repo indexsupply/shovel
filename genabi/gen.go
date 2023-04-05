@@ -332,8 +332,10 @@ func camel(str string) string {
 	)
 	for i, r := range in {
 		switch {
-		case r == '_':
-			//skip
+		case r == '_' && i > 0:
+			//omit underscore from result unless
+			//the underscore is the first char in
+			//the string.
 		case i == 0 || in[i-1] == '_':
 			res = append(res, unicode.ToUpper(r))
 		default:
