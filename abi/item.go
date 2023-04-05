@@ -30,7 +30,7 @@ func (item *Item) Uint256() uint256.Int {
 	return i
 }
 
-func BigInt(i big.Int) *Item {
+func BigInt(i *big.Int) *Item {
 	var b [32]byte
 	i.FillBytes(b[:])
 	return &Item{Type: schema.Static(), d: b[:]}
