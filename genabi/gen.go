@@ -415,14 +415,14 @@ func Gen(pkgName string, inputFileName string, js []byte) ([]byte, error) {
 	// we will append a sequential integer onto the name
 	// eg Transfer, Transfer2, Transfer3, etc...
 	unique := map[string]int{}
-	for _, d := range descriptors {
+	for i, d := range descriptors {
 		n, exists := unique[d.Name]
 		if !exists {
 			unique[d.Name] = 1
 			continue
 		}
 		n++
-		d.Name = fmt.Sprintf("%s%d", d.Name, n)
+		descriptors[i].Name = fmt.Sprintf("%s%d", d.Name, n)
 		unique[d.Name] = n
 	}
 	unique = map[string]int{}
