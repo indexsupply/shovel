@@ -52,7 +52,7 @@ func templateType(fields []Field) map[string]struct{} {
 	var types = map[string]struct{}{}
 	for _, input := range fields {
 		if len(input.Components) == 0 {
-			types[goType(input)] = struct{}{}
+			types[goType(input.Type, input.Name)] = struct{}{}
 			continue
 		}
 		for t := range templateType(input.Components) {
@@ -62,9 +62,8 @@ func templateType(fields []Field) map[string]struct{} {
 	return types
 }
 
-func itemFunc(input Field) string {
-	t, _, _ := strings.Cut(input.Type, "[")
-	switch t {
+func itemFunc(t string) string {
+	switch t, _, _ = strings.Cut(t, "["); t {
 	case "address":
 		return "Address"
 	case "bool":
@@ -96,24 +95,23 @@ func itemFunc(input Field) string {
 	}
 }
 
-func goType(inp Field) string {
-	if strings.HasSuffix(inp.Type, "tuple") {
-		return camel(inp.Name)
-	}
-	if strings.HasSuffix(inp.Type, "]") {
+func goType(t, s string) string {
+	switch {
+	case strings.HasSuffix(t, "tuple"):
+		return camel(s)
+	case strings.HasSuffix(t, "]"):
 		var (
-			elem, _, _ = strings.Cut(inp.Type, "[")
+			elem, _, _ = strings.Cut(t, "[")
 			dims       string
-			t          = inp.Type
 		)
 		// reverse array notation
 		for i := 0; i <= strings.Count(t, "]"); i++ {
 			o, c := strings.Index(t, "["), strings.Index(t, "]")
 			dims, t = t[o:c+1]+dims, t[c+1:]
 		}
-		return dims + goType(Field{Type: elem, Name: inp.Name})
+		return dims + goType(elem, s)
 	}
-	switch inp.Type {
+	switch t {
 	case "address":
 		return "[20]byte"
 	case "bool":
@@ -141,7 +139,7 @@ func goType(inp Field) string {
 		"uint232", "uint240", "uint248", "uint256":
 		return "*big.Int"
 	default:
-		panic(fmt.Sprintf("unkown type: %s", inp.Type))
+		panic(fmt.Sprintf("unkown type: %s", t))
 	}
 }
 
@@ -158,50 +156,51 @@ func isArray(input Field) bool {
 }
 
 // used to aggregate template data in template.txt
-type listHelper struct {
+type arrayHelper struct {
 	Field      Field
+	StructName string
 	Index      int
 	Nested     bool
 	inputIndex int
 }
 
-func (lh listHelper) HasNext() bool {
+func (ah arrayHelper) HasNext() bool {
 	var dimension int
-	for _, c := range lh.Field.Type {
+	for _, c := range ah.Field.Type {
 		if c == rune('[') {
 			dimension++
 		}
 	}
-	return dimension > lh.Index+1
+	return dimension > ah.Index+1
 }
 
-func (lh listHelper) ItemIndex() int {
-	if lh.Nested {
-		return lh.Index
+func (ah arrayHelper) ItemIndex() int {
+	if ah.Nested {
+		return ah.Index
 	}
-	return lh.inputIndex
+	return ah.inputIndex
 }
 
-func (lh listHelper) Next() listHelper {
-	return listHelper{
-		Nested: true,
-		Field:  lh.Field,
-		Index:  lh.Index + 1,
+func (ah arrayHelper) Next() arrayHelper {
+	return arrayHelper{
+		Nested:     true,
+		Field:      ah.Field,
+		Index:      ah.Index + 1,
+		StructName: ah.StructName,
 	}
 }
 
-func (lh listHelper) MakeArg() string {
-	a := goType(lh.Field)
-	for i := 0; i < lh.Index; i++ {
-		k := strings.Index(a, "]")
-		a = a[k+1:]
+func (ah arrayHelper) Type(gt string) string {
+	for i := 0; i < ah.Index; i++ {
+		k := strings.Index(gt, "]")
+		gt = gt[k+1:]
 	}
-	return a
+	return gt
 }
 
-func (lh listHelper) FixedLength() bool {
-	for i := 0; i < len(lh.Field.Type); i++ {
-		if lh.Field.Type[i] == ']' && lh.Field.Type[i-1] != '[' {
+func (ah arrayHelper) FixedLength() bool {
+	for i := 0; i < len(ah.Field.Type); i++ {
+		if ah.Field.Type[i] == ']' && ah.Field.Type[i-1] != '[' {
 			return true
 		}
 	}
@@ -382,17 +381,6 @@ func updateFieldName(m map[string]int, f *Field) {
 	}
 }
 
-func updateDescName(m map[string]int, d *Descriptor) {
-	n, exists := m[d.Name]
-	if !exists {
-		m[d.Name] = 1
-		return
-	}
-	n++
-	d.Name = fmt.Sprintf("%s%d", d.Name, n)
-	m[d.Name] = n
-}
-
 // Reads file at path and calls [Gen]
 func GenFile(pkgName string, path string) ([]byte, error) {
 	js, err := os.ReadFile(path)
@@ -427,8 +415,15 @@ func Gen(pkgName string, inputFileName string, js []byte) ([]byte, error) {
 	// we will append a sequential integer onto the name
 	// eg Transfer, Transfer2, Transfer3, etc...
 	unique := map[string]int{}
-	for i := range descriptors {
-		updateDescName(unique, &descriptors[i])
+	for _, d := range descriptors {
+		n, exists := unique[d.Name]
+		if !exists {
+			unique[d.Name] = 1
+			continue
+		}
+		n++
+		d.Name = fmt.Sprintf("%s%d", d.Name, n)
+		unique[d.Name] = n
 	}
 	unique = map[string]int{}
 	for i := range descriptors {
@@ -453,6 +448,7 @@ func Gen(pkgName string, inputFileName string, js []byte) ([]byte, error) {
 		}
 	}
 
+	// Some inputs/outputs will have a single item
 	t := template.New("abi").Funcs(template.FuncMap{
 		"camel":       camel,
 		"lower":       lower,
@@ -472,8 +468,8 @@ func Gen(pkgName string, inputFileName string, js []byte) ([]byte, error) {
 		"add": func(x, y int) int {
 			return x + y
 		},
-		"listHelper": func(i int, f Field) listHelper {
-			return listHelper{Field: f, inputIndex: i}
+		"arrayHelper": func(i int, sn string, f Field) arrayHelper {
+			return arrayHelper{StructName: sn, Field: f, inputIndex: i}
 		},
 		"structHelper": func(name string, fields []Field) structHelper {
 			return structHelper{Name: name, Fields: fields}

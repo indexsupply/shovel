@@ -59,98 +59,98 @@ func TestSchema(t *testing.T) {
 
 func TestHasNext(t *testing.T) {
 	cases := []struct {
-		lh   listHelper
+		ah   arrayHelper
 		want bool
 	}{
 		{
-			lh:   listHelper{Field: Field{Type: "uint8"}},
+			ah:   arrayHelper{Field: Field{Type: "uint8"}},
 			want: false,
 		},
 		{
-			lh:   listHelper{Field: Field{Type: "uint8[][][]"}, Index: 0},
+			ah:   arrayHelper{Field: Field{Type: "uint8[][][]"}, Index: 0},
 			want: true,
 		},
 		{
-			lh:   listHelper{Field: Field{Type: "uint8[][][]"}, Index: 1},
+			ah:   arrayHelper{Field: Field{Type: "uint8[][][]"}, Index: 1},
 			want: true,
 		},
 		{
-			lh:   listHelper{Field: Field{Type: "uint8[][][]"}, Index: 2},
+			ah:   arrayHelper{Field: Field{Type: "uint8[][][]"}, Index: 2},
 			want: false,
 		},
 	}
 	for _, tc := range cases {
-		diff.Test(t, t.Errorf, tc.lh.HasNext(), tc.want)
+		diff.Test(t, t.Errorf, tc.ah.HasNext(), tc.want)
 	}
 }
 
 func TestFixedLength(t *testing.T) {
 	cases := []struct {
-		lh   listHelper
+		ah   arrayHelper
 		want bool
 	}{
 		{
-			lh:   listHelper{Field: Field{Type: "uint8"}},
+			ah:   arrayHelper{Field: Field{Type: "uint8"}},
 			want: false,
 		},
 		{
-			lh:   listHelper{Field: Field{Type: "uint8[]"}},
+			ah:   arrayHelper{Field: Field{Type: "uint8[]"}},
 			want: false,
 		},
 		{
-			lh:   listHelper{Field: Field{Type: "uint8[2]"}},
+			ah:   arrayHelper{Field: Field{Type: "uint8[2]"}},
 			want: true,
 		},
 		{
-			lh:   listHelper{Field: Field{Type: "uint8[200]"}},
+			ah:   arrayHelper{Field: Field{Type: "uint8[200]"}},
 			want: true,
 		},
 	}
 	for _, tc := range cases {
-		diff.Test(t, t.Errorf, tc.lh.FixedLength(), tc.want)
+		diff.Test(t, t.Errorf, tc.ah.FixedLength(), tc.want)
 	}
 }
 
-func TestMakeArg(t *testing.T) {
+func TestType(t *testing.T) {
 	cases := []struct {
-		lh   listHelper
-		want string
+		index  int
+		goType string
+		want   string
 	}{
 		{
-			lh:   listHelper{Field: Field{Type: "uint8"}},
-			want: "uint8",
+			goType: "uint8",
+			want:   "uint8",
 		},
 		{
-			lh:   listHelper{Field: Field{Type: "uint8[]"}},
-			want: "[]uint8",
+			goType: "[]uint8",
+			want:   "[]uint8",
 		},
 		{
-			lh:   listHelper{Field: Field{Type: "uint8[2]"}},
-			want: "[2]uint8",
+			goType: "[2]uint8",
+			want:   "[2]uint8",
 		},
 		{
-			lh:   listHelper{Field: Field{Type: "uint8[2][3]"}},
-			want: "[3][2]uint8",
+			goType: "[3][2]uint8",
+			want:   "[3][2]uint8",
 		},
 		{
-			lh:   listHelper{Field: Field{Type: "uint8[][]"}},
-			want: "[][]uint8",
+			goType: "[][]uint8",
+			want:   "[][]uint8",
 		},
 		{
-			lh:   listHelper{Field: Field{Type: "uint8[][]"}, Index: 0},
-			want: "[][]uint8",
+			index:  1,
+			goType: "[][]uint8",
+			want:   "[]uint8",
 		},
 		{
-			lh:   listHelper{Field: Field{Type: "uint8[][]"}, Index: 1},
-			want: "[]uint8",
-		},
-		{
-			lh:   listHelper{Field: Field{Type: "uint8[][]"}, Index: 2},
-			want: "uint8",
+			index:  2,
+			goType: "[][]uint8",
+			want:   "uint8",
 		},
 	}
 	for _, tc := range cases {
-		diff.Test(t, t.Errorf, tc.lh.MakeArg(), tc.want)
+		ah := arrayHelper{Index: tc.index}
+		diff.Test(t, t.Errorf, ah.Type(tc.goType), tc.want)
 	}
 }
 

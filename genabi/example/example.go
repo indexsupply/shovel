@@ -6,20 +6,140 @@ package example
 import (
 	"github.com/indexsupply/x/abi"
 	"github.com/indexsupply/x/abi/schema"
+	"github.com/indexsupply/x/jrpc"
 	"math/big"
 )
 
-type NestedSlices struct {
+type AccountQueryRequest struct {
+	item  *abi.Item
+	Addrs [][20]byte
+}
+
+func (x AccountQueryRequest) Done() {
+	x.item.Done()
+}
+
+func DecodeAccountQueryRequest(item *abi.Item) AccountQueryRequest {
+	x := AccountQueryRequest{}
+	x.item = item
+	var (
+		addrsItem0 = item.At(0)
+		addrs0     = make([][20]byte, addrsItem0.Len())
+	)
+	for i0 := 0; i0 < addrsItem0.Len(); i0++ {
+		addrs0[i0] = addrsItem0.At(i0).Address()
+	}
+	x.Addrs = addrs0
+	return x
+}
+
+func (x AccountQueryRequest) Encode() *abi.Item {
+	items := make([]*abi.Item, 1)
+	var (
+		addrs0      = x.Addrs
+		addrsItems0 = make([]*abi.Item, len(addrs0))
+	)
+	for i0 := 0; i0 < len(addrs0); i0++ {
+		addrsItems0[i0] = abi.Address(addrs0[i0])
+	}
+	items[0] = abi.Array(addrsItems0...)
+	return abi.Tuple(items...)
+}
+
+type AccountQueryResponse struct {
+	item    *abi.Item
+	Account []AccountQueryResponseAccount
+}
+
+func (x AccountQueryResponse) Done() {
+	x.item.Done()
+}
+
+func DecodeAccountQueryResponse(item *abi.Item) AccountQueryResponse {
+	x := AccountQueryResponse{}
+	x.item = item
+	var (
+		accountItem0 = item.At(0)
+		account0     = make([]AccountQueryResponseAccount, accountItem0.Len())
+	)
+	for i0 := 0; i0 < accountItem0.Len(); i0++ {
+		account0[i0] = DecodeAccountQueryResponseAccount(accountItem0.At(i0))
+	}
+	x.Account = account0
+	return x
+}
+
+func (x AccountQueryResponse) Encode() *abi.Item {
+	items := make([]*abi.Item, 1)
+	var (
+		account0      = x.Account
+		accountItems0 = make([]*abi.Item, len(account0))
+	)
+	for i0 := 0; i0 < len(account0); i0++ {
+		accountItems0[i0] = account0[i0].Encode()
+	}
+	items[0] = abi.Array(accountItems0...)
+	return abi.Tuple(items...)
+}
+
+type AccountQueryResponseAccount struct {
+	item    *abi.Item
+	Id      uint16
+	Balance *big.Int
+}
+
+func (x AccountQueryResponseAccount) Done() {
+	x.item.Done()
+}
+
+func DecodeAccountQueryResponseAccount(item *abi.Item) AccountQueryResponseAccount {
+	x := AccountQueryResponseAccount{}
+	x.item = item
+	x.Id = item.At(0).Uint16()
+	x.Balance = item.At(1).BigInt()
+	return x
+}
+
+func (x AccountQueryResponseAccount) Encode() *abi.Item {
+	items := make([]*abi.Item, 2)
+	items[0] = abi.Uint16(x.Id)
+	items[1] = abi.BigInt(x.Balance)
+	return abi.Tuple(items...)
+}
+
+var (
+	accountQueryRequestSignature = [32]byte{0x60, 0xcc, 0x7a, 0x74, 0xcf, 0x2a, 0x95, 0x76, 0x90, 0xe6, 0x9a, 0x29, 0x20, 0x16, 0xcd, 0x12, 0x30, 0x80, 0x84, 0x1, 0xfb, 0x30, 0xad, 0x62, 0xb2, 0x87, 0x7e, 0x53, 0xee, 0xcb, 0xed, 0xf2}
+	accountQueryResponseSchema   = schema.Parse("((uint16,uint256)[])")
+)
+
+func CallAccountQuery(c *jrpc.Client, contract [20]byte, req AccountQueryRequest) (AccountQueryResponse, error) {
+	var (
+		s4 = accountQueryRequestSignature[:4]
+		cd = append(s4, abi.Encode(req.Encode())...)
+	)
+	respData, err := c.EthCall(contract, cd)
+	if err != nil {
+		return AccountQueryResponse{}, err
+	}
+	respItem, _, err := abi.Decode(respData, accountQueryResponseSchema)
+	defer respItem.Done()
+	if err != nil {
+		return AccountQueryResponse{}, err
+	}
+	return DecodeAccountQueryResponse(respItem), nil
+}
+
+type NestedSlicesEvent struct {
 	item    *abi.Item
 	Strings []string
 }
 
-func (x NestedSlices) Done() {
+func (x NestedSlicesEvent) Done() {
 	x.item.Done()
 }
 
-func DecodeNestedSlices(item *abi.Item) NestedSlices {
-	x := NestedSlices{}
+func DecodeNestedSlicesEvent(item *abi.Item) NestedSlicesEvent {
+	x := NestedSlicesEvent{}
 	x.item = item
 	var (
 		stringsItem0 = item.At(0)
@@ -32,7 +152,7 @@ func DecodeNestedSlices(item *abi.Item) NestedSlices {
 	return x
 }
 
-func (x NestedSlices) Encode() *abi.Item {
+func (x NestedSlicesEvent) Encode() *abi.Item {
 	items := make([]*abi.Item, 1)
 	var (
 		strings0      = x.Strings
@@ -62,39 +182,39 @@ var (
 // Uses the the following abi schema to decode the un-indexed
 // event inputs from the log's data field into [NestedSlices]:
 //	(string[])
-func MatchNestedSlices(l abi.Log) (NestedSlices, error) {
+func MatchNestedSlices(l abi.Log) (NestedSlicesEvent, error) {
 	if len(l.Topics) == 0 {
-		return NestedSlices{}, abi.NoTopics
+		return NestedSlicesEvent{}, abi.NoTopics
 	}
 	if len(l.Topics) > 0 && nestedSlicesSignature != l.Topics[0] {
-		return NestedSlices{}, abi.SigMismatch
+		return NestedSlicesEvent{}, abi.SigMismatch
 	}
 	if len(l.Topics[1:]) != nestedSlicesNumIndexed {
-		return NestedSlices{}, abi.IndexMismatch
+		return NestedSlicesEvent{}, abi.IndexMismatch
 	}
 	item, _, err := abi.Decode(l.Data, nestedSlicesSchema)
 	if err != nil {
-		return NestedSlices{}, err
+		return NestedSlicesEvent{}, err
 	}
-	res := DecodeNestedSlices(item)
+	res := DecodeNestedSlicesEvent(item)
 	return res, nil
 }
 
-type Transfer struct {
+type TransferEvent struct {
 	item    *abi.Item
 	From    [20]byte
 	To      [20]byte
 	Id      *big.Int
 	Extra   [3][2]uint8
-	Details [][]Details
+	Details [][]TransferEventDetails
 }
 
-func (x Transfer) Done() {
+func (x TransferEvent) Done() {
 	x.item.Done()
 }
 
-func DecodeTransfer(item *abi.Item) Transfer {
-	x := Transfer{}
+func DecodeTransferEvent(item *abi.Item) TransferEvent {
+	x := TransferEvent{}
 	x.item = item
 	var (
 		extraItem0 = item.At(0)
@@ -113,15 +233,15 @@ func DecodeTransfer(item *abi.Item) Transfer {
 	x.Extra = extra0
 	var (
 		detailsItem0 = item.At(1)
-		details0     = make([][]Details, detailsItem0.Len())
+		details0     = make([][]TransferEventDetails, detailsItem0.Len())
 	)
 	for i0 := 0; i0 < detailsItem0.Len(); i0++ {
 		var (
 			detailsItem1 = detailsItem0.At(i0)
-			details1     = make([]Details, detailsItem1.Len())
+			details1     = make([]TransferEventDetails, detailsItem1.Len())
 		)
 		for i1 := 0; i1 < detailsItem1.Len(); i1++ {
-			details1[i1] = DecodeDetails(detailsItem1.At(i1))
+			details1[i1] = DecodeTransferEventDetails(detailsItem1.At(i1))
 		}
 		details0[i0] = details1
 	}
@@ -129,7 +249,7 @@ func DecodeTransfer(item *abi.Item) Transfer {
 	return x
 }
 
-func (x Transfer) Encode() *abi.Item {
+func (x TransferEvent) Encode() *abi.Item {
 	items := make([]*abi.Item, 5)
 	items[0] = abi.Address(x.From)
 	items[1] = abi.Address(x.To)
@@ -169,29 +289,29 @@ func (x Transfer) Encode() *abi.Item {
 	return abi.Tuple(items...)
 }
 
-type Details struct {
+type TransferEventDetails struct {
 	item  *abi.Item
 	Other [20]byte
 	Key   [32]byte
 	Value []byte
-	Geo   Geo
+	Geo   TransferEventDetailsGeo
 }
 
-func (x Details) Done() {
+func (x TransferEventDetails) Done() {
 	x.item.Done()
 }
 
-func DecodeDetails(item *abi.Item) Details {
-	x := Details{}
+func DecodeTransferEventDetails(item *abi.Item) TransferEventDetails {
+	x := TransferEventDetails{}
 	x.item = item
 	x.Other = item.At(0).Address()
 	x.Key = item.At(1).Bytes32()
 	x.Value = item.At(2).Bytes()
-	x.Geo = DecodeGeo(item.At(3))
+	x.Geo = DecodeTransferEventDetailsGeo(item.At(3))
 	return x
 }
 
-func (x Details) Encode() *abi.Item {
+func (x TransferEventDetails) Encode() *abi.Item {
 	items := make([]*abi.Item, 4)
 	items[0] = abi.Address(x.Other)
 	items[1] = abi.Bytes32(x.Key)
@@ -200,25 +320,25 @@ func (x Details) Encode() *abi.Item {
 	return abi.Tuple(items...)
 }
 
-type Geo struct {
+type TransferEventDetailsGeo struct {
 	item *abi.Item
 	X    uint8
 	Y    uint8
 }
 
-func (x Geo) Done() {
+func (x TransferEventDetailsGeo) Done() {
 	x.item.Done()
 }
 
-func DecodeGeo(item *abi.Item) Geo {
-	x := Geo{}
+func DecodeTransferEventDetailsGeo(item *abi.Item) TransferEventDetailsGeo {
+	x := TransferEventDetailsGeo{}
 	x.item = item
 	x.X = item.At(0).Uint8()
 	x.Y = item.At(1).Uint8()
 	return x
 }
 
-func (x Geo) Encode() *abi.Item {
+func (x TransferEventDetailsGeo) Encode() *abi.Item {
 	items := make([]*abi.Item, 2)
 	items[0] = abi.Uint8(x.X)
 	items[1] = abi.Uint8(x.Y)
@@ -242,21 +362,21 @@ var (
 // Uses the the following abi schema to decode the un-indexed
 // event inputs from the log's data field into [Transfer]:
 //	(uint8[2][3],(address,bytes32,bytes,(uint8,uint8))[][])
-func MatchTransfer(l abi.Log) (Transfer, error) {
+func MatchTransfer(l abi.Log) (TransferEvent, error) {
 	if len(l.Topics) == 0 {
-		return Transfer{}, abi.NoTopics
+		return TransferEvent{}, abi.NoTopics
 	}
 	if len(l.Topics) > 0 && transferSignature != l.Topics[0] {
-		return Transfer{}, abi.SigMismatch
+		return TransferEvent{}, abi.SigMismatch
 	}
 	if len(l.Topics[1:]) != transferNumIndexed {
-		return Transfer{}, abi.IndexMismatch
+		return TransferEvent{}, abi.IndexMismatch
 	}
 	item, _, err := abi.Decode(l.Data, transferSchema)
 	if err != nil {
-		return Transfer{}, err
+		return TransferEvent{}, err
 	}
-	res := DecodeTransfer(item)
+	res := DecodeTransferEvent(item)
 	res.From = abi.Bytes(l.Topics[1][:]).Address()
 	res.To = abi.Bytes(l.Topics[2][:]).Address()
 	res.Id = abi.Bytes(l.Topics[3][:]).BigInt()

@@ -43,31 +43,6 @@ import (
 		fieldItems0[i0] = abi.Array(fieldItems1...)
 	}
 
-*/ -}}
-{{- define "array-encode" -}}
-	var (
-		{{ if .Nested -}}
-			{{ lower .Field.Name }}{{ .Index }} = {{ lower .Field.Name }}{{ sub .Index 1 }}[i{{ sub .Index 1}}]
-		{{ else -}}
-			{{ lower .Field.Name }}{{ .Index }} = x.{{ camel .Field.Name }}
-		{{ end -}}
-		{{ lower .Field.Name }}Items{{.Index }} = make([]*abi.Item, len({{ lower .Field.Name }}{{ .Index }}))
-	)
-	for i{{ .Index }} := 0; i{{ .Index }} < len({{ lower .Field.Name }}{{ .Index }}); i{{ .Index }}++ {
-		{{ if .HasNext -}}
-			{{ template "array-encode" .Next }}
-			{{ lower .Field.Name }}Items{{ .Index }}[i{{ .Index }}] = abi.Array({{ lower .Field.Name }}Items{{ .Index }}...)
-		{{ else -}}
-			{{ if hasTuple .Field -}}
-				{{ lower .Field.Name }}Items{{ .Index }}[i{{ .Index }}] = {{ lower .Field.Name }}{{ .Index }}[i{{ .Index }}].Encode()
-			{{ else -}}
-				{{ lower .Field.Name }}Items{{ .Index }}[i{{ .Index }}] = abi.{{ itemFunc .Field }}({{ lower .Field.Name }}{{ .Index }}[i{{ .Index }}])
-			{{ end -}}
-		{{ end -}}
-	}
-{{ end -}}
-
-{{- /*
 	array-decode turns an array abi.Item into a Go array(slice).
 	The resulting code should look like the following:
 
@@ -95,8 +70,31 @@ import (
 		}
 		x0[i0] = x1
 	}
-
 */ -}}
+
+{{- define "array-encode" -}}
+	var (
+		{{ if .Nested -}}
+			{{ lower .Field.Name }}{{ .Index }} = {{ lower .Field.Name }}{{ sub .Index 1 }}[i{{ sub .Index 1}}]
+		{{ else -}}
+			{{ lower .Field.Name }}{{ .Index }} = x.{{ camel .Field.Name }}
+		{{ end -}}
+		{{ lower .Field.Name }}Items{{.Index }} = make([]*abi.Item, len({{ lower .Field.Name }}{{ .Index }}))
+	)
+	for i{{ .Index }} := 0; i{{ .Index }} < len({{ lower .Field.Name }}{{ .Index }}); i{{ .Index }}++ {
+		{{ if .HasNext -}}
+			{{ template "array-encode" .Next }}
+			{{ lower .Field.Name }}Items{{ .Index }}[i{{ .Index }}] = abi.Array({{ lower .Field.Name }}Items{{ .Index }}...)
+		{{ else -}}
+			{{ if hasTuple .Field -}}
+				{{ lower .Field.Name }}Items{{ .Index }}[i{{ .Index }}] = {{ lower .Field.Name }}{{ .Index }}[i{{ .Index }}].Encode()
+			{{ else -}}
+				{{ lower .Field.Name }}Items{{ .Index }}[i{{ .Index }}] = abi.{{ itemFunc .Field.Type }}({{ lower .Field.Name }}{{ .Index }}[i{{ .Index }}])
+			{{ end -}}
+		{{ end -}}
+	}
+{{ end -}}
+
 {{ define "array-decode" -}}
 	var (
 		{{ if .Nested -}}
@@ -105,9 +103,9 @@ import (
 			{{ .Field.Name }}Item{{ .Index }} = item.At({{ .ItemIndex }})
 		{{ end -}}
 		{{ if .FixedLength -}}
-			{{ .Field.Name }}{{ .Index }} = {{ .MakeArg }}{}
+			{{ .Field.Name }}{{ .Index }} = {{ .Type (camel (goType .Field.Type (printf "%s_%s" .StructName .Field.Name))) }}{}
 		{{ else -}}
-			{{ .Field.Name }}{{ .Index }} = make({{ .MakeArg }}, {{ .Field.Name }}Item{{ .Index }}.Len())
+			{{ .Field.Name }}{{ .Index }} = make({{ .Type (camel (goType .Field.Type (printf "%s_%s" .StructName .Field.Name))) }}, {{ .Field.Name }}Item{{ .Index }}.Len())
 		{{ end -}}
 	)
 	for i{{ .Index }} := 0; i{{ .Index }} < {{ .Field.Name }}Item{{ .Index }}.Len(); i{{ .Index }}++ {
@@ -116,9 +114,9 @@ import (
 			{{ .Field.Name}}{{ .Index }}[i{{ .Index }}] = {{ .Field.Name }}{{ add .Index 1}}
 		{{ else -}}
 			{{ if hasTuple .Field -}}
-				{{ .Field.Name}}{{ .Index }}[i{{ .Index }}] = Decode{{ camel .Field.Name }}({{ .Field.Name }}Item{{ .Index }}.At(i{{ .Index}}))
+				{{ .Field.Name}}{{ .Index }}[i{{ .Index }}] = Decode{{ camel (printf "%s_%s" .StructName .Field.Name) }}({{ .Field.Name }}Item{{ .Index }}.At(i{{ .Index}}))
 			{{ else -}}
-				{{ .Field.Name}}{{ .Index }}[i{{ .Index }}] = {{ .Field.Name }}Item{{ .Index }}.At(i{{ .Index}}).{{ itemFunc .Field }}()
+				{{ .Field.Name}}{{ .Index }}[i{{ .Index }}] = {{ .Field.Name }}Item{{ .Index }}.At(i{{ .Index}}).{{ itemFunc .Field.Type }}()
 			{{ end -}}
 		{{ end -}}
 	}
@@ -126,10 +124,11 @@ import (
 
 {{- define "struct" -}}
 {{ if not .AlreadyDefined -}}
+	{{ $structName := .Name }}
 	type {{camel .Name }} struct {
 		item *abi.Item
 		{{ range .Fields  -}}
-			{{ camel .Name }} {{ goType . }}
+			{{ camel .Name }} {{ goType .Type (printf "%s_%s" $structName .Name) }}
 		{{ end -}}
 	}
 
@@ -143,12 +142,12 @@ import (
 			x.item = item
 			{{ range $index, $f := (unindexed .Fields) -}}
 				{{ if isArray $f -}}
-					{{ template "array-decode" listHelper $index . -}}
+					{{ template "array-decode" arrayHelper $index $structName $f -}}
 					x.{{ camel $f.Name }} = {{ lower $f.Name }}0
 				{{ else if isTuple $f -}}
-					x.{{ camel $f.Name }} = Decode{{ camel $f.Name }}(item.At({{ $index }}))
+					x.{{ camel $f.Name }} = Decode{{ camel (printf "%s_%s" $structName $f.Name) }}(item.At({{ $index }}))
 				{{ else -}}
-					x.{{ camel $f.Name }} = item.At({{ $index }}).{{ itemFunc $f }}()
+					x.{{ camel $f.Name }} = item.At({{ $index }}).{{ itemFunc $f.Type }}()
 				{{ end -}}
 			{{ end -}}
 			return x
@@ -159,12 +158,12 @@ import (
 		items := make([]*abi.Item, {{ len .Fields }})
 		{{ range $i, $f := .Fields -}}
 			{{ if isArray $f -}}
-				{{ template "array-encode" listHelper 0 $f -}}
+				{{ template "array-encode" arrayHelper 0 $structName $f -}}
 				items[{{ $i }}] = abi.Array({{lower $f.Name }}Items0...)
 			{{ else if isTuple $f -}}
 				items[{{ $i }}] = x.{{ camel $f.Name }}.Encode()
 			{{ else -}}
-				items[{{ $i }}] = abi.{{ itemFunc $f }}(x.{{ camel $f.Name }})
+				items[{{ $i }}] = abi.{{ itemFunc $f.Type }}(x.{{ camel $f.Name }})
 			{{ end -}}
 		{{ end -}}
 		return abi.Tuple(items...)
@@ -172,7 +171,7 @@ import (
 
 	{{ range $index, $f := .Fields -}}
 		{{ if gt (len $f.Components) 0  -}}
-			{{ template "struct" structHelper $f.Name $f.Components -}}
+			{{ template "struct" structHelper (printf "%s_%s" $structName $f.Name) $f.Components -}}
 		{{ end -}}
 	{{ end -}}
 {{ end -}}
@@ -225,7 +224,7 @@ import (
 {{ end -}}
 
 {{- define "event" -}}
-	{{ template "struct" structHelper .Name .Inputs -}}
+	{{ template "struct" structHelper (printf "%sEvent" .Name) .Inputs -}}
 
 	var (
 		{{ lower .Name }}Signature = {{ (hashLiteral (keccak .InputSignature))  }}
@@ -244,27 +243,27 @@ import (
 	// Uses the the following abi schema to decode the un-indexed
 	// event inputs from the log's data field into [{{ camel .Name }}]:
 	//	{{ (schema (unindexed .Inputs))}}
-	func Match{{ camel .Name }}(l abi.Log) ({{ camel .Name}}, error) {
+	func Match{{ camel .Name }}(l abi.Log) ({{ camel .Name}}Event, error) {
 		if len(l.Topics) == 0 {
-			return {{ camel .Name }}{}, abi.NoTopics
+			return {{ camel .Name }}Event{}, abi.NoTopics
 		}
 		if len(l.Topics) > 0 && {{ lower .Name }}Signature != l.Topics[0] {
-			return {{ camel .Name }}{}, abi.SigMismatch
+			return {{ camel .Name }}Event{}, abi.SigMismatch
 		}
 		if len(l.Topics[1:]) != {{ lower .Name }}NumIndexed {
-			return {{ camel .Name }}{}, abi.IndexMismatch
+			return {{ camel .Name }}Event{}, abi.IndexMismatch
 		}
 		{{ if gt (len (unindexed .Inputs)) 0 -}}
 			item, _, err := abi.Decode(l.Data, {{ lower .Name }}Schema)
 			if err != nil {
-				return {{ camel .Name }}{}, err
+				return {{ camel .Name }}Event{}, err
 			}
-			res := Decode{{ camel .Name}}(item)
+			res := Decode{{ camel .Name}}Event(item)
 		{{ else -}}
-			res := {{ camel .Name}}{}
+			res := {{ camel .Name}}Event{}
 		{{ end -}}
 		{{ range $index, $inp := (indexed .Inputs) -}}
-			res.{{ camel $inp.Name }} = abi.Bytes(l.Topics[{{ add $index  1 }}][:]).{{ itemFunc $inp }}()
+			res.{{ camel $inp.Name }} = abi.Bytes(l.Topics[{{ add $index  1 }}][:]).{{ itemFunc $inp.Type }}()
 		{{ end -}}
 		return res, nil
 	}

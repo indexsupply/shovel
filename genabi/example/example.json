@@ -1,5 +1,23 @@
 [
 	{
+		"name": "accountQuery",
+		"type": "function",
+		"stateMutability": "view",
+		"inputs": [
+			{"type": "address[]", "name": "addrs"}
+		],
+		"outputs": [
+			{
+				"type": "tuple[]",
+				"name": "account",
+				"components": [
+					{"type": "uint16", "name": "id"},
+					{"type": "uint256", "name": "balance"}
+				]
+			}
+		]
+	},
+	{
 		"name": "nestedSlices",
 		"type": "event",
 		"inputs": [
