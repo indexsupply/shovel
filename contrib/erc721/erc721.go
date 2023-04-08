@@ -6,6 +6,7 @@ package erc721
 import (
 	"github.com/indexsupply/x/abi"
 	"github.com/indexsupply/x/abi/schema"
+	"github.com/indexsupply/x/eth"
 	"github.com/indexsupply/x/jrpc"
 	"math/big"
 )
@@ -46,7 +47,7 @@ var (
 // Uses the the following abi schema to decode the un-indexed
 // event inputs from the log's data field into [Approval]:
 //	()
-func MatchApproval(l abi.Log) (ApprovalEvent, error) {
+func MatchApproval(l eth.Log) (ApprovalEvent, error) {
 	if len(l.Topics) == 0 {
 		return ApprovalEvent{}, abi.NoTopics
 	}
@@ -106,7 +107,7 @@ var (
 // Uses the the following abi schema to decode the un-indexed
 // event inputs from the log's data field into [ApprovalForAll]:
 //	(bool)
-func MatchApprovalForAll(l abi.Log) (ApprovalForAllEvent, error) {
+func MatchApprovalForAll(l eth.Log) (ApprovalForAllEvent, error) {
 	if len(l.Topics) == 0 {
 		return ApprovalForAllEvent{}, abi.NoTopics
 	}
@@ -162,7 +163,7 @@ var (
 // Uses the the following abi schema to decode the un-indexed
 // event inputs from the log's data field into [Transfer]:
 //	()
-func MatchTransfer(l abi.Log) (TransferEvent, error) {
+func MatchTransfer(l eth.Log) (TransferEvent, error) {
 	if len(l.Topics) == 0 {
 		return TransferEvent{}, abi.NoTopics
 	}

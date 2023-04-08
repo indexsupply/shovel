@@ -1,0 +1,317 @@
+package eth
+
+import (
+	"fmt"
+
+	"github.com/holiman/uint256"
+	"github.com/indexsupply/x/bint"
+	"github.com/indexsupply/x/rlp"
+)
+
+type Block struct {
+	Number       uint64   // dup
+	Hash         [32]byte // cache
+	Header       Header
+	Transactions Transactions
+	Receipts     Receipts
+	Uncles       []Header
+}
+
+type Header struct {
+	Parent      [32]byte
+	Uncle       [32]byte
+	Coinbase    [20]byte
+	StateRoot   [32]byte
+	TxRoot      [32]byte
+	ReceiptRoot [32]byte
+	LogsBloom   [256]byte
+	Difficulty  []byte
+	Number      uint64
+	GasLimit    uint64
+	GasUsed     uint64
+	Time        uint64
+	Extra       []byte
+	MixHash     [32]byte
+	Nonce       uint64
+	BaseFee     [32]byte
+	Withdraw    [32]byte
+	ExcessData  [32]byte
+}
+
+func (h *Header) Unmarshal(input []byte) {
+	for i, itr := 0, rlp.Iter(input); itr.HasNext(); i++ {
+		d := itr.Read()
+		switch i {
+		case 0:
+			h.Parent = [32]byte(d)
+		case 6:
+			h.LogsBloom = [256]byte(d)
+		case 8:
+			h.Number = bint.Decode(d)
+		case 11:
+			h.Time = bint.Decode(d)
+		}
+	}
+}
+
+type Receipt struct {
+	Status  []byte
+	GasUsed uint64
+	Bloom   [256]byte
+	Logs    Logs
+}
+
+func (r *Receipt) Unmarshal(input []byte) {
+	iter := rlp.Iter(input)
+	r.Status = iter.Read()
+	r.GasUsed = bint.Decode(iter.Read())
+	r.Logs.Reset()
+	for i, l := 0, rlp.Iter(iter.Read()); l.HasNext(); i++ {
+		r.Logs.Insert(i, l.Read())
+	}
+}
+
+type Receipts struct {
+	d []Receipt
+	n int
+}
+
+func (rs *Receipts) Reset()           { rs.n = 0 }
+func (rs *Receipts) Len() int         { return rs.n }
+func (rs *Receipts) At(i int) Receipt { return rs.d[i] }
+
+func (rs *Receipts) Insert(i int, b []byte) {
+	rs.n++
+	switch {
+	case i < len(rs.d):
+		rs.d[i].Unmarshal(b)
+	case len(rs.d) < cap(rs.d):
+		r := Receipt{}
+		r.Unmarshal(b)
+		rs.d = append(rs.d, r)
+	default:
+		rs.d = append(rs.d, make([]Receipt, 512)...)
+		r := Receipt{}
+		r.Unmarshal(b)
+		rs.d[i] = r
+	}
+}
+
+type Log struct {
+	Address [20]byte
+	Topics  [][32]byte
+	Data    []byte
+}
+
+func (l *Log) Unmarshal(input []byte) {
+	iter := rlp.Iter(input)
+	l.Address = [20]byte(iter.Read())
+	if cap(l.Topics) != 4 {
+		l.Topics = make([][32]byte, 0, 4)
+	}
+	l.Topics = l.Topics[:0]
+	for i, t := 0, rlp.Iter(iter.Read()); t.HasNext(); i++ {
+		l.Topics = append(l.Topics, [32]byte(t.Read()))
+	}
+	l.Data = iter.Read()
+}
+
+type Logs struct {
+	d []Log
+	n int
+}
+
+func (ls *Logs) Reset()       { ls.n = 0 }
+func (ls *Logs) Len() int     { return ls.n }
+func (ls *Logs) At(i int) Log { return ls.d[i] }
+
+func (ls *Logs) Insert(i int, b []byte) {
+	ls.n++
+	switch {
+	case i < len(ls.d):
+		ls.d[i].Unmarshal(b)
+	case len(ls.d) < cap(ls.d):
+		l := Log{}
+		l.Unmarshal(b)
+		ls.d = append(ls.d, l)
+	default:
+		ls.d = append(ls.d, make([]Log, 8)...)
+		l := Log{}
+		l.Unmarshal(b)
+		ls.d[i] = l
+	}
+}
+
+type StorageKeys struct {
+	d [][32]byte
+	n int
+}
+
+func (sk *StorageKeys) Reset()            { sk.n = 0 }
+func (sk *StorageKeys) Len() int          { return sk.n }
+func (sk *StorageKeys) At(i int) [32]byte { return sk.d[i] }
+
+func (sk *StorageKeys) Insert(i int, b []byte) {
+	sk.n++
+	switch {
+	case i < len(sk.d):
+		sk.d[i] = [32]byte(b)
+	case len(sk.d) < cap(sk.d):
+		sk.d = append(sk.d, [32]byte(b))
+	default:
+		sk.d = append(sk.d, make([][32]byte, 8)...)
+		sk.d[i] = [32]byte(b)
+	}
+}
+
+type AccessTuple struct {
+	Address     [20]byte
+	StorageKeys StorageKeys
+}
+
+func (at *AccessTuple) Unmarshal(b []byte) error {
+	iter := rlp.Iter(b)
+	at.Address = [20]byte(iter.Read())
+	at.StorageKeys.Reset()
+	for i, it := 0, rlp.Iter(iter.Read()); it.HasNext(); i++ {
+		at.StorageKeys.Insert(i, it.Read())
+	}
+	return nil
+}
+
+type AccessList struct {
+	d []AccessTuple
+	n int
+}
+
+func (al *AccessList) Reset()               { al.n = 0 }
+func (al *AccessList) Len() int             { return al.n }
+func (al *AccessList) At(i int) AccessTuple { return al.d[i] }
+
+func (al *AccessList) Insert(i int, b []byte) {
+	al.n++
+	switch {
+	case i < len(al.d):
+		al.d[i].Unmarshal(b)
+	case len(al.d) < cap(al.d):
+		t := AccessTuple{}
+		t.Unmarshal(b)
+		al.d = append(al.d, t)
+	default:
+		al.d = append(al.d, make([]AccessTuple, 4)...)
+		t := AccessTuple{}
+		t.Unmarshal(b)
+		al.d[i] = t
+	}
+}
+
+type Transaction struct {
+	Hash     [32]byte // cache
+	ChainID  uint256.Int
+	Nonce    uint64
+	GasPrice uint256.Int
+	GasLimit uint64
+	To       [20]byte
+	Value    uint256.Int
+	Data     []byte
+	V, R, S  uint256.Int
+
+	// EIP-2930
+	AccessList AccessList
+
+	// EIP-1559
+	MaxPriorityFeePerGas uint256.Int
+	MaxFeePerGas         uint256.Int
+}
+
+type Transactions struct {
+	d []Transaction
+	n int
+}
+
+func (txs *Transactions) Reset()               { txs.n = 0 }
+func (txs *Transactions) Len() int             { return txs.n }
+func (txs *Transactions) At(i int) Transaction { return txs.d[i] }
+
+func (txs *Transactions) Insert(i int, b []byte) {
+	txs.n++
+	switch {
+	case i < len(txs.d):
+		txs.d[i].Unmarshal(b)
+	case len(txs.d) < cap(txs.d):
+		t := Transaction{}
+		t.Unmarshal(b)
+		txs.d = append(txs.d, t)
+	default:
+		txs.d = append(txs.d, make([]Transaction, 512)...)
+		t := Transaction{}
+		t.Unmarshal(b)
+		txs.d[i] = t
+	}
+}
+
+func (tx *Transaction) Unmarshal(b []byte) error {
+	if len(b) < 1 {
+		return fmt.Errorf("decoding empty transaction bytes")
+	}
+	//tx.Hash = isxhash.Keccak32(b)
+	// Legacy Transaction
+	if iter := rlp.Iter(b); iter.HasNext() {
+		tx.Nonce = bint.Decode(iter.Read())
+		tx.GasPrice.SetBytes(iter.Read())
+		tx.GasLimit = bint.Decode(iter.Read())
+		copy(tx.To[:], iter.Read())
+		tx.Value.SetBytes(iter.Read())
+		tx.Data = tx.Data[:0]
+		tx.Data = append(tx.Data, iter.Read()...)
+		tx.V.SetBytes(iter.Read())
+		tx.R.SetBytes(iter.Read())
+		tx.S.SetBytes(iter.Read())
+		return nil
+	}
+	// EIP-2718: Typed Transaction
+	// https://eips.ethereum.org/EIPS/eip-2718
+	switch iter := rlp.Iter(b[1:]); b[0] {
+	case 0x01:
+		// EIP-2930: Access List
+		// https://eips.ethereum.org/EIPS/eip-2930
+		tx.ChainID.SetBytes(iter.Read())
+		tx.Nonce = bint.Decode(iter.Read())
+		tx.GasPrice.SetBytes(iter.Read())
+		tx.GasLimit = bint.Decode(iter.Read())
+		copy(tx.To[:], iter.Read())
+		tx.Value.SetBytes(iter.Read())
+		tx.Data = tx.Data[:0]
+		tx.Data = append(tx.Data, iter.Read()...)
+		tx.AccessList.Reset()
+		for i, it := 0, rlp.Iter(iter.Read()); it.HasNext(); i++ {
+			tx.AccessList.Insert(i, it.Read())
+		}
+		tx.V.SetBytes(iter.Read())
+		tx.R.SetBytes(iter.Read())
+		tx.S.SetBytes(iter.Read())
+		return nil
+	case 0x02:
+		// EIP-1559: Dynamic Fee
+		// https://eips.ethereum.org/EIPS/eip-1559
+		tx.ChainID.SetBytes(iter.Read())
+		tx.Nonce = bint.Decode(iter.Read())
+		tx.MaxPriorityFeePerGas.SetBytes(iter.Read())
+		tx.MaxFeePerGas.SetBytes(iter.Read())
+		tx.GasLimit = bint.Decode(iter.Read())
+		copy(tx.To[:], iter.Read())
+		tx.Value.SetBytes(iter.Read())
+		tx.Data = tx.Data[:0]
+		tx.Data = append(tx.Data, iter.Read()...)
+		tx.AccessList.Reset()
+		for i, it := 0, rlp.Iter(iter.Read()); it.HasNext(); i++ {
+			tx.AccessList.Insert(i, it.Read())
+		}
+		tx.V.SetBytes(iter.Read())
+		tx.R.SetBytes(iter.Read())
+		tx.S.SetBytes(iter.Read())
+		return nil
+	default:
+		return fmt.Errorf("unsupported tx type: 0x%X", b[0])
+	}
+}
