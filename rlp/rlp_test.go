@@ -59,6 +59,18 @@ func BenchmarkEncode(b *testing.B) {
 	}
 }
 
+func BenchmarkDecode_List(b *testing.B) {
+	ei := Encode(List(String("foo"), List(String("bar"), String("baz"))))
+	b.ReportAllocs()
+	for n := 0; n < b.N; n++ {
+		item, err := Decode(ei)
+		if err != nil {
+			b.Fatal(err)
+		}
+		item.Done()
+	}
+}
+
 func randBytes(n int) []byte {
 	res := make([]byte, n)
 	rand.Read(res)

@@ -6,6 +6,7 @@ package rlp
 
 import (
 	"errors"
+	"sync"
 
 	"github.com/indexsupply/x/bint"
 )
@@ -19,10 +20,12 @@ const (
 )
 
 func List(items ...*Item) *Item {
-	if items == nil {
-		items = []*Item{}
+	item := getItem()
+	item.list = true
+	if items != nil {
+		item.l = items
 	}
-	return &Item{l: items}
+	return item
 }
 
 func (i *Item) At(pos int) *Item {
@@ -42,15 +45,43 @@ func (i *Item) List() []*Item {
 // l is a list of Item for arbitrarily nested lists.
 // d is the data payload for the item.
 type Item struct {
-	d []byte
-	l []*Item
+	list bool
+	d    []byte
+	l    []*Item
+}
+
+var itemPool = sync.Pool{
+	New: func() any {
+		return &Item{
+			d: []byte{},
+			l: []*Item{},
+		}
+	},
+}
+
+func getItem() *Item {
+	item := itemPool.Get().(*Item)
+	item.reset()
+	return item
+}
+
+func (item *Item) reset() {
+	item.d = item.d[:0]
+	item.l = item.l[:0]
+}
+
+func (item *Item) Done() {
+	if item == nil {
+		return
+	}
+	for _, i := range item.l {
+		i.Done()
+	}
+	itemPool.Put(item)
 }
 
 func Encode(input *Item) []byte {
-	if input.d != nil && input.l != nil {
-		panic("must set d xor l")
-	}
-	if input.d != nil {
+	if !input.list {
 		switch n := len(input.d); {
 		case n == 1 && input.d[0] == 0:
 			return []byte{0x80}
@@ -114,21 +145,25 @@ func Decode(input []byte) (*Item, error) {
 	if len(input) == 0 {
 		return nil, errNoBytes
 	}
+	item := getItem()
 	switch {
 	case input[0] <= str1H:
-		return &Item{d: []byte{input[0]}}, nil
+		item.d = input[0:1]
+		return item, nil
 	case input[0] <= str55H:
 		i, n := 1, int(input[0]-str55L)
 		if len(input) < i+n {
 			return nil, errTooFewBytes
 		}
-		return &Item{d: input[i : i+n]}, nil
+		item.d = input[i : i+n]
+		return item, nil
 	case input[0] <= strNH:
 		i, n := decodeLength(str55H, input)
 		if len(input) < i+n {
 			return nil, errTooFewBytes
 		}
-		return &Item{d: input[i : i+n]}, nil
+		item.d = input[i : i+n]
+		return item, nil
 	default:
 		// The first byte indicates a list
 		// and if the first byte is >= 248 (listNL)
@@ -158,7 +193,7 @@ func Decode(input []byte) (*Item, error) {
 			input = input[:i+listSize]
 		}
 
-		item := &Item{l: []*Item{}}
+		item.list = true
 		for i < len(input) {
 			var headerSize, payloadSize int
 			switch {

@@ -15,10 +15,11 @@ import (
 var errNoData = errors.New("requested item contains 0 bytes")
 
 func Bytes(b []byte) *Item {
-	if b == nil {
-		return &Item{d: []byte{}}
+	item := getItem()
+	if b != nil {
+		item.d = b
 	}
-	return &Item{d: b}
+	return item
 }
 
 func (i *Item) Bytes() []byte {
@@ -26,7 +27,9 @@ func (i *Item) Bytes() []byte {
 }
 
 func Uint16(n uint16) *Item {
-	return &Item{d: bint.Encode(nil, uint64(n))}
+	item := getItem()
+	item.d = bint.Encode(nil, uint64(n))
+	return item
 }
 
 func (i *Item) Uint16() uint16 {
@@ -34,7 +37,9 @@ func (i *Item) Uint16() uint16 {
 }
 
 func Uint64(n uint64) *Item {
-	return &Item{d: bint.Encode(nil, n)}
+	item := getItem()
+	item.d = bint.Encode(nil, n)
+	return item
 }
 
 func (i *Item) Uint64() uint64 {
@@ -42,7 +47,9 @@ func (i *Item) Uint64() uint64 {
 }
 
 func String(s string) *Item {
-	return &Item{d: []byte(s)}
+	item := getItem()
+	item.d = []byte(s)
+	return item
 }
 
 func (i *Item) String() string {
@@ -118,12 +125,16 @@ func (i *Item) Bytes65() ([65]byte, error) {
 }
 
 func Byte(b byte) *Item {
+	item := getItem()
 	if b == 0 {
-		return &Item{d: []byte{}}
+		item.d = []byte{}
 	}
-	return &Item{d: []byte{b}}
+	item.d = []byte{b}
+	return item
 }
 
 func Int(n int) *Item {
-	return &Item{d: bint.Encode(nil, uint64(n))}
+	item := getItem()
+	item.d = bint.Encode(nil, uint64(n))
+	return item
 }
