@@ -18,21 +18,21 @@ const (
 	listNL, listNH   byte = 248, 255
 )
 
-func List(items ...Item) Item {
+func List(items ...*Item) *Item {
 	if items == nil {
-		items = []Item{}
+		items = []*Item{}
 	}
-	return Item{l: items}
+	return &Item{l: items}
 }
 
-func (i Item) At(pos int) Item {
+func (i *Item) At(pos int) *Item {
 	if len(i.l) < pos {
-		return Item{}
+		return &Item{}
 	}
 	return i.l[pos]
 }
 
-func (i Item) List() []Item {
+func (i *Item) List() []*Item {
 	return i.l
 }
 
@@ -43,10 +43,10 @@ func (i Item) List() []Item {
 // d is the data payload for the item.
 type Item struct {
 	d []byte
-	l []Item
+	l []*Item
 }
 
-func Encode(input Item) []byte {
+func Encode(input *Item) []byte {
 	if input.d != nil && input.l != nil {
 		panic("must set d xor l")
 	}
@@ -110,25 +110,25 @@ var (
 	errTooFewBytes = errors.New("input has fewer bytes than specified by header")
 )
 
-func Decode(input []byte) (Item, error) {
+func Decode(input []byte) (*Item, error) {
 	if len(input) == 0 {
-		return Item{}, errNoBytes
+		return nil, errNoBytes
 	}
 	switch {
 	case input[0] <= str1H:
-		return Item{d: []byte{input[0]}}, nil
+		return &Item{d: []byte{input[0]}}, nil
 	case input[0] <= str55H:
 		i, n := 1, int(input[0]-str55L)
 		if len(input) < i+n {
-			return Item{}, errTooFewBytes
+			return nil, errTooFewBytes
 		}
-		return Item{d: input[i : i+n]}, nil
+		return &Item{d: input[i : i+n]}, nil
 	case input[0] <= strNH:
 		i, n := decodeLength(str55H, input)
 		if len(input) < i+n {
-			return Item{}, errTooFewBytes
+			return nil, errTooFewBytes
 		}
-		return Item{d: input[i : i+n]}, nil
+		return &Item{d: input[i : i+n]}, nil
 	default:
 		// The first byte indicates a list
 		// and if the first byte is >= 248 (listNL)
@@ -148,7 +148,7 @@ func Decode(input []byte) (Item, error) {
 
 		switch {
 		case len(input[i:]) < listSize:
-			return Item{}, errTooFewBytes
+			return nil, errTooFewBytes
 		case len(input[i:]) > listSize:
 			// It's possible that the input contains
 			// more bytes that is specified by the
@@ -158,7 +158,7 @@ func Decode(input []byte) (Item, error) {
 			input = input[:i+listSize]
 		}
 
-		item := Item{l: []Item{}}
+		item := &Item{l: []*Item{}}
 		for i < len(input) {
 			var headerSize, payloadSize int
 			switch {
@@ -178,12 +178,12 @@ func Decode(input []byte) (Item, error) {
 			}
 
 			if int(i+headerSize+payloadSize) > len(input) {
-				return Item{}, errTooFewBytes
+				return nil, errTooFewBytes
 			}
 
 			d, err := Decode(input[i : i+headerSize+payloadSize])
 			if err != nil {
-				return Item{}, err
+				return nil, err
 			}
 			item.l = append(item.l, d)
 			i += headerSize + payloadSize

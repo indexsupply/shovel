@@ -36,7 +36,7 @@ func FuzzEncode(f *testing.F) {
 	)
 	f.Add(numItems, payload)
 	f.Fuzz(func(t *testing.T, n uint64, d []byte) {
-		var items []Item
+		var items []*Item
 		for i := 0; i < int(n); i++ {
 			items = append(items, Bytes(d))
 		}
@@ -176,7 +176,7 @@ func TestDecodeZero(t *testing.T) {
 func TestDecode(t *testing.T) {
 	cases := []struct {
 		desc string
-		item Item
+		item *Item
 	}{
 		{
 			"empty bytes",
@@ -228,7 +228,7 @@ func TestDecode(t *testing.T) {
 func TestEncode(t *testing.T) {
 	cases := []struct {
 		desc string
-		item Item
+		item *Item
 		want []byte
 	}{
 		{
