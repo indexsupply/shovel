@@ -143,7 +143,7 @@ import (
 			{{ range $index, $f := (unindexed .Fields) -}}
 				{{ if isArray $f -}}
 					{{ template "array-decode" arrayHelper $index $structName $f -}}
-					x.{{ camel $f.Name }} = {{ lower $f.Name }}0
+					x.{{ camel $f.Name }} = {{ $f.Name }}0
 				{{ else if isTuple $f -}}
 					x.{{ camel $f.Name }} = Decode{{ camel (printf "%s_%s" $structName $f.Name) }}(item.At({{ $index }}))
 				{{ else -}}
@@ -185,17 +185,17 @@ import (
 		{{ template "struct" structHelper (printf "%sResponse" .Name) .Outputs -}}
 	{{ end -}}
 	var (
-		{{ lower .Name }}RequestSignature = {{ (hashLiteral (keccak .InputSignature)) }}
-		{{ lower .Name }}ResponseSchema = schema.Parse("{{ schema .Outputs }}")
+		{{ .Name }}RequestSignature = {{ (hashLiteral (keccak .InputSignature)) }}
+		{{ .Name }}ResponseSchema = schema.Parse("{{ schema .Outputs }}")
 	)
 	{{ if eq .StateMutability "view" -}}
 		{{ if (eq (len .Inputs) 0) -}}
 			func Call{{ camel .Name }}(c *jrpc.Client, contract [20]byte) ({{ camel .Name }}Response, error ) {
-				respData, err := c.EthCall(contract, {{ lower .Name }}RequestSignature[:4])
+				respData, err := c.EthCall(contract, {{ .Name }}RequestSignature[:4])
 				if err != nil {
 					return {{ camel .Name }}Response{}, err
 				}
-				respItem, _, err := abi.Decode(respData, {{ lower .Name }}ResponseSchema)
+				respItem, _, err := abi.Decode(respData, {{ .Name }}ResponseSchema)
 				defer respItem.Done()
 				if err != nil {
 					return {{ camel .Name }}Response{}, err
@@ -205,14 +205,14 @@ import (
 		{{ else -}}
 			func Call{{ camel .Name }}(c *jrpc.Client, contract [20]byte, req {{ camel .Name }}Request) ({{ camel .Name }}Response, error ) {
 				var (
-					s4 = {{ lower .Name }}RequestSignature[:4]
+					s4 = {{ .Name }}RequestSignature[:4]
 					cd = append(s4, abi.Encode(req.Encode())...)
 				)
 				respData, err := c.EthCall(contract, cd)
 				if err != nil {
 					return {{ camel .Name }}Response{}, err
 				}
-				respItem, _, err := abi.Decode(respData, {{ lower .Name }}ResponseSchema)
+				respItem, _, err := abi.Decode(respData, {{ .Name }}ResponseSchema)
 				defer respItem.Done()
 				if err != nil {
 					return {{ camel .Name }}Response{}, err
