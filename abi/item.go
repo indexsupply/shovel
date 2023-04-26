@@ -9,7 +9,10 @@ import (
 )
 
 func Address(a [20]byte) *Item {
-	return &Item{Type: schema.Static(), d: a[:]}
+	var i uint256.Int
+	i.SetBytes20(a[:])
+	b := i.Bytes32()
+	return &Item{Type: schema.Static(), d: b[:]}
 }
 
 func (item *Item) Address() [20]byte {
