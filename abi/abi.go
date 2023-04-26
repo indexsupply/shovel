@@ -97,7 +97,7 @@ func rpad(l int, d []byte) []byte {
 func Encode(item *Item) []byte {
 	switch item.Kind {
 	case 's':
-		return item.d
+		return rpad(32, item.d)
 	case 'd':
 		var c [32]byte
 		bint.Encode(c[:], uint64(len(item.d)))
