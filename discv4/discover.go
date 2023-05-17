@@ -166,7 +166,7 @@ func (p *process) handleFindNode(req *enr.Record, packet []byte) error {
 	}
 	var (
 		recs  = p.ktable.FindClosest(isxhash.Keccak32(item.At(0).Bytes()), 16)
-		nodes []*rlp.Item
+		nodes []rlp.Item
 	)
 	for _, rec := range recs {
 		id := isxsecp256k1.Encode(rec.PublicKey)
@@ -321,7 +321,7 @@ func (p *process) handlePong(req *enr.Record, packet []byte) error {
 // - packet-header = hash || signature || packet-type
 // - hash = keccak256(signature || packet-type || packet-data)
 // - signature = sign(packet-type || packet-data)
-func (p *process) write(pt byte, to *net.UDPAddr, it *rlp.Item) ([]byte, error) {
+func (p *process) write(pt byte, to *net.UDPAddr, it rlp.Item) ([]byte, error) {
 	pd := rlp.Encode(it)
 	var ts []byte
 	ts = append(ts, pt)
