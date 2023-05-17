@@ -6,7 +6,6 @@ package rlp
 
 import (
 	"errors"
-	"sync"
 
 	"github.com/indexsupply/x/bint"
 )
@@ -19,23 +18,21 @@ const (
 	listNL, listNH   byte = 248, 255
 )
 
-func List(items ...*Item) *Item {
-	item := getItem()
-	item.list = true
-	if items != nil {
-		item.l = items
+func List(items ...Item) Item {
+	if items == nil {
+		items = []Item{}
 	}
-	return item
+	return Item{l: items}
 }
 
-func (i *Item) At(pos int) *Item {
+func (i Item) At(pos int) Item {
 	if len(i.l) < pos {
-		return &Item{}
+		return Item{}
 	}
 	return i.l[pos]
 }
 
-func (i *Item) List() []*Item {
+func (i Item) List() []Item {
 	return i.l
 }
 
@@ -45,43 +42,15 @@ func (i *Item) List() []*Item {
 // l is a list of Item for arbitrarily nested lists.
 // d is the data payload for the item.
 type Item struct {
-	list bool
-	d    []byte
-	l    []*Item
+	d []byte
+	l []Item
 }
 
-var itemPool = sync.Pool{
-	New: func() any {
-		return &Item{
-			d: []byte{},
-			l: []*Item{},
-		}
-	},
-}
-
-func getItem() *Item {
-	item := itemPool.Get().(*Item)
-	item.reset()
-	return item
-}
-
-func (item *Item) reset() {
-	item.d = item.d[:0]
-	item.l = item.l[:0]
-}
-
-func (item *Item) Done() {
-	if item == nil {
-		return
+func Encode(input Item) []byte {
+	if input.d != nil && input.l != nil {
+		panic("must set d xor l")
 	}
-	for _, i := range item.l {
-		i.Done()
-	}
-	itemPool.Put(item)
-}
-
-func Encode(input *Item) []byte {
-	if !input.list {
+	if input.d != nil {
 		switch n := len(input.d); {
 		case n == 1 && input.d[0] == 0:
 			return []byte{0x80}
@@ -141,29 +110,25 @@ var (
 	errTooFewBytes = errors.New("input has fewer bytes than specified by header")
 )
 
-func Decode(input []byte) (*Item, error) {
+func Decode(input []byte) (Item, error) {
 	if len(input) == 0 {
-		return nil, errNoBytes
+		return Item{}, errNoBytes
 	}
-	item := getItem()
 	switch {
 	case input[0] <= str1H:
-		item.d = input[0:1]
-		return item, nil
+		return Item{d: []byte{input[0]}}, nil
 	case input[0] <= str55H:
 		i, n := 1, int(input[0]-str55L)
 		if len(input) < i+n {
-			return nil, errTooFewBytes
+			return Item{}, errTooFewBytes
 		}
-		item.d = input[i : i+n]
-		return item, nil
+		return Item{d: input[i : i+n]}, nil
 	case input[0] <= strNH:
 		i, n := decodeLength(str55H, input)
 		if len(input) < i+n {
-			return nil, errTooFewBytes
+			return Item{}, errTooFewBytes
 		}
-		item.d = input[i : i+n]
-		return item, nil
+		return Item{d: input[i : i+n]}, nil
 	default:
 		// The first byte indicates a list
 		// and if the first byte is >= 248 (listNL)
@@ -183,7 +148,7 @@ func Decode(input []byte) (*Item, error) {
 
 		switch {
 		case len(input[i:]) < listSize:
-			return nil, errTooFewBytes
+			return Item{}, errTooFewBytes
 		case len(input[i:]) > listSize:
 			// It's possible that the input contains
 			// more bytes that is specified by the
@@ -193,7 +158,7 @@ func Decode(input []byte) (*Item, error) {
 			input = input[:i+listSize]
 		}
 
-		item.list = true
+		item := Item{l: []Item{}}
 		for i < len(input) {
 			var headerSize, payloadSize int
 			switch {
@@ -213,12 +178,12 @@ func Decode(input []byte) (*Item, error) {
 			}
 
 			if int(i+headerSize+payloadSize) > len(input) {
-				return nil, errTooFewBytes
+				return Item{}, errTooFewBytes
 			}
 
 			d, err := Decode(input[i : i+headerSize+payloadSize])
 			if err != nil {
-				return nil, err
+				return Item{}, err
 			}
 			item.l = append(item.l, d)
 			i += headerSize + payloadSize

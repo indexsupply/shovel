@@ -289,7 +289,7 @@ func (s *session) HandleMessage(d []byte) error {
 	return nil
 }
 
-func (s *session) HandleHello(item *rlp.Item) error {
+func (s *session) HandleHello(item rlp.Item) error {
 	if len(item.List()) < 5 {
 		return errors.New(fmt.Sprintf("HandleHello: expected rlp list of at least 5, got %d", len(item.List())))
 	}
@@ -304,12 +304,12 @@ func (s *session) HandleHello(item *rlp.Item) error {
 	return nil
 }
 
-func (s *session) HandleDisconnect(item *rlp.Item) error {
+func (s *session) HandleDisconnect(item rlp.Item) error {
 	s.log("<disconnect reason=%d\n", item.Uint16())
 	return nil
 }
 
-func (s *session) HandleEthStatus(item *rlp.Item) error {
+func (s *session) HandleEthStatus(item rlp.Item) error {
 	s.log("<status version=%d network=%d difficulty=%d\n", item.At(0).Uint16(), item.At(1).Uint16(), item.At(2).Uint64())
 	return nil
 }

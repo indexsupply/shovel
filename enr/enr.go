@@ -126,7 +126,7 @@ func UnmarshalText(str string) (Record, error) {
 	return decode(item)
 }
 
-func decode(item *rlp.Item) (Record, error) {
+func decode(item rlp.Item) (Record, error) {
 	var rec = Record{}
 	rec.Sequence = item.At(1).Uint64()
 	rec.Signature = item.At(0).Bytes()
@@ -196,7 +196,7 @@ func (r *Record) MarshalRLP(prv *secp256k1.PrivateKey) ([]byte, error) {
 	// i.e. any key may be present only once. The keys can technically
 	// be any byte sequence, but ASCII text is preferred. Key names in
 	// the table below have pre-defined meaning.
-	var items []*rlp.Item
+	var items []rlp.Item
 	items = append(items, rlp.Uint64(r.Sequence))
 	items = append(items, rlp.String("id"))
 	items = append(items, rlp.String(r.IDScheme))
@@ -235,6 +235,6 @@ func (r *Record) MarshalRLP(prv *secp256k1.PrivateKey) ([]byte, error) {
 		return nil, err
 	}
 	sigNoFmt := sig[:len(sig)-1] // remove formatting byte
-	items = append([]*rlp.Item{rlp.Bytes(sigNoFmt)}, items...)
+	items = append([]rlp.Item{rlp.Bytes(sigNoFmt)}, items...)
 	return rlp.Encode(rlp.List(items...)), nil
 }
