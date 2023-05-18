@@ -95,7 +95,14 @@ func main() {
 	index(ctx, g, pg, useTx, drv, snaps)
 }
 
-func index(ctx context.Context, g gethdb.Handle, pgpool *pgxpool.Pool, useTx bool, drv *g2pg.Driver, snapshots chan<- g2pg.StatusSnapshot) {
+func index(
+	ctx context.Context,
+	g gethdb.Handle,
+	pgpool *pgxpool.Pool,
+	useTx bool,
+	drv *g2pg.Driver,
+	snapshots chan<- g2pg.StatusSnapshot,
+) {
 	for reorgCount := 0; ; {
 		var (
 			err      error
