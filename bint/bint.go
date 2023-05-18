@@ -1,6 +1,8 @@
 // big endian, uint64 binary encoding/decoding
 package bint
 
+import "github.com/holiman/uint256"
+
 // Encodes a uint64 into a big-endian byte slice
 // To avoid an allocation, or to have a padded result,
 // supply an initialized value for b -otherwise use nil.
@@ -41,4 +43,14 @@ func Decode(b []byte) uint64 {
 		n += uint64(b[i])
 	}
 	return n
+}
+
+func Uint16(b []byte) uint16 { return uint16(Decode(b)) }
+func Uint32(b []byte) uint32 { return uint32(Decode(b)) }
+func Uint64(b []byte) uint64 { return uint64(Decode(b)) }
+
+func Uint256(b []byte) uint256.Int {
+	var i uint256.Int
+	i.SetBytes32(b)
+	return i
 }

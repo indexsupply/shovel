@@ -8,12 +8,13 @@ import (
 	"sync"
 	"time"
 
+	"github.com/indexsupply/x/bint"
 	"github.com/indexsupply/x/discv4/kademlia"
 	"github.com/indexsupply/x/enr"
 	"github.com/indexsupply/x/isxerrors"
 	"github.com/indexsupply/x/isxhash"
-	"github.com/indexsupply/x/isxsecp256k1"
 	"github.com/indexsupply/x/rlp"
+	"github.com/indexsupply/x/wsecp256k1"
 
 	"github.com/decred/dcrd/dcrec/secp256k1/v4"
 )
@@ -104,11 +105,9 @@ func (p *process) serve(uaddr *net.UDPAddr, packet []byte) error {
 	if !bytes.Equal(packet[:hashSize], isxhash.Keccak(packet[hashSize:])) {
 		return errors.New("packet contains invalid hash")
 	}
-	var sig [65]byte
-	copy(sig[:], packet[hashSize:hashSize+sigSize])
-	fromPubkey, err := isxsecp256k1.Recover(
-		sig,
-		isxhash.Keccak32(packet[hashSize+sigSize:]),
+	fromPubkey, err := wsecp256k1.Recover(
+		packet[hashSize:hashSize+sigSize],
+		isxhash.Keccak(packet[hashSize+sigSize:]),
 	)
 	if err != nil {
 		return errors.New("unable to extract pubkey from packet")
@@ -139,11 +138,8 @@ func (p *process) serve(uaddr *net.UDPAddr, packet []byte) error {
 
 func (p *process) handleENRRequest(req *enr.Record, packet []byte) error {
 	// packet-data = [request-hash, ENR]
-	item, err := rlp.Decode(packet[headerSize:])
-	if err != nil {
-		return err
-	}
-	expiration := item.At(0).Time()
+	t := bint.Uint32(rlp.Bytes(packet[headerSize:]))
+	expiration := time.Unix(int64(t), 0)
 	if expiration.Before(time.Now()) {
 		return errors.New("expired enr request")
 	}
@@ -151,35 +147,32 @@ func (p *process) handleENRRequest(req *enr.Record, packet []byte) error {
 	if err != nil {
 		return err
 	}
-	_, err = p.write(0x06, req.UDPAddr(), rlp.List(
-		rlp.Bytes(isxhash.Keccak(packet)),
-		rlp.Bytes(rec),
+	_, err = p.write(0x06, req.UDPAddr(), rlp.EncodeList(
+		isxhash.Keccak(packet),
+		rec,
 	))
 	return err
 }
 
 func (p *process) handleFindNode(req *enr.Record, packet []byte) error {
 	// packet-data = [target, expiration, ...]
-	item, err := rlp.Decode(packet[headerSize:])
-	if err != nil {
-		return err
-	}
 	var (
-		recs  = p.ktable.FindClosest(isxhash.Keccak32(item.At(0).Bytes()), 16)
-		nodes []rlp.Item
+		target = rlp.Bytes(packet[headerSize:])
+		recs   = p.ktable.FindClosest(isxhash.Keccak32(target), 16)
+		nodes  [][]byte
 	)
 	for _, rec := range recs {
-		id := isxsecp256k1.Encode(rec.PublicKey)
-		nodes = append(nodes, rlp.List(
-			rlp.Bytes(rec.Ip),
-			rlp.Uint16(rec.UdpPort),
-			rlp.Uint16(rec.TcpPort),
-			rlp.Bytes(id[:]),
+		id := wsecp256k1.Encode(rec.PublicKey)
+		nodes = append(nodes, rlp.EncodeList(
+			rec.Ip,
+			bint.Encode(nil, uint64(rec.UdpPort)),
+			bint.Encode(nil, uint64(rec.TcpPort)),
+			id,
 		))
 	}
-	_, err = p.write(0x04, req.UDPAddr(), rlp.List(
-		rlp.List(nodes...),
-		rlp.Time(time.Now().Add(time.Hour)),
+	_, err := p.write(0x04, req.UDPAddr(), rlp.EncodeList(
+		rlp.EncodeList(nodes...),
+		bint.Encode(nil, uint64(time.Now().Add(time.Hour).Unix())),
 	))
 	return err
 }
@@ -187,28 +180,21 @@ func (p *process) handleFindNode(req *enr.Record, packet []byte) error {
 func (p *process) handleNeighbors(req *enr.Record, packet []byte) error {
 	// packet-data = [nodes, expiration, ...]
 	// nodes = [[ip, udp-port, tcp-port, node-id], ...]
-	pd := packet[headerSize:]
-	item, err := rlp.Decode(pd)
-	if err != nil {
-		return err
-	}
 	var (
-		nodes   = item.At(0)
+		pd      = packet[headerSize:]
+		itr     = rlp.Iter(pd)
 		records []*enr.Record
 	)
-	for i := 0; i < len(nodes.List()); i++ {
+	for s := rlp.Iter(itr.Bytes()); s.HasNext(); {
 		var (
-			node = nodes.At(i)
+			node = rlp.Iter(s.Bytes())
 			rec  = &enr.Record{}
 			err  error
 		)
-		rec.Ip, err = node.At(0).IP()
-		if err != nil {
-			return err
-		}
-		rec.UdpPort = node.At(1).Uint16()
-		rec.TcpPort = node.At(2).Uint16()
-		rec.PublicKey, err = node.At(3).Secp256k1PublicKey()
+		rec.Ip = net.IP(node.Bytes())
+		rec.UdpPort = bint.Uint16(node.Bytes())
+		rec.TcpPort = bint.Uint16(node.Bytes())
+		rec.PublicKey, err = wsecp256k1.Decode(node.Bytes())
 		if err != nil {
 			return isxerrors.Errorf("reading pubkey: %w", err)
 		}
@@ -237,24 +223,21 @@ func (p *process) handlePing(req *enr.Record, packet []byte) error {
 		hash = packet[:hashSize]
 		pd   = packet[headerSize:]
 	)
-	item, err := rlp.Decode(pd)
-	if err != nil {
-		return err
-	}
-	reqFrom, err := item.At(1).At(0).IP()
-	if err != nil {
-		return errors.New("malformed ping from data")
-	}
+	itr := rlp.Iter(pd)
+	itr.Bytes() //skip
+	frm := rlp.Iter(itr.Bytes())
+
+	reqFrom := net.IP(frm.Bytes())
 	if !reqFrom.Equal(req.Ip) {
 		return errors.New("packet ip address doesn't match udp")
 	}
-	reqFromPort := item.At(1).At(1).Uint16()
+	reqFromPort := bint.Uint16(frm.Bytes())
 	if reqFromPort != req.UdpPort {
 		return errors.New("mismatch ping from-port with udp packet")
 	}
 	p.log("<ping: %s %x\n", req, hash[:4])
 
-	err = p.Pong(hash, req)
+	err := p.Pong(hash, req)
 	if err != nil {
 		return err
 	}
@@ -280,14 +263,10 @@ func (p *process) handlePing(req *enr.Record, packet []byte) error {
 
 func (p *process) handlePong(req *enr.Record, packet []byte) error {
 	// packet-data = [to, ping-hash, expiration, enr-seq, ...]
-	item, err := rlp.Decode(packet[headerSize:])
-	if err != nil {
-		return err
-	}
-	hash, err := item.At(1).Hash()
-	if err != nil {
-		return err
-	}
+	pd := packet[headerSize:]
+	itr := rlp.Iter(pd)
+	itr.Bytes() //skip
+	hash := itr.Bytes()
 
 	p.log("<pong: %s %x\n", req, hash[:4])
 
@@ -321,12 +300,11 @@ func (p *process) handlePong(req *enr.Record, packet []byte) error {
 // - packet-header = hash || signature || packet-type
 // - hash = keccak256(signature || packet-type || packet-data)
 // - signature = sign(packet-type || packet-data)
-func (p *process) write(pt byte, to *net.UDPAddr, it rlp.Item) ([]byte, error) {
-	pd := rlp.Encode(it)
+func (p *process) write(pt byte, to *net.UDPAddr, data []byte) ([]byte, error) {
 	var ts []byte
 	ts = append(ts, pt)
-	ts = append(ts, pd...)
-	sig, err := isxsecp256k1.Sign(p.prv, isxhash.Keccak32(ts))
+	ts = append(ts, data...)
+	sig, err := wsecp256k1.Sign(p.prv, isxhash.Keccak(ts))
 	if err != nil {
 		return nil, err
 	}
@@ -334,7 +312,7 @@ func (p *process) write(pt byte, to *net.UDPAddr, it rlp.Item) ([]byte, error) {
 	var th, hash []byte
 	th = append(th, sig[:]...)
 	th = append(th, pt)
-	th = append(th, pd...)
+	th = append(th, data...)
 	hash = isxhash.Keccak(th)
 
 	var header []byte
@@ -342,30 +320,29 @@ func (p *process) write(pt byte, to *net.UDPAddr, it rlp.Item) ([]byte, error) {
 	header = append(header, sig[:]...)
 	header = append(header, pt)
 
-	packet := append(header, pd...)
+	packet := append(header, data...)
 	_, err = p.conn.WriteTo(packet, to)
 	return hash, err
 }
 
 func (p *process) FindNode(target *secp256k1.PublicKey, dest *enr.Record) error {
-	tb := isxsecp256k1.Encode(target)
-	_, err := p.write(0x03, dest.UDPAddr(), rlp.List(
-		rlp.Bytes(tb[:]),
-		rlp.Time(time.Now().Add(time.Hour)),
+	_, err := p.write(0x03, dest.UDPAddr(), rlp.EncodeList(
+		wsecp256k1.Encode(target),
+		bint.Encode(nil, uint64(time.Now().Add(time.Hour).Unix())),
 	))
-	p.log(">find: %s %x\n", dest, tb[:4])
+	p.log(">find: %s\n", dest)
 	return err
 }
 
 func (p *process) Pong(pingHash []byte, dest *enr.Record) error {
-	_, err := p.write(0x02, dest.UDPAddr(), rlp.List(
-		rlp.List(
-			rlp.Bytes(dest.Ip),
-			rlp.Uint16(dest.UdpPort),
-			rlp.Uint16(dest.TcpPort),
+	_, err := p.write(0x02, dest.UDPAddr(), rlp.EncodeList(
+		rlp.EncodeList(
+			dest.Ip,
+			bint.Encode(nil, uint64(dest.UdpPort)),
+			bint.Encode(nil, uint64(dest.TcpPort)),
 		),
-		rlp.Bytes(pingHash),
-		rlp.Time(time.Now().Add(time.Hour)),
+		pingHash,
+		bint.Encode(nil, uint64(time.Now().Add(time.Hour).Unix())),
 	))
 	p.log(">pong: %s\n", dest)
 	return err
@@ -380,19 +357,19 @@ func (p *process) Ping(dest *enr.Record) error {
 		return nil
 	}
 
-	h, err := p.write(0x01, dest.UDPAddr(), rlp.List(
-		rlp.Byte(4),
-		rlp.List(
-			rlp.Bytes(p.self.Ip),
-			rlp.Uint16(p.self.UdpPort),
-			rlp.Uint16(p.self.TcpPort),
+	h, err := p.write(0x01, dest.UDPAddr(), rlp.EncodeList(
+		[]byte{4},
+		rlp.EncodeList(
+			p.self.Ip,
+			bint.Encode(nil, uint64(p.self.UdpPort)),
+			bint.Encode(nil, uint64(p.self.TcpPort)),
 		),
-		rlp.List(
-			rlp.Bytes(dest.Ip),
-			rlp.Uint16(dest.UdpPort),
-			rlp.Uint16(dest.TcpPort),
+		rlp.EncodeList(
+			dest.Ip,
+			bint.Encode(nil, uint64(dest.UdpPort)),
+			bint.Encode(nil, uint64(dest.TcpPort)),
 		),
-		rlp.Time(time.Now().Add(time.Hour)),
+		bint.Encode(nil, uint64(time.Now().Add(time.Hour).Unix())),
 	))
 	if err != nil {
 		return err

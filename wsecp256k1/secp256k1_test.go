@@ -1,21 +1,24 @@
-package isxsecp256k1
+package wsecp256k1
 
 import (
 	"testing"
 
-	"github.com/indexsupply/x/tc"
+	"kr.dev/diff"
 
 	"github.com/decred/dcrd/dcrec/secp256k1/v4"
+	"github.com/indexsupply/x/tc"
 )
 
 func TestSignRecover(t *testing.T) {
 	prv, err := secp256k1.GeneratePrivateKey()
-	tc.NoErr(t, err)
-	h := [32]byte{}
+	diff.Test(t, t.Fatalf, nil, err)
+
+	h := make([]byte, 32)
 	sig, err := Sign(prv, h)
-	tc.NoErr(t, err)
+	diff.Test(t, t.Fatalf, nil, err)
+
 	pub, err := Recover(sig, h)
-	tc.NoErr(t, err)
+	diff.Test(t, t.Fatalf, nil, err)
 	if !pub.IsEqual(prv.PubKey()) {
 		t.Error("expected pub key to match")
 	}

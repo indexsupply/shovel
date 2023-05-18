@@ -1,115 +1,25 @@
 package rlp
 
 import (
-	"bytes"
-	"crypto/rand"
-	"errors"
-	"fmt"
-	"reflect"
+	"encoding/hex"
 	"testing"
 
-	"github.com/indexsupply/x/tc"
+	"github.com/indexsupply/x/bint"
+	"kr.dev/diff"
 )
 
-func ExampleEncode() {
-	item := List(
-		String("foo"),
-		List(String("bar"), String("baz")),
-	)
-	item, _ = Decode(Encode(item))
-
-	var (
-		first  = item.At(0).String()
-		second = item.At(1).At(0).String()
-		third  = item.At(1).At(1).String()
-	)
-	fmt.Println(first, second, third)
-
-	//Output:
-	// foo bar baz
-}
-
-func FuzzEncode(f *testing.F) {
-	var (
-		numItems uint64 = 10
-		payload         = []byte("hello")
-	)
-	f.Add(numItems, payload)
-	f.Fuzz(func(t *testing.T, n uint64, d []byte) {
-		var items []Item
-		for i := 0; i < int(n); i++ {
-			items = append(items, Bytes(d))
-		}
-		item := List(items...)
-		got, err := Decode(Encode(item))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !reflect.DeepEqual(item, got) {
-			t.Errorf("want:\n%v\ngot:\n%v\n", item, got)
-		}
-	})
-}
-
 func BenchmarkEncode(b *testing.B) {
-	payload := []byte("hello world")
 	b.ReportAllocs()
 	for n := 0; n < b.N; n++ {
-		Encode(Bytes(payload))
+		Encode([]byte("hello world"))
 	}
 }
 
-func randBytes(n int) []byte {
-	res := make([]byte, n)
-	rand.Read(res)
-	return res
-}
-
-func TestDecode_Padding(t *testing.T) {
-	exp := []byte{0x01, 0x00}
-	b := Encode(List(Bytes(exp)))
-	i, err := Decode(append(b, exp...))
-	tc.NoErr(t, err)
-	got := i.At(0).Bytes()
-	if !bytes.Equal(exp, got) {
-		t.Errorf("expected: %x got: %x", exp, got)
-	}
-}
-
-func TestDecode_Errors(t *testing.T) {
-	cases := []struct {
-		desc  string
-		input []byte
-		err   error
-	}{
-		{
-			"short string no error",
-			[]byte{byte(1)},
-			nil,
-		},
-		{
-			"long string. too few bytes",
-			append(
-				[]byte{
-					byte(str55H + 1),
-					byte(56),
-				},
-				randBytes(55)...,
-			),
-			errTooFewBytes,
-		},
-	}
-	for _, tc := range cases {
-		_, err := Decode(tc.input)
-		if tc.err == nil {
-			if err != nil {
-				t.Errorf("expected nil error got: %v", err)
-			}
-		} else {
-			if !errors.Is(tc.err, err) {
-				t.Errorf("expected %v got %v", tc.err, err)
-			}
-		}
+func BenchmarkDecode(b *testing.B) {
+	eb := Encode([]byte("hello world"))
+	b.ReportAllocs()
+	for n := 0; n < b.N; n++ {
+		Bytes(eb)
 	}
 }
 
@@ -162,167 +72,141 @@ func TestDecodeLength(t *testing.T) {
 	}
 }
 
-func TestDecodeZero(t *testing.T) {
-	item, err := Decode([]byte{0x80})
-	tc.NoErr(t, err)
-	if item.Uint16() != 0 {
-		t.Errorf("want: 0 got: %d", item.Uint16())
-	}
-	if item.Uint64() != 0 {
-		t.Errorf("want: 0 got: %d", item.Uint64())
-	}
-}
-
 func TestDecode(t *testing.T) {
 	cases := []struct {
-		desc string
-		item Item
+		desc  string
+		input []byte
 	}{
 		{
 			"empty bytes",
-			Bytes(nil),
+			nil,
 		},
 		{
 			"short string",
-			String("a"),
+			[]byte("foo"),
 		},
 		{
 			"long string",
-			String("Lorem ipsum dolor sit amet, consectetur adipisicing elit"),
-		},
-		{
-			"empty list",
-			List(),
-		},
-		{
-			"list of short strings",
-			List(String("a"), String("b")),
-		},
-		{
-			"list of long strings",
-			List(
-				String("Lorem ipsum dolor sit amet, consectetur adipisicing elit"),
-				String("Porem ipsum dolor sit amet, consectetur adipisicing elit"),
-			),
-		},
-		{
-			"the set theoretical representation of three",
-			List(
-				List(),
-				List(List()),
-				List(List(), List(List())),
-			),
+			[]byte("Lorem ipsum dolor sit amet, consectetur adipisicing elit"),
 		},
 	}
 	for _, tc := range cases {
-		got, err := Decode(Encode(tc.item))
-		if err != nil {
-			t.Errorf("error %s: %s", tc.desc, err)
+		diff.Test(t, t.Errorf, tc.input, Bytes(Encode(tc.input)))
+	}
+}
+
+func TestDecode_List(t *testing.T) {
+	cases := []struct {
+		desc  string
+		input [][]byte
+	}{
+		{
+			"empty list",
+			[][]byte{},
+		},
+		{
+			"list of short strings",
+			[][]byte{
+				[]byte("foo"),
+				[]byte("bar"),
+			},
+		},
+		{
+			"list of long strings",
+			[][]byte{
+				[]byte("Lorem ipsum dolor sit amet, consectetur adipisicing elit"),
+				[]byte("Porem ipsum dolor sit amet, consectetur adipisicing elit"),
+			},
+		},
+	}
+	for _, tc := range cases {
+		itr := Iter(EncodeList(tc.input...))
+		res := [][]byte{}
+		for itr.HasNext() {
+			res = append(res, itr.Bytes())
 		}
-		if !reflect.DeepEqual(tc.item, got) {
-			t.Errorf("%s\nwant:\n%# v\ngot:\n%# v\n", tc.desc, tc.item, got)
+		diff.Test(t, t.Errorf, tc.input, res)
+	}
+}
+
+func TestDecode_List_Nested(t *testing.T) {
+	// Set-theoretic definition of 3
+	// [ [], [[]], [ [], [[]] ] ]
+	var (
+		zero  = EncodeList([]byte{})
+		one   = EncodeList(zero)
+		two   = EncodeList(zero, one)
+		input = EncodeList(zero, one, two)
+	)
+	for i, s := 0, Iter(input); s.HasNext(); i++ {
+		switch i {
+		case 0:
+			s0 := Iter(s.Bytes())
+			diff.Test(t, t.Errorf, []byte(nil), s0.Bytes())
+		case 1:
+			s1 := Iter(s.Bytes())
+			s2 := Iter(s1.Bytes())
+			diff.Test(t, t.Errorf, []byte(nil), s2.Bytes())
+		case 2:
+			s1 := Iter(s.Bytes())
+			s2 := Iter(s1.Bytes())
+			diff.Test(t, t.Errorf, []byte(nil), s2.Bytes())
+			s3 := Iter(s1.Bytes())
+			s4 := Iter(s3.Bytes())
+			diff.Test(t, t.Errorf, []byte(nil), s4.Bytes())
 		}
 	}
+}
+
+func hb(s string) []byte {
+	b, _ := hex.DecodeString(s)
+	return b
 }
 
 func TestEncode(t *testing.T) {
 	cases := []struct {
-		desc string
-		item Item
-		want []byte
+		desc  string
+		input []byte
+		want  []byte
 	}{
 		{
 			"zero byte",
-			Byte(0),
-			[]byte{0x80},
-		},
-		{
-			"int 0",
-			Int(0),
+			[]byte{0},
 			[]byte{0x80},
 		},
 		{
 			"int 1024",
-			Int(1024),
+			bint.Encode(nil, 1<<10),
 			[]byte{0x82, 0x04, 0x00},
 		},
 		{
-			"empty string",
-			String(""),
-			[]byte{0x80},
+			"long string",
+			[]byte("foobarbazfoobarbazfoobarbazfoobarbazfoobarbazfoobarbaz"),
+			hb("b6666f6f62617262617a666f6f62617262617a666f6f62617262617a666f6f62617262617a666f6f62617262617a666f6f62617262617a"),
 		},
-		{
-			"non-empty string",
-			String("Lorem ipsum dolor sit amet, consectetur adipisicing elit"),
-			[]byte{
-				0xB8,
-				0x38,
-				0x4C,
-				0x6F,
-				0x72,
-				0x65,
-				0x6D,
-				0x20,
-				0x69,
-				0x70,
-				0x73,
-				0x75,
-				0x6D,
-				0x20,
-				0x64,
-				0x6F,
-				0x6C,
-				0x6F,
-				0x72,
-				0x20,
-				0x73,
-				0x69,
-				0x74,
-				0x20,
-				0x61,
-				0x6D,
-				0x65,
-				0x74,
-				0x2C,
-				0x20,
-				0x63,
-				0x6F,
-				0x6E,
-				0x73,
-				0x65,
-				0x63,
-				0x74,
-				0x65,
-				0x74,
-				0x75,
-				0x72,
-				0x20,
-				0x61,
-				0x64,
-				0x69,
-				0x70,
-				0x69,
-				0x73,
-				0x69,
-				0x63,
-				0x69,
-				0x6E,
-				0x67,
-				0x20,
-				0x65,
-				0x6C,
-				0x69,
-				0x74,
-			},
-		},
+	}
+	for _, tc := range cases {
+		diff.Test(t, t.Errorf, tc.want, Encode(tc.input))
+	}
+}
+
+func TestEncode_List(t *testing.T) {
+	cases := []struct {
+		desc  string
+		input [][]byte
+		want  []byte
+	}{
 		{
 			"empty list",
-			List(),
+			nil,
 			[]byte{0xc0},
 		},
 		{
 			"list of strings",
-			List(String("cat"), String("dog")),
+			[][]byte{
+				[]byte("cat"),
+				[]byte("dog"),
+			},
 			[]byte{
 				0xc8, // 200
 				0x83, // 131
@@ -335,29 +219,8 @@ func TestEncode(t *testing.T) {
 				0x67, // g
 			},
 		},
-		{
-			"the set theoretical representation of three",
-			List(
-				List(),
-				List(List()),
-				List(List(), List(List())),
-			),
-			[]byte{
-				0xc7,
-				0xc0,
-				0xc1,
-				0xc0,
-				0xc3,
-				0xc0,
-				0xc1,
-				0xc0,
-			},
-		},
 	}
 	for _, tc := range cases {
-		got := Encode(tc.item)
-		if !bytes.Equal(tc.want, got) {
-			t.Errorf("%s\nwant:\n%v\ngot:\n%v\n", tc.desc, tc.want, got)
-		}
+		diff.Test(t, t.Errorf, tc.want, EncodeList(tc.input...))
 	}
 }
