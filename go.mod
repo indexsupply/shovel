@@ -3,6 +3,7 @@ module github.com/indexsupply/x
 go 1.20
 
 require (
+	blake.io/pqx v0.2.1
 	github.com/bmizerany/perks v0.0.0-20230307044200-03f9df79da1e
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.1.0
 	github.com/golang/snappy v0.0.4
@@ -18,7 +19,6 @@ require (
 )
 
 require (
-	blake.io/pqx v0.2.1 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20221227161230-091c0ba34f0a // indirect
 	github.com/jackc/puddle/v2 v2.2.0 // indirect
