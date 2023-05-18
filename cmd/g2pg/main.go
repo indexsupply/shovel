@@ -17,7 +17,7 @@ import (
 	"github.com/indexsupply/x/gethdb"
 	"github.com/indexsupply/x/integrations/nftxfr"
 	"github.com/indexsupply/x/jrpc"
-	"github.com/indexsupply/x/wpg"
+	"github.com/indexsupply/x/txlocker"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -99,7 +99,7 @@ func index(ctx context.Context, g gethdb.Handle, pgpool *pgxpool.Pool, useTx boo
 	for reorgCount := 0; ; {
 		var (
 			err      error
-			pg       wpg.Limited = pgpool
+			pg       g2pg.PG = pgpool
 			pgTx     pgx.Tx
 			commit   = func() {}
 			rollback = func() {}
@@ -107,7 +107,7 @@ func index(ctx context.Context, g gethdb.Handle, pgpool *pgxpool.Pool, useTx boo
 		if useTx {
 			pgTx, err = pgpool.Begin(ctx)
 			check(err)
-			pg = wpg.NewTxLocker(pgTx)
+			pg = txlocker.NewTx(pgTx)
 			commit = func() { check(pgTx.Commit(ctx)) }
 			rollback = func() { check(pgTx.Rollback(ctx)) }
 		}
