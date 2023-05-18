@@ -243,7 +243,7 @@ import (
 	// Uses the the following abi schema to decode the un-indexed
 	// event inputs from the log's data field into [{{ camel .Name }}]:
 	//	{{ (schema (unindexed .Inputs))}}
-	func Match{{ camel .Name }}(l abi.Log) ({{ camel .Name}}Event, error) {
+	func Match{{ camel .Name }}(l eth.Log) ({{ camel .Name}}Event, error) {
 		if len(l.Topics) == 0 {
 			return {{ camel .Name }}Event{}, abi.NoTopics
 		}

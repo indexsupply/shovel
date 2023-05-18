@@ -157,6 +157,9 @@ func size(input []byte) int {
 }
 
 func (it *Iterator) HasNext() bool {
+	if it == nil {
+		return false
+	}
 	return len(it.data[it.i:]) > 0
 }
 
@@ -165,6 +168,9 @@ func (it *Iterator) HasNext() bool {
 // Returns nil if there is no more data to scan
 // of if the RLP size header is corrupt
 func (it *Iterator) Bytes() []byte {
+	if it == nil {
+		return nil
+	}
 	if it.i > len(it.data) {
 		return nil
 	}
