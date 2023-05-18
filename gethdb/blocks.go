@@ -113,8 +113,8 @@ func freezerBlocks(dst []eth.Block, frz *Freezer) error {
 		}
 		bi := rlp.Iter(buf) //block iter contains: [transactions,uncles]
 		dst[i].Transactions.Reset()
-		for j, r := 0, rlp.Iter(bi.Read()); r.HasNext(); j++ {
-			dst[i].Transactions.Insert(j, r.Read())
+		for j, r := 0, rlp.Iter(bi.Bytes()); r.HasNext(); j++ {
+			dst[i].Transactions.Insert(j, r.Bytes())
 		}
 		buf, err = frz.Read(buf, "receipts", dst[i].Number)
 		if err != nil {
@@ -122,7 +122,7 @@ func freezerBlocks(dst []eth.Block, frz *Freezer) error {
 		}
 		dst[i].Receipts.Reset()
 		for j, r := 0, rlp.Iter(buf); r.HasNext(); j++ {
-			dst[i].Receipts.Insert(j, r.Read())
+			dst[i].Receipts.Insert(j, r.Bytes())
 		}
 	}
 	return nil
@@ -163,8 +163,8 @@ func dbBlocks(blocks []eth.Block, rpc *jrpc.Client) error {
 	for i, body := range res {
 		bi := rlp.Iter(body) //block iter contains: [transactions,uncles]
 		blocks[i].Transactions.Reset()
-		for j, r := 0, rlp.Iter(bi.Read()); r.HasNext(); j++ {
-			blocks[i].Transactions.Insert(j, r.Read())
+		for j, r := 0, rlp.Iter(bi.Bytes()); r.HasNext(); j++ {
+			blocks[i].Transactions.Insert(j, r.Bytes())
 		}
 	}
 	for i := range blocks {
@@ -177,7 +177,7 @@ func dbBlocks(blocks []eth.Block, rpc *jrpc.Client) error {
 	for i, rs := range res {
 		blocks[i].Receipts.Reset()
 		for j, r := 0, rlp.Iter(rs); r.HasNext(); j++ {
-			blocks[i].Receipts.Insert(j, r.Read())
+			blocks[i].Receipts.Insert(j, r.Bytes())
 		}
 	}
 	return nil

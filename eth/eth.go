@@ -40,7 +40,7 @@ type Header struct {
 
 func (h *Header) Unmarshal(input []byte) {
 	for i, itr := 0, rlp.Iter(input); itr.HasNext(); i++ {
-		d := itr.Read()
+		d := itr.Bytes()
 		switch i {
 		case 0:
 			h.Parent = [32]byte(d)
@@ -63,11 +63,11 @@ type Receipt struct {
 
 func (r *Receipt) Unmarshal(input []byte) {
 	iter := rlp.Iter(input)
-	r.Status = iter.Read()
-	r.GasUsed = bint.Decode(iter.Read())
+	r.Status = iter.Bytes()
+	r.GasUsed = bint.Decode(iter.Bytes())
 	r.Logs.Reset()
-	for i, l := 0, rlp.Iter(iter.Read()); l.HasNext(); i++ {
-		r.Logs.Insert(i, l.Read())
+	for i, l := 0, rlp.Iter(iter.Bytes()); l.HasNext(); i++ {
+		r.Logs.Insert(i, l.Bytes())
 	}
 }
 
@@ -105,15 +105,15 @@ type Log struct {
 
 func (l *Log) Unmarshal(input []byte) {
 	iter := rlp.Iter(input)
-	l.Address = [20]byte(iter.Read())
+	l.Address = [20]byte(iter.Bytes())
 	if cap(l.Topics) != 4 {
 		l.Topics = make([][32]byte, 0, 4)
 	}
 	l.Topics = l.Topics[:0]
-	for i, t := 0, rlp.Iter(iter.Read()); t.HasNext(); i++ {
-		l.Topics = append(l.Topics, [32]byte(t.Read()))
+	for i, t := 0, rlp.Iter(iter.Bytes()); t.HasNext(); i++ {
+		l.Topics = append(l.Topics, [32]byte(t.Bytes()))
 	}
-	l.Data = iter.Read()
+	l.Data = iter.Bytes()
 }
 
 type Logs struct {
@@ -171,10 +171,10 @@ type AccessTuple struct {
 
 func (at *AccessTuple) Unmarshal(b []byte) error {
 	iter := rlp.Iter(b)
-	at.Address = [20]byte(iter.Read())
+	at.Address = [20]byte(iter.Bytes())
 	at.StorageKeys.Reset()
-	for i, it := 0, rlp.Iter(iter.Read()); it.HasNext(); i++ {
-		at.StorageKeys.Insert(i, it.Read())
+	for i, it := 0, rlp.Iter(iter.Bytes()); it.HasNext(); i++ {
+		at.StorageKeys.Insert(i, it.Bytes())
 	}
 	return nil
 }
@@ -257,16 +257,16 @@ func (tx *Transaction) Unmarshal(b []byte) error {
 	//tx.Hash = isxhash.Keccak32(b)
 	// Legacy Transaction
 	if iter := rlp.Iter(b); iter.HasNext() {
-		tx.Nonce = bint.Decode(iter.Read())
-		tx.GasPrice.SetBytes(iter.Read())
-		tx.GasLimit = bint.Decode(iter.Read())
-		copy(tx.To[:], iter.Read())
-		tx.Value.SetBytes(iter.Read())
+		tx.Nonce = bint.Decode(iter.Bytes())
+		tx.GasPrice.SetBytes(iter.Bytes())
+		tx.GasLimit = bint.Decode(iter.Bytes())
+		copy(tx.To[:], iter.Bytes())
+		tx.Value.SetBytes(iter.Bytes())
 		tx.Data = tx.Data[:0]
-		tx.Data = append(tx.Data, iter.Read()...)
-		tx.V.SetBytes(iter.Read())
-		tx.R.SetBytes(iter.Read())
-		tx.S.SetBytes(iter.Read())
+		tx.Data = append(tx.Data, iter.Bytes()...)
+		tx.V.SetBytes(iter.Bytes())
+		tx.R.SetBytes(iter.Bytes())
+		tx.S.SetBytes(iter.Bytes())
 		return nil
 	}
 	// EIP-2718: Typed Transaction
@@ -275,41 +275,41 @@ func (tx *Transaction) Unmarshal(b []byte) error {
 	case 0x01:
 		// EIP-2930: Access List
 		// https://eips.ethereum.org/EIPS/eip-2930
-		tx.ChainID.SetBytes(iter.Read())
-		tx.Nonce = bint.Decode(iter.Read())
-		tx.GasPrice.SetBytes(iter.Read())
-		tx.GasLimit = bint.Decode(iter.Read())
-		copy(tx.To[:], iter.Read())
-		tx.Value.SetBytes(iter.Read())
+		tx.ChainID.SetBytes(iter.Bytes())
+		tx.Nonce = bint.Decode(iter.Bytes())
+		tx.GasPrice.SetBytes(iter.Bytes())
+		tx.GasLimit = bint.Decode(iter.Bytes())
+		copy(tx.To[:], iter.Bytes())
+		tx.Value.SetBytes(iter.Bytes())
 		tx.Data = tx.Data[:0]
-		tx.Data = append(tx.Data, iter.Read()...)
+		tx.Data = append(tx.Data, iter.Bytes()...)
 		tx.AccessList.Reset()
-		for i, it := 0, rlp.Iter(iter.Read()); it.HasNext(); i++ {
-			tx.AccessList.Insert(i, it.Read())
+		for i, it := 0, rlp.Iter(iter.Bytes()); it.HasNext(); i++ {
+			tx.AccessList.Insert(i, it.Bytes())
 		}
-		tx.V.SetBytes(iter.Read())
-		tx.R.SetBytes(iter.Read())
-		tx.S.SetBytes(iter.Read())
+		tx.V.SetBytes(iter.Bytes())
+		tx.R.SetBytes(iter.Bytes())
+		tx.S.SetBytes(iter.Bytes())
 		return nil
 	case 0x02:
 		// EIP-1559: Dynamic Fee
 		// https://eips.ethereum.org/EIPS/eip-1559
-		tx.ChainID.SetBytes(iter.Read())
-		tx.Nonce = bint.Decode(iter.Read())
-		tx.MaxPriorityFeePerGas.SetBytes(iter.Read())
-		tx.MaxFeePerGas.SetBytes(iter.Read())
-		tx.GasLimit = bint.Decode(iter.Read())
-		copy(tx.To[:], iter.Read())
-		tx.Value.SetBytes(iter.Read())
+		tx.ChainID.SetBytes(iter.Bytes())
+		tx.Nonce = bint.Decode(iter.Bytes())
+		tx.MaxPriorityFeePerGas.SetBytes(iter.Bytes())
+		tx.MaxFeePerGas.SetBytes(iter.Bytes())
+		tx.GasLimit = bint.Decode(iter.Bytes())
+		copy(tx.To[:], iter.Bytes())
+		tx.Value.SetBytes(iter.Bytes())
 		tx.Data = tx.Data[:0]
-		tx.Data = append(tx.Data, iter.Read()...)
+		tx.Data = append(tx.Data, iter.Bytes()...)
 		tx.AccessList.Reset()
-		for i, it := 0, rlp.Iter(iter.Read()); it.HasNext(); i++ {
-			tx.AccessList.Insert(i, it.Read())
+		for i, it := 0, rlp.Iter(iter.Bytes()); it.HasNext(); i++ {
+			tx.AccessList.Insert(i, it.Bytes())
 		}
-		tx.V.SetBytes(iter.Read())
-		tx.R.SetBytes(iter.Read())
-		tx.S.SetBytes(iter.Read())
+		tx.V.SetBytes(iter.Bytes())
+		tx.R.SetBytes(iter.Bytes())
+		tx.S.SetBytes(iter.Bytes())
 		return nil
 	default:
 		return fmt.Errorf("unsupported tx type: 0x%X", b[0])
