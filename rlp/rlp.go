@@ -5,7 +5,7 @@
 package rlp
 
 import (
-	"errors"
+	"bytes"
 
 	"github.com/indexsupply/x/bint"
 )
@@ -18,62 +18,31 @@ const (
 	listNL, listNH   byte = 248, 255
 )
 
-func List(items ...Item) Item {
-	if items == nil {
-		items = []Item{}
+func Encode(input []byte) []byte {
+	switch n := len(input); {
+	case n == 1 && input[0] == 0:
+		return []byte{0x80}
+	case n == 1 && input[0] <= str1H:
+		return input
+	case n <= 55:
+		return append(
+			[]byte{str55L + byte(n)},
+			input...,
+		)
+	default:
+		length, lengthSize := encodeLength(len(input))
+		header := append(
+			[]byte{str55H + lengthSize},
+			length...,
+		)
+		return append(header, input...)
 	}
-	return Item{l: items}
 }
 
-func (i Item) At(pos int) Item {
-	if len(i.l) < pos {
-		return Item{}
-	}
-	return i.l[pos]
-}
-
-func (i Item) List() []Item {
-	return i.l
-}
-
-// Instead of using standard data types and reflection
-// this package chooses to encode Items.
-// Set d or l but not both.
-// l is a list of Item for arbitrarily nested lists.
-// d is the data payload for the item.
-type Item struct {
-	d []byte
-	l []Item
-}
-
-func Encode(input Item) []byte {
-	if input.d != nil && input.l != nil {
-		panic("must set d xor l")
-	}
-	if input.d != nil {
-		switch n := len(input.d); {
-		case n == 1 && input.d[0] == 0:
-			return []byte{0x80}
-		case n == 1 && input.d[0] <= str1H:
-			return input.d
-		case n <= 55:
-			return append(
-				[]byte{str55L + byte(n)},
-				input.d...,
-			)
-		default:
-			length, lengthSize := encodeLength(len(input.d))
-			header := append(
-				[]byte{str55H + lengthSize},
-				length...,
-			)
-			return append(header, input.d...)
-		}
-	}
-
+func EncodeList(inputs ...[]byte) []byte {
 	var out []byte
-	for _, l := range input.l {
-		out = append(out, Encode(l)...)
+	for _, input := range inputs {
+		out = append(out, Encode(input)...)
 	}
 	if len(out) <= 55 {
 		return append(
@@ -105,89 +74,109 @@ func decodeLength(t byte, input []byte) (int, int) {
 	return int(n), int(l)
 }
 
-var (
-	errNoBytes     = errors.New("input has no bytes")
-	errTooFewBytes = errors.New("input has fewer bytes than specified by header")
-)
-
-func Decode(input []byte) (Item, error) {
-	if len(input) == 0 {
-		return Item{}, errNoBytes
-	}
+// Removes RLP encoding data and returns the encoded bytes
+// See [Iterator] for decoding a list of RLP data
+func Bytes(input []byte) []byte {
 	switch {
+	case len(input) == 0:
+		return nil
+	case bytes.Equal(input, []byte{0x80}):
+		return nil
 	case input[0] <= str1H:
-		return Item{d: []byte{input[0]}}, nil
+		return input[0:1]
 	case input[0] <= str55H:
 		i, n := 1, int(input[0]-str55L)
 		if len(input) < i+n {
-			return Item{}, errTooFewBytes
+			return nil
 		}
-		return Item{d: input[i : i+n]}, nil
+		return input[i : i+n]
 	case input[0] <= strNH:
 		i, n := decodeLength(str55H, input)
 		if len(input) < i+n {
-			return Item{}, errTooFewBytes
+			return nil
 		}
-		return Item{d: input[i : i+n]}, nil
+		return input[i : i+n]
 	default:
-		// The first byte indicates a list
-		// and if the first byte is >= 248 (listNL)
-		// then the list has a length > 55 and
-		// therefore the next (input[0]-247 (list55H))
-		// bytes will describe the length of the list.
-		// We advance the cursor i past the length description.
-		// We also compute the size of the list and check the input
-		// to ensure the size matches the header's length description.
-		var i, listSize int
-		switch {
-		case input[0] <= list55H:
-			i, listSize = 1, int(input[0]-list55L)
-		case input[0] <= listNH:
-			i, listSize = decodeLength(list55H, input)
-		}
-
-		switch {
-		case len(input[i:]) < listSize:
-			return Item{}, errTooFewBytes
-		case len(input[i:]) > listSize:
-			// It's possible that the input contains
-			// more bytes that is specified by the
-			// header's length. In this case, instead
-			// of returning an error, we simply remove
-			// the extra bytes.
-			input = input[:i+listSize]
-		}
-
-		item := Item{l: []Item{}}
-		for i < len(input) {
-			var headerSize, payloadSize int
-			switch {
-			case input[i] <= str1H:
-				headerSize = 0
-				payloadSize = 1
-			case input[i] <= str55H:
-				headerSize = 1
-				payloadSize = int(input[i] - str55L)
-			case input[i] <= strNH:
-				headerSize, payloadSize = decodeLength(str55H, input[i:])
-			case input[i] <= list55H:
-				headerSize = 1
-				payloadSize = int(input[i] - list55L)
-			default:
-				headerSize, payloadSize = decodeLength(list55H, input[i:])
-			}
-
-			if int(i+headerSize+payloadSize) > len(input) {
-				return Item{}, errTooFewBytes
-			}
-
-			d, err := Decode(input[i : i+headerSize+payloadSize])
-			if err != nil {
-				return Item{}, err
-			}
-			item.l = append(item.l, d)
-			i += headerSize + payloadSize
-		}
-		return item, nil
+		return input
 	}
+}
+
+// For iterating over an RLP list
+type Iterator struct {
+	i    int
+	data []byte
+}
+
+// Returns a new iter. Input is assumed to be
+// raw RLP bytes. The input size bytes are removed
+// from the beginning of input and trailing bytes
+// are removed.
+//
+// A nil [Iterator] is returned when the
+// input doesn't contain a list or
+// the list data is corrupt.
+func Iter(input []byte) *Iterator {
+	if len(input) == 0 {
+		return nil
+	}
+	if input[0] <= strNH { // not a list
+		return nil
+	}
+	var i, listSize int
+	switch {
+	case input[0] <= list55H:
+		i, listSize = 1, int(input[0]-list55L)
+	case input[0] <= listNH:
+		i, listSize = decodeLength(list55H, input)
+	}
+	if len(input[i:]) < listSize {
+		return nil
+	}
+	//ignore bytes beyond listSize
+	return &Iterator{data: input[i : i+listSize]}
+}
+
+func size(input []byte) int {
+	var headerSize, payloadSize int
+	switch {
+	case input[0] <= str1H:
+		headerSize = 0
+		payloadSize = 1
+	case input[0] <= str55H:
+		headerSize = 1
+		payloadSize = int(input[0] - str55L)
+	case input[0] <= strNH:
+		headerSize, payloadSize = decodeLength(str55H, input[0:])
+	case input[0] <= list55H:
+		headerSize = 1
+		payloadSize = int(input[0] - list55L)
+	default:
+		headerSize, payloadSize = decodeLength(list55H, input[0:])
+	}
+	return headerSize + payloadSize
+}
+
+func (it *Iterator) HasNext() bool {
+	return len(it.data[it.i:]) > 0
+}
+
+// Moves the iter forward by one
+// and calls [Bytes] on the underlying value
+// Returns nil if there is no more data to scan
+// of if the RLP size header is corrupt
+func (it *Iterator) Bytes() []byte {
+	if it.i > len(it.data) {
+		return nil
+	}
+	data := it.data[it.i:]
+	ln := len(data)
+	if ln == 0 {
+		return nil
+	}
+	sz := size(data)
+	if ln < sz {
+		return nil
+	}
+	it.i += sz
+	return Bytes(data[:sz])
 }

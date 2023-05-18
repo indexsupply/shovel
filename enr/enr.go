@@ -12,9 +12,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/indexsupply/x/bint"
 	"github.com/indexsupply/x/isxhash"
-	"github.com/indexsupply/x/isxsecp256k1"
 	"github.com/indexsupply/x/rlp"
+	"github.com/indexsupply/x/wsecp256k1"
 
 	"github.com/decred/dcrd/dcrec/secp256k1/v4"
 )
@@ -50,8 +51,7 @@ func (r *Record) String() string {
 }
 
 func (r *Record) ID() [32]byte {
-	pkb := isxsecp256k1.Encode(r.PublicKey)
-	return isxhash.Keccak32(pkb[:])
+	return [32]byte(isxhash.Keccak(wsecp256k1.Encode(r.PublicKey)))
 }
 
 func (r Record) UDPAddr() *net.UDPAddr {
@@ -83,7 +83,7 @@ func ParseV4(s string) (*Record, error) {
 	if err != nil {
 		return nil, err
 	}
-	npubk, err := isxsecp256k1.Decode(*(*[64]byte)(nidb))
+	npubk, err := wsecp256k1.Decode(nidb)
 	if err != nil {
 		return nil, err
 	}
@@ -106,69 +106,59 @@ func ParseV4(s string) (*Record, error) {
 // Given a text encoding of an Ethereum Node Record, which is formatted
 // as the base-64 encoding of its RLP content prefixed by enr:, this
 // method decodes it into an Record struct.
-func UnmarshalText(str string) (Record, error) {
+func (r *Record) UnmarshalText(str string) error {
 	const enrTextPrefix = "enr:"
 	if !strings.HasPrefix(str, enrTextPrefix) {
-		return Record{}, errors.New("Invalid prefix for ENR text encoding.")
+		return errors.New("Invalid prefix for ENR text encoding.")
 	}
 
 	str = str[len(enrTextPrefix):]
 	b, err := base64.RawURLEncoding.DecodeString(str)
 	if err != nil {
-		return Record{}, err
+		return err
 	}
 
-	item, err := rlp.Decode(b)
-	if err != nil {
-		return Record{}, err
-	}
-
-	return decode(item)
+	return r.UnmarshalRLP(b)
 }
 
-func decode(item rlp.Item) (Record, error) {
-	var rec = Record{}
-	rec.Sequence = item.At(1).Uint64()
-	rec.Signature = item.At(0).Bytes()
-	if len(rec.Signature) == 0 {
-		return Record{}, errors.New("missing signature")
-	}
-
-	for i := 2; i < len(item.List()); i += 2 {
-		var err error
-		switch k := item.At(i).String(); k {
+func (r *Record) UnmarshalRLP(b []byte) error {
+	var (
+		itr = rlp.Iter(b)
+		err error
+	)
+	r.Signature = itr.Bytes()
+	r.Sequence = bint.Uint64(itr.Bytes())
+	for {
+		k, v := itr.Bytes(), itr.Bytes()
+		if k == nil || v == nil {
+			break
+		}
+		switch string(k) {
 		case "id":
-			rec.IDScheme = item.At(i + 1).String()
-			if len(rec.IDScheme) == 0 {
-				return rec, errors.New("missing id scheme eg v4")
+			r.IDScheme = string(v)
+			if len(r.IDScheme) == 0 {
+				return errors.New("missing id scheme eg v4")
 			}
 		case "secp256k1":
-			rec.PublicKey, err = item.At(i + 1).Secp256k1PublicKey()
+			r.PublicKey, err = wsecp256k1.DecodeCompressed(v)
 			if err != nil {
-				return rec, err
+				return err
 			}
 		case "ip":
-			rec.Ip, err = item.At(i + 1).IP()
-			if err != nil {
-				return rec, err
-			}
+			r.Ip = net.IP(v)
 		case "ip6":
-			rec.Ip6, err = item.At(i + 1).IP()
-			if err != nil {
-				return rec, err
-			}
+			r.Ip6 = net.IP(v)
 		case "tcp":
-			rec.TcpPort = item.At(i + 1).Uint16()
+			r.TcpPort = bint.Uint16(v)
 		case "udp":
-			rec.UdpPort = item.At(i + 1).Uint16()
+			r.UdpPort = bint.Uint16(v)
 		case "tcp6":
-			rec.Tcp6Port = item.At(i + 1).Uint16()
+			r.Tcp6Port = bint.Uint16(v)
 		case "udp6":
-			rec.Udp6Port = item.At(i + 1).Uint16()
+			r.Udp6Port = bint.Uint16(v)
 		}
 	}
-
-	return rec, nil
+	return nil
 }
 
 func (r Record) MarshalText(prv *secp256k1.PrivateKey) ([]byte, error) {
@@ -196,31 +186,31 @@ func (r *Record) MarshalRLP(prv *secp256k1.PrivateKey) ([]byte, error) {
 	// i.e. any key may be present only once. The keys can technically
 	// be any byte sequence, but ASCII text is preferred. Key names in
 	// the table below have pre-defined meaning.
-	var items []rlp.Item
-	items = append(items, rlp.Uint64(r.Sequence))
-	items = append(items, rlp.String("id"))
-	items = append(items, rlp.String(r.IDScheme))
-	items = append(items, rlp.String("ip"))
-	items = append(items, rlp.Bytes(r.Ip))
+	var buf [][]byte
+	buf = append(buf, bint.Encode(nil, r.Sequence))
+	buf = append(buf, []byte("id"))
+	buf = append(buf, []byte(r.IDScheme))
+	buf = append(buf, []byte("ip"))
+	buf = append(buf, r.Ip)
 	if len(r.Ip6) != 0 {
-		items = append(items, rlp.String("ip6"))
-		items = append(items, rlp.Bytes(r.Ip6))
+		buf = append(buf, []byte("ip6"))
+		buf = append(buf, r.Ip6)
 	}
-	items = append(items, rlp.String("secp256k1"))
-	items = append(items, rlp.Bytes(r.PublicKey.SerializeCompressed()))
+	buf = append(buf, []byte("secp256k1"))
+	buf = append(buf, r.PublicKey.SerializeCompressed())
 	if r.TcpPort != 0 {
-		items = append(items, rlp.String("tcp"))
-		items = append(items, rlp.Uint16(r.TcpPort))
+		buf = append(buf, []byte("tcp"))
+		buf = append(buf, bint.Encode(nil, uint64(r.TcpPort)))
 	}
 	if r.Tcp6Port != 0 {
-		items = append(items, rlp.String("tcp6"))
-		items = append(items, rlp.Uint16(r.Tcp6Port))
+		buf = append(buf, []byte("tcp6"))
+		buf = append(buf, bint.Encode(nil, uint64(r.Tcp6Port)))
 	}
-	items = append(items, rlp.String("udp"))
-	items = append(items, rlp.Uint16(r.UdpPort))
+	buf = append(buf, []byte("udp"))
+	buf = append(buf, bint.Encode(nil, uint64(r.UdpPort)))
 	if r.Udp6Port != 0 {
-		items = append(items, rlp.String("udp6"))
-		items = append(items, rlp.Uint16(r.Udp6Port))
+		buf = append(buf, []byte("udp6"))
+		buf = append(buf, bint.Encode(nil, uint64(r.Udp6Port)))
 	}
 	// From the devp2p docs:
 	//
@@ -229,12 +219,11 @@ func (r *Record) MarshalRLP(prv *secp256k1.PrivateKey) ([]byte, error) {
 	// signature of the hash. The resulting 64-byte signature is
 	// encoded as the concatenation of the r and s signature values
 	// (the recovery ID v is omitted).
-	hash := isxhash.Keccak32(rlp.Encode(rlp.List(items...)))
-	sig, err := isxsecp256k1.Sign(prv, hash)
+	sig, err := wsecp256k1.Sign(prv, isxhash.Keccak(rlp.EncodeList(buf...)))
 	if err != nil {
 		return nil, err
 	}
 	sigNoFmt := sig[:len(sig)-1] // remove formatting byte
-	items = append([]rlp.Item{rlp.Bytes(sigNoFmt)}, items...)
-	return rlp.Encode(rlp.List(items...)), nil
+	buf = append([][]byte{sigNoFmt}, buf...)
+	return rlp.EncodeList(buf...), nil
 }

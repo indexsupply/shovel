@@ -23,8 +23,8 @@ import (
 	"github.com/indexsupply/x/enr"
 	"github.com/indexsupply/x/isxerrors"
 	"github.com/indexsupply/x/isxhash"
-	"github.com/indexsupply/x/isxsecp256k1"
 	"github.com/indexsupply/x/rlp"
+	"github.com/indexsupply/x/wsecp256k1"
 )
 
 type session struct {
@@ -200,7 +200,7 @@ func (s *session) uencode(msgID uint64, msgData []byte) []byte {
 	header := make([]byte, 16)
 	bint.Encode(header[:3], uint64(len(msgData)+1)) //include id
 	s.eg.stream.XORKeyStream(header, header)
-	msgData = append(rlp.Encode(rlp.Uint64(msgID)), msgData...)
+	msgData = append(rlp.Encode(bint.Encode(nil, msgID)), msgData...)
 	padding := 16 - len(msgData)%16
 	if padding != 0 {
 		msgData = append(msgData, make([]byte, padding)...)
@@ -225,16 +225,22 @@ func (s *session) encode(msgID uint64, msgData []byte) []byte {
 }
 
 func (s *session) Hello() ([]byte, error) {
-	return s.uencode(0x00, rlp.Encode(rlp.List(
-		rlp.Int(5),
-		rlp.String("indexsupply/0"),
-		rlp.List(
-			rlp.List(rlp.String("p2p"), rlp.Int(5)),
-			rlp.List(rlp.String("eth"), rlp.Int(67)),
+	return s.uencode(0x00, rlp.EncodeList(
+		bint.Encode(nil, 5),
+		[]byte("indexsupply/0"),
+		rlp.EncodeList(
+			rlp.EncodeList(
+				[]byte("p2p"),
+				bint.Encode(nil, 5),
+			),
+			rlp.EncodeList(
+				[]byte("eth"),
+				bint.Encode(nil, 67),
+			),
 		),
-		rlp.Uint16(s.local.TcpPort),
-		rlp.Secp256k1PublicKey(s.local.PublicKey),
-	))), nil
+		bint.Encode(nil, uint64(s.local.TcpPort)),
+		wsecp256k1.Encode(s.local.PublicKey),
+	)), nil
 }
 
 func (s *session) EthStatus() ([]byte, error) {
@@ -246,14 +252,17 @@ func (s *session) EthStatus() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return s.encode(0x10, rlp.Encode(rlp.List(
-		rlp.Int(67),          // version
-		rlp.Int(1),           // network ID - 1 for mainnet
-		rlp.Int(17179869184), // Total difficulty of genesis block
-		rlp.Bytes(gh[:]),     // Genesis block hash
-		rlp.Bytes(gh[:]),     // Last known block - genesis block
-		rlp.List(rlp.Bytes(fh), rlp.Int(1150000)), // [fork-hash, fork-next] - unsynced mainnet from https://eips.ethereum.org/EIPS/eip-2124
-	))), nil
+	return s.encode(0x10, rlp.EncodeList(
+		bint.Encode(nil, 67),          // version
+		bint.Encode(nil, 1),           // network ID - 1 for mainnet
+		bint.Encode(nil, 17179869184), // Total difficulty of genesis block
+		gh[:],                         // Genesis block hash
+		gh[:],                         // Last known block - genesis block
+		rlp.EncodeList(
+			fh,
+			bint.Encode(nil, 1150000),
+		), // [fork-hash, fork-next] - unsynced mainnet from https://eips.ethereum.org/EIPS/eip-2124
+	)), nil
 }
 
 func (s *session) HandleMessage(d []byte) error {
@@ -261,56 +270,49 @@ func (s *session) HandleMessage(d []byte) error {
 	if err != nil {
 		return isxerrors.Errorf("decoding frame: %w", err)
 	}
-	msgID, err := rlp.Decode(frame[:1])
-	if err != nil {
-		return isxerrors.Errorf("decoding frame msg id: %w", err)
-	}
-	if msgID.Uint64() == 0x00 {
-		item, err := rlp.Decode(frame[1:])
-		if err != nil {
-			return isxerrors.Errorf("decoding hello msg: %w", err)
-		}
-		return s.HandleHello(item)
+	msgID := bint.Decode(rlp.Bytes(frame[:1]))
+	if msgID == 0x00 {
+		return s.HandleHello(frame[1:])
 	}
 	uframe, err := snappy.Decode(nil, frame[1:])
 	if err != nil {
 		return isxerrors.Errorf("decoding snappy frame: %w", err)
 	}
-	item, err := rlp.Decode(uframe)
-	if err != nil {
-		return isxerrors.Errorf("rlp decoding uncompressed frame: %w", err)
-	}
-	switch msgID.Uint64() {
+	switch msgID {
 	case 0x01:
-		return s.HandleDisconnect(item)
+		return s.HandleDisconnect(uframe)
 	case 0x10:
-		return s.HandleEthStatus(item)
+		return s.HandleEthStatus(uframe)
 	}
 	return nil
 }
 
-func (s *session) HandleHello(item rlp.Item) error {
-	if len(item.List()) < 5 {
-		return errors.New(fmt.Sprintf("HandleHello: expected rlp list of at least 5, got %d", len(item.List())))
-	}
+func (s *session) HandleHello(b []byte) error {
+	itr := rlp.Iter(b)
 	var (
-		id   = item.At(1).String()
+		_    = itr.Bytes() //TODO(ryan): figure out what this ignore value is
+		id   = string(itr.Bytes())
 		caps [][]string
 	)
-	for _, c := range item.At(2).List() {
-		caps = append(caps, []string{c.At(0).String(), c.At(1).String()})
+	for s := rlp.Iter(itr.Bytes()); s.HasNext(); {
+		caps = append(caps, []string{string(s.Bytes()), string(s.Bytes())})
 	}
 	s.log("<hello id=%s caps=%v\n", id, caps)
 	return nil
 }
 
-func (s *session) HandleDisconnect(item rlp.Item) error {
-	s.log("<disconnect reason=%d\n", item.Uint16())
+func (s *session) HandleDisconnect(b []byte) error {
+	s.log("<disconnect reason=%d\n", bint.Decode(rlp.Bytes(b)))
 	return nil
 }
 
-func (s *session) HandleEthStatus(item rlp.Item) error {
-	s.log("<status version=%d network=%d difficulty=%d\n", item.At(0).Uint16(), item.At(1).Uint16(), item.At(2).Uint64())
+func (s *session) HandleEthStatus(b []byte) error {
+	itr := rlp.Iter(b)
+	s.log("<status version=%d network=%d difficulty=%d\n",
+		bint.Decode(itr.Bytes()),
+		bint.Decode(itr.Bytes()),
+		bint.Decode(itr.Bytes()),
+	)
 	return nil
 }
 
@@ -384,17 +386,17 @@ func (h *handshake) Auth() ([]byte, error) {
 	for i := 0; i < 32; i++ {
 		b[i] = ss[i] ^ h.initNonce[i]
 	}
-	sig, err := isxsecp256k1.Sign(h.localEphPrvKey, b)
+	sig, err := wsecp256k1.Sign(h.localEphPrvKey, b[:])
 	if err != nil {
 		return nil, err
 	}
 	const authVersion = 4
-	authBody := rlp.Encode(rlp.List(
-		rlp.Bytes(sig[:]),
-		rlp.Secp256k1PublicKey(h.localPrvKey.PubKey()),
-		rlp.Bytes(h.initNonce[:]),
-		rlp.Int(authVersion),
-	))
+	authBody := rlp.EncodeList(
+		sig[:],
+		wsecp256k1.Encode(h.localPrvKey.PubKey()),
+		h.initNonce[:],
+		bint.Encode(nil, authVersion),
+	)
 	authBody = append(authBody, make([]byte, mrand.Intn(100)+100)...)
 
 	var authSize [2]byte
@@ -413,28 +415,18 @@ func (h *handshake) HandleAuth(d []byte) error {
 	if len(d) <= 2+ecies.Overhead {
 		return errors.New("message must be at least 2 + ecies overhead bytes long")
 	}
-	size := bint.Decode(d[:2])
+	size := bint.Uint16(d[:2])
 	authBody, err := ecies.Decrypt(h.localPrvKey, d[2:2+size], d[:2])
 	if err != nil {
 		return isxerrors.Errorf("decrypting auth: %w", err)
 	}
-	authItem, err := rlp.Decode(authBody)
+	itr := rlp.Iter(authBody)
+	sig := [65]byte(itr.Bytes())
+	h.remotePubKey, err = wsecp256k1.Decode(itr.Bytes())
 	if err != nil {
 		return err
 	}
-
-	sig, err := authItem.At(0).Bytes65()
-	if err != nil {
-		return err
-	}
-	h.remotePubKey, err = authItem.At(1).Secp256k1PublicKey()
-	if err != nil {
-		return err
-	}
-	h.initNonce, err = authItem.At(2).Bytes32()
-	if err != nil {
-		return err
-	}
+	h.initNonce = [32]byte(itr.Bytes())
 	var (
 		ss = secp256k1.GenerateSharedSecret(h.localPrvKey, h.remotePubKey)
 		b  [32]byte
@@ -442,7 +434,7 @@ func (h *handshake) HandleAuth(d []byte) error {
 	for i := 0; i < 32; i++ {
 		b[i] = ss[i] ^ h.initNonce[i]
 	}
-	h.remoteEphPubKey, err = isxsecp256k1.Recover(sig, b)
+	h.remoteEphPubKey, err = wsecp256k1.Recover(sig[:], b[:])
 	if err != nil {
 		return err
 	}
@@ -468,11 +460,11 @@ func (h *handshake) Ack() ([]byte, error) {
 		return nil, err
 	}
 	const authVersion = 4
-	ackBody := rlp.Encode(rlp.List(
-		rlp.Secp256k1PublicKey(h.localEphPrvKey.PubKey()),
-		rlp.Bytes(h.recipientNonce[:]),
-		rlp.Int(authVersion),
-	))
+	ackBody := rlp.EncodeList(
+		wsecp256k1.Encode(h.localEphPrvKey.PubKey()),
+		h.recipientNonce[:],
+		bint.Encode(nil, authVersion),
+	)
 	ackBody = append(ackBody, make([]byte, mrand.Intn(100)+100)...)
 	var ackSize [2]byte
 	bint.Encode(ackSize[:], uint64(len(ackBody)+ecies.Overhead))
@@ -494,14 +486,11 @@ func (h *handshake) HandleAck(d []byte) error {
 	if err != nil {
 		return isxerrors.Errorf("decrypting ack: %w", err)
 	}
-	ackItem, err := rlp.Decode(ackBody)
+	itr := rlp.Iter(ackBody)
+	h.remoteEphPubKey, err = wsecp256k1.Decode(itr.Bytes())
 	if err != nil {
 		return err
 	}
-	h.remoteEphPubKey, err = ackItem.At(0).Secp256k1PublicKey()
-	if err != nil {
-		return err
-	}
-	h.recipientNonce, err = ackItem.At(1).Bytes32()
-	return err
+	h.recipientNonce = [32]byte(itr.Bytes())
+	return nil
 }
