@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"html/template"
 	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"strings"
 	"sync"
@@ -30,6 +31,7 @@ func check(err error) {
 }
 
 func main() {
+
 	var (
 		freezerPath string
 		pgURL       string
