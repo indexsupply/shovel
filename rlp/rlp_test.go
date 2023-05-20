@@ -16,10 +16,12 @@ func BenchmarkEncode(b *testing.B) {
 }
 
 func BenchmarkDecode(b *testing.B) {
-	eb := Encode([]byte("hello world"))
+	eb := EncodeList(hb("aa"), hb("bb"), hb("cc"), hb("dd"))
 	b.ReportAllocs()
 	for n := 0; n < b.N; n++ {
-		Bytes(eb)
+		for itr := Iter(eb); itr.HasNext(); {
+			itr.Bytes()
+		}
 	}
 }
 

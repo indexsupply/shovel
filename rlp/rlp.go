@@ -115,12 +115,12 @@ type Iterator struct {
 // A nil [Iterator] is returned when the
 // input doesn't contain a list or
 // the list data is corrupt.
-func Iter(input []byte) *Iterator {
+func Iter(input []byte) Iterator {
 	if len(input) == 0 {
-		return nil
+		return Iterator{}
 	}
 	if input[0] <= strNH { // not a list
-		return nil
+		return Iterator{}
 	}
 	var i, listSize int
 	switch {
@@ -130,10 +130,10 @@ func Iter(input []byte) *Iterator {
 		i, listSize = decodeLength(list55H, input)
 	}
 	if len(input[i:]) < listSize {
-		return nil
+		return Iterator{}
 	}
 	//ignore bytes beyond listSize
-	return &Iterator{data: input[i : i+listSize]}
+	return Iterator{data: input[i : i+listSize]}
 }
 
 func size(input []byte) int {
