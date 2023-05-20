@@ -5,8 +5,6 @@
 package rlp
 
 import (
-	"bytes"
-
 	"github.com/indexsupply/x/bint"
 )
 
@@ -80,7 +78,7 @@ func Bytes(input []byte) []byte {
 	switch {
 	case len(input) == 0:
 		return nil
-	case bytes.Equal(input, []byte{0x80}):
+	case len(input) == 1 && input[0] == 0x80:
 		return nil
 	case input[0] <= str1H:
 		return input[0:1]
