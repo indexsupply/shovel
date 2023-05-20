@@ -8,6 +8,11 @@ import (
 	"kr.dev/diff"
 )
 
+func hb(s string) []byte {
+	b, _ := hex.DecodeString(s)
+	return b
+}
+
 func BenchmarkEncode(b *testing.B) {
 	b.ReportAllocs()
 	for n := 0; n < b.N; n++ {
@@ -16,7 +21,12 @@ func BenchmarkEncode(b *testing.B) {
 }
 
 func BenchmarkDecode(b *testing.B) {
-	eb := EncodeList(hb("aa"), hb("bb"), hb("cc"), hb("dd"))
+	eb := List(
+		Encode(hb("aa")),
+		Encode(hb("bb")),
+		Encode(hb("cc")),
+		Encode(hb("dd")),
+	)
 	b.ReportAllocs()
 	for n := 0; n < b.N; n++ {
 		for itr := Iter(eb); itr.HasNext(); {
@@ -81,7 +91,7 @@ func TestDecode(t *testing.T) {
 	}{
 		{
 			"empty bytes",
-			nil,
+			[]byte{},
 		},
 		{
 			"short string",
@@ -122,7 +132,7 @@ func TestDecode_List(t *testing.T) {
 		},
 	}
 	for _, tc := range cases {
-		itr := Iter(EncodeList(tc.input...))
+		itr := Iter(List(Encode(tc.input...)))
 		res := [][]byte{}
 		for itr.HasNext() {
 			res = append(res, itr.Bytes())
@@ -135,34 +145,29 @@ func TestDecode_List_Nested(t *testing.T) {
 	// Set-theoretic definition of 3
 	// [ [], [[]], [ [], [[]] ] ]
 	var (
-		zero  = EncodeList([]byte{})
-		one   = EncodeList(zero)
-		two   = EncodeList(zero, one)
-		input = EncodeList(zero, one, two)
+		zero  = List(Encode([]byte{}))
+		one   = List(zero)
+		two   = List(zero, one)
+		input = List(zero, one, two)
 	)
 	for i, s := 0, Iter(input); s.HasNext(); i++ {
 		switch i {
 		case 0:
 			s0 := Iter(s.Bytes())
-			diff.Test(t, t.Errorf, []byte(nil), s0.Bytes())
+			diff.Test(t, t.Errorf, []byte{}, s0.Bytes())
 		case 1:
 			s1 := Iter(s.Bytes())
 			s2 := Iter(s1.Bytes())
-			diff.Test(t, t.Errorf, []byte(nil), s2.Bytes())
+			diff.Test(t, t.Errorf, []byte{}, s2.Bytes())
 		case 2:
 			s1 := Iter(s.Bytes())
 			s2 := Iter(s1.Bytes())
-			diff.Test(t, t.Errorf, []byte(nil), s2.Bytes())
+			diff.Test(t, t.Errorf, []byte{}, s2.Bytes())
 			s3 := Iter(s1.Bytes())
 			s4 := Iter(s3.Bytes())
-			diff.Test(t, t.Errorf, []byte(nil), s4.Bytes())
+			diff.Test(t, t.Errorf, []byte{}, s4.Bytes())
 		}
 	}
-}
-
-func hb(s string) []byte {
-	b, _ := hex.DecodeString(s)
-	return b
 }
 
 func TestEncode(t *testing.T) {
@@ -204,6 +209,15 @@ func TestEncode_List(t *testing.T) {
 			[]byte{0xc0},
 		},
 		{
+			"long list",
+			[][]byte{
+				[]byte("foobarbazfoobarbazfoobarbazfoobarbazfoobarbazfoobarbaz"),
+				[]byte("foobarbazfoobarbazfoobarbazfoobarbazfoobarbazfoobarbaz"),
+			},
+			hb("f86eb6666f6f62617262617a666f6f62617262617a666f6f62617262617a666f6f62617262617a666f6f62617262617a666f6f62617262617ab6666f6f62617262617a666f6f62617262617a666f6f62617262617a666f6f62617262617a666f6f62617262617a666f6f62617262617a"),
+		},
+
+		{
 			"list of strings",
 			[][]byte{
 				[]byte("cat"),
@@ -223,6 +237,6 @@ func TestEncode_List(t *testing.T) {
 		},
 	}
 	for _, tc := range cases {
-		diff.Test(t, t.Errorf, tc.want, EncodeList(tc.input...))
+		diff.Test(t, t.Errorf, tc.want, List(Encode(tc.input...)))
 	}
 }

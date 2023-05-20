@@ -225,21 +225,13 @@ func (s *session) encode(msgID uint64, msgData []byte) []byte {
 }
 
 func (s *session) Hello() ([]byte, error) {
-	return s.uencode(0x00, rlp.EncodeList(
-		bint.Encode(nil, 5),
-		[]byte("indexsupply/0"),
-		rlp.EncodeList(
-			rlp.EncodeList(
-				[]byte("p2p"),
-				bint.Encode(nil, 5),
-			),
-			rlp.EncodeList(
-				[]byte("eth"),
-				bint.Encode(nil, 67),
-			),
-		),
-		bint.Encode(nil, uint64(s.local.TcpPort)),
-		wsecp256k1.Encode(s.local.PublicKey),
+	return s.uencode(0x00, rlp.List(
+		rlp.Encode(bint.Encode(nil, 5)),
+		rlp.Encode([]byte("indexsupply/0")),
+		rlp.List(rlp.Encode([]byte("p2p"), bint.Encode(nil, 5))),
+		rlp.List(rlp.Encode([]byte("eth"), bint.Encode(nil, 67))),
+		rlp.Encode(bint.Encode(nil, uint64(s.local.TcpPort))),
+		rlp.Encode(wsecp256k1.Encode(s.local.PublicKey)),
 	)), nil
 }
 
@@ -252,16 +244,13 @@ func (s *session) EthStatus() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return s.encode(0x10, rlp.EncodeList(
-		bint.Encode(nil, 67),          // version
-		bint.Encode(nil, 1),           // network ID - 1 for mainnet
-		bint.Encode(nil, 17179869184), // Total difficulty of genesis block
-		gh[:],                         // Genesis block hash
-		gh[:],                         // Last known block - genesis block
-		rlp.EncodeList(
-			fh,
-			bint.Encode(nil, 1150000),
-		), // [fork-hash, fork-next] - unsynced mainnet from https://eips.ethereum.org/EIPS/eip-2124
+	return s.encode(0x10, rlp.List(
+		rlp.Encode(bint.Encode(nil, 67)),                    // version
+		rlp.Encode(bint.Encode(nil, 1)),                     // network ID - 1 for mainnet
+		rlp.Encode(bint.Encode(nil, 17179869184)),           // Total difficulty of genesis block
+		rlp.Encode(gh[:]),                                   // Genesis block hash
+		rlp.Encode(gh[:]),                                   // Last known block - genesis block
+		rlp.List(rlp.Encode(fh, bint.Encode(nil, 1150000))), // [fork-hash, fork-next] - unsynced mainnet from https://eips.ethereum.org/EIPS/eip-2124
 	)), nil
 }
 
@@ -391,12 +380,12 @@ func (h *handshake) Auth() ([]byte, error) {
 		return nil, err
 	}
 	const authVersion = 4
-	authBody := rlp.EncodeList(
+	authBody := rlp.List(rlp.Encode(
 		sig[:],
 		wsecp256k1.Encode(h.localPrvKey.PubKey()),
 		h.initNonce[:],
 		bint.Encode(nil, authVersion),
-	)
+	))
 	authBody = append(authBody, make([]byte, mrand.Intn(100)+100)...)
 
 	var authSize [2]byte
@@ -460,11 +449,11 @@ func (h *handshake) Ack() ([]byte, error) {
 		return nil, err
 	}
 	const authVersion = 4
-	ackBody := rlp.EncodeList(
+	ackBody := rlp.List(rlp.Encode(
 		wsecp256k1.Encode(h.localEphPrvKey.PubKey()),
 		h.recipientNonce[:],
 		bint.Encode(nil, authVersion),
-	)
+	))
 	ackBody = append(ackBody, make([]byte, mrand.Intn(100)+100)...)
 	var ackSize [2]byte
 	bint.Encode(ackSize[:], uint64(len(ackBody)+ecies.Overhead))
