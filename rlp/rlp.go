@@ -1,6 +1,6 @@
-// This package implements a basic encoder/decoder for
-// Ethereum's Recursive-Length Prefix (RLP) Serialization.
-// For a detailed description of RLP, see Ethereum's  page:
+// rlp encoding and decoding
+//
+// For a detailed description of RLP, see Ethereum's page:
 // https://ethereum.org/en/developers/docs/data-structures-and-encoding/rlp/
 package rlp
 
@@ -16,43 +16,41 @@ const (
 	listNL, listNH   byte = 248, 255
 )
 
-func Encode(input []byte) []byte {
-	switch n := len(input); {
-	case n == 1 && input[0] == 0:
-		return []byte{0x80}
-	case n == 1 && input[0] <= str1H:
-		return input
-	case n <= 55:
-		return append(
-			[]byte{str55L + byte(n)},
-			input...,
-		)
-	default:
-		length, lengthSize := encodeLength(len(input))
-		header := append(
-			[]byte{str55H + lengthSize},
-			length...,
-		)
-		return append(header, input...)
+// Encodes one or more items
+// Will not encode a list. First call [Encode]
+// on all the items in the list and then call
+// [List] to add the list header.
+func Encode(inputs ...[]byte) (res []byte) {
+	for _, input := range inputs {
+		switch n := len(input); {
+		case n == 1 && input[0] == 0:
+			res = append(res, 0x80)
+		case n == 1 && input[0] <= str1H:
+			res = append(res, input...)
+		case n <= 55:
+			res = append(res, append([]byte{str55L + byte(n)}, input...)...)
+		default:
+			length, lengthSize := encodeLength(len(input))
+			header := append([]byte{str55H + lengthSize}, length...)
+			res = append(res, append(header, input...)...)
+		}
 	}
+	return
 }
 
-func EncodeList(inputs ...[]byte) []byte {
+// Combines previously enocded items and
+// add the list header.
+// Callers should call [Encode] prior to calling [List]
+func List(inputs ...[]byte) []byte {
 	var out []byte
-	for _, input := range inputs {
-		out = append(out, Encode(input)...)
+	for i := range inputs {
+		out = append(out, inputs[i]...)
 	}
 	if len(out) <= 55 {
-		return append(
-			[]byte{list55L + byte(len(out))},
-			out...,
-		)
+		return append([]byte{list55L + byte(len(out))}, out...)
 	}
 	length, lengthSize := encodeLength(len(out))
-	header := append(
-		[]byte{list55H + lengthSize},
-		length...,
-	)
+	header := append([]byte{list55H + lengthSize}, length...)
 	return append(header, out...)
 }
 
@@ -72,115 +70,70 @@ func decodeLength(t byte, input []byte) (int, int) {
 	return int(n), int(l)
 }
 
-// Removes RLP encoding data and returns the encoded bytes
-// See [Iterator] for decoding a list of RLP data
+// Returns the RLP decoded value of a non-list, single item input
+// Use [Iterator] and [Iterator.Bytes] for parsing a list
 func Bytes(input []byte) []byte {
+	it := Iter(input)
+	return it.Bytes()
+}
+
+type Iterator struct {
+	d    []byte
+	i, n int
+}
+
+// Prepaers an [Iterator] so that the caller can iterate through
+// the values by calling [Iterator.Bytes].
+// This function also works for a non-list, single value. Calling
+// [Iterator.Bytes] will return the value.
+func Iter(input []byte) Iterator {
 	switch {
 	case len(input) == 0:
-		return nil
-	case len(input) == 1 && input[0] == 0x80:
-		return nil
-	case input[0] <= str1H:
-		return input[0:1]
-	case input[0] <= str55H:
-		i, n := 1, int(input[0]-str55L)
-		if len(input) < i+n {
-			return nil
-		}
-		return input[i : i+n]
+		return Iterator{}
 	case input[0] <= strNH:
-		i, n := decodeLength(str55H, input)
-		if len(input) < i+n {
-			return nil
-		}
-		return input[i : i+n]
-	default:
-		return input
-	}
-}
-
-// For iterating over an RLP list
-type Iterator struct {
-	i    int
-	data []byte
-}
-
-// Returns a new iter. Input is assumed to be
-// raw RLP bytes. The input size bytes are removed
-// from the beginning of input and trailing bytes
-// are removed.
-//
-// A nil [Iterator] is returned when the
-// input doesn't contain a list or
-// the list data is corrupt.
-func Iter(input []byte) Iterator {
-	if len(input) == 0 {
-		return Iterator{}
-	}
-	if input[0] <= strNH { // not a list
-		return Iterator{}
-	}
-	var i, listSize int
-	switch {
+		return Iterator{d: input}
 	case input[0] <= list55H:
-		i, listSize = 1, int(input[0]-list55L)
-	case input[0] <= listNH:
-		i, listSize = decodeLength(list55H, input)
-	}
-	if len(input[i:]) < listSize {
-		return Iterator{}
-	}
-	//ignore bytes beyond listSize
-	return Iterator{data: input[i : i+listSize]}
-}
-
-func size(input []byte) int {
-	var headerSize, payloadSize int
-	switch {
-	case input[0] <= str1H:
-		headerSize = 0
-		payloadSize = 1
-	case input[0] <= str55H:
-		headerSize = 1
-		payloadSize = int(input[0] - str55L)
-	case input[0] <= strNH:
-		headerSize, payloadSize = decodeLength(str55H, input[0:])
-	case input[0] <= list55H:
-		headerSize = 1
-		payloadSize = int(input[0] - list55L)
+		i, n := 1, int(input[0]-list55L)
+		return Iterator{d: input, i: i, n: n}
 	default:
-		headerSize, payloadSize = decodeLength(list55H, input[0:])
+		i, n := decodeLength(list55H, input)
+		return Iterator{d: input, i: i, n: n}
 	}
-	return headerSize + payloadSize
 }
 
 func (it *Iterator) HasNext() bool {
-	if it == nil {
-		return false
-	}
-	return len(it.data[it.i:]) > 0
+	return it.i < it.n
 }
 
-// Moves the iter forward by one
-// and calls [Bytes] on the underlying value
-// Returns nil if there is no more data to scan
-// of if the RLP size header is corrupt
+// Returns the byte value of the current item and advances the iterator
+// for the next item. Returns nil when there are no more items.
+// If the underlying item is a list (meaning you are parsing a list
+// of lists) then the returned bytes should be used to call [Iter]
+// again.
 func (it *Iterator) Bytes() []byte {
-	if it == nil {
+	if len(it.d) <= it.i {
 		return nil
 	}
-	if it.i > len(it.data) {
-		return nil
+	data := it.d[it.i:]
+	switch b := data[0]; {
+	case b <= str1H:
+		it.i++
+		return data[0:1]
+	case b <= str55H:
+		m, n := 1, int(b-str55L)
+		it.i += m + n
+		return data[m : m+n]
+	case b <= strNH:
+		m, n := decodeLength(str55H, data)
+		it.i += m + n
+		return data[m : m+n]
+	case b <= list55H:
+		m, n := 1, int(b-list55L)
+		it.i += m + n
+		return data
+	default:
+		m, n := decodeLength(list55H, data)
+		it.i += m + n
+		return data
 	}
-	data := it.data[it.i:]
-	ln := len(data)
-	if ln == 0 {
-		return nil
-	}
-	sz := size(data)
-	if ln < sz {
-		return nil
-	}
-	it.i += sz
-	return Bytes(data[:sz])
 }

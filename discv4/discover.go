@@ -147,10 +147,10 @@ func (p *process) handleENRRequest(req *enr.Record, packet []byte) error {
 	if err != nil {
 		return err
 	}
-	_, err = p.write(0x06, req.UDPAddr(), rlp.EncodeList(
+	_, err = p.write(0x06, req.UDPAddr(), rlp.List(rlp.Encode(
 		isxhash.Keccak(packet),
 		rec,
-	))
+	)))
 	return err
 }
 
@@ -163,16 +163,16 @@ func (p *process) handleFindNode(req *enr.Record, packet []byte) error {
 	)
 	for _, rec := range recs {
 		id := wsecp256k1.Encode(rec.PublicKey)
-		nodes = append(nodes, rlp.EncodeList(
+		nodes = append(nodes, rlp.List(rlp.Encode(
 			rec.Ip,
 			bint.Encode(nil, uint64(rec.UdpPort)),
 			bint.Encode(nil, uint64(rec.TcpPort)),
 			id,
-		))
+		)))
 	}
-	_, err := p.write(0x04, req.UDPAddr(), rlp.EncodeList(
-		rlp.EncodeList(nodes...),
-		bint.Encode(nil, uint64(time.Now().Add(time.Hour).Unix())),
+	_, err := p.write(0x04, req.UDPAddr(), rlp.List(
+		rlp.List(nodes...),
+		rlp.Encode(bint.Encode(nil, uint64(time.Now().Add(time.Hour).Unix()))),
 	))
 	return err
 }
@@ -326,23 +326,23 @@ func (p *process) write(pt byte, to *net.UDPAddr, data []byte) ([]byte, error) {
 }
 
 func (p *process) FindNode(target *secp256k1.PublicKey, dest *enr.Record) error {
-	_, err := p.write(0x03, dest.UDPAddr(), rlp.EncodeList(
+	_, err := p.write(0x03, dest.UDPAddr(), rlp.List(rlp.Encode(
 		wsecp256k1.Encode(target),
 		bint.Encode(nil, uint64(time.Now().Add(time.Hour).Unix())),
-	))
+	)))
 	p.log(">find: %s\n", dest)
 	return err
 }
 
 func (p *process) Pong(pingHash []byte, dest *enr.Record) error {
-	_, err := p.write(0x02, dest.UDPAddr(), rlp.EncodeList(
-		rlp.EncodeList(
+	_, err := p.write(0x02, dest.UDPAddr(), rlp.List(
+		rlp.List(rlp.Encode(
 			dest.Ip,
 			bint.Encode(nil, uint64(dest.UdpPort)),
 			bint.Encode(nil, uint64(dest.TcpPort)),
-		),
-		pingHash,
-		bint.Encode(nil, uint64(time.Now().Add(time.Hour).Unix())),
+		)),
+		rlp.Encode(pingHash),
+		rlp.Encode(bint.Encode(nil, uint64(time.Now().Add(time.Hour).Unix()))),
 	))
 	p.log(">pong: %s\n", dest)
 	return err
@@ -357,19 +357,19 @@ func (p *process) Ping(dest *enr.Record) error {
 		return nil
 	}
 
-	h, err := p.write(0x01, dest.UDPAddr(), rlp.EncodeList(
-		[]byte{4},
-		rlp.EncodeList(
+	h, err := p.write(0x01, dest.UDPAddr(), rlp.List(
+		rlp.Encode([]byte{4}),
+		rlp.List(rlp.Encode(
 			p.self.Ip,
 			bint.Encode(nil, uint64(p.self.UdpPort)),
 			bint.Encode(nil, uint64(p.self.TcpPort)),
-		),
-		rlp.EncodeList(
+		)),
+		rlp.List(rlp.Encode(
 			dest.Ip,
 			bint.Encode(nil, uint64(dest.UdpPort)),
 			bint.Encode(nil, uint64(dest.TcpPort)),
-		),
-		bint.Encode(nil, uint64(time.Now().Add(time.Hour).Unix())),
+		)),
+		rlp.Encode(bint.Encode(nil, uint64(time.Now().Add(time.Hour).Unix()))),
 	))
 	if err != nil {
 		return err

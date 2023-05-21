@@ -219,11 +219,11 @@ func (r *Record) MarshalRLP(prv *secp256k1.PrivateKey) ([]byte, error) {
 	// signature of the hash. The resulting 64-byte signature is
 	// encoded as the concatenation of the r and s signature values
 	// (the recovery ID v is omitted).
-	sig, err := wsecp256k1.Sign(prv, isxhash.Keccak(rlp.EncodeList(buf...)))
+	sig, err := wsecp256k1.Sign(prv, isxhash.Keccak(rlp.List(rlp.Encode(buf...))))
 	if err != nil {
 		return nil, err
 	}
 	sigNoFmt := sig[:len(sig)-1] // remove formatting byte
 	buf = append([][]byte{sigNoFmt}, buf...)
-	return rlp.EncodeList(buf...), nil
+	return rlp.List(rlp.Encode(buf...)), nil
 }
