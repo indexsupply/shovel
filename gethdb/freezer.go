@@ -33,6 +33,13 @@ type Freezer struct {
 	files map[fname]*os.File
 }
 
+func NewFreezer(dir string) *Freezer {
+	return &Freezer{
+		dir:   dir,
+		files: make(map[fname]*os.File),
+	}
+}
+
 func (fr *Freezer) open(fn fname) (*os.File, error) {
 	fr.RLock()
 	f, ok := fr.files[fn]
@@ -65,26 +72,37 @@ func (fr *Freezer) Max(table string) (uint64, error) {
 	return uint64(s.Size()/6) - 2, nil
 }
 
-func (fr *Freezer) Read(dst []byte, table string, bn uint64) ([]byte, error) {
+// Returns the current and next file number and file offset for a given block
+// If the requested block and next block are contained in the same file
+// the number of bytes to read is computed as follows: nextOffest - currOffset
+// If the requested block and the next block are in different files,
+// the block's data is located at the beginning of the next file and
+// the number of bytes to read is computed as follows: nextOffest
+func (fr *Freezer) FileNum(table string, bn uint64) (uint16, uint32, uint16, uint32) {
 	idx, err := fr.open(fname{name: table, num: -1, ext: "cidx"})
 	if err != nil {
-		return nil, fmt.Errorf("opening index: %w", err)
+		return 0, 0, 0, 0
 	}
 	var b [12]byte
 	n, err := idx.ReadAt(b[:], int64(bn*6))
 	if err != nil {
-		return nil, fmt.Errorf("reading index entries: %w", err)
+		return 0, 0, 0, 0
 	}
 	if n != 12 {
-		return nil, fmt.Errorf("expected to read 12 bytes for 2 entires")
+		return 0, 0, 0, 0
 	}
 	var (
-		currFile   = binary.BigEndian.Uint16(b[0:2])
-		currOffset = binary.BigEndian.Uint32(b[2:6])
-		nextFile   = binary.BigEndian.Uint16(b[6:8])
-		nextOffest = binary.BigEndian.Uint32(b[8:12])
-		buf        []byte
+		cf = binary.BigEndian.Uint16(b[0:2])
+		co = binary.BigEndian.Uint32(b[2:6])
+		nf = binary.BigEndian.Uint16(b[6:8])
+		no = binary.BigEndian.Uint32(b[8:12])
 	)
+	return cf, co, nf, no
+}
+
+func (fr *Freezer) Read(dst []byte, table string, bn uint64) ([]byte, error) {
+	currFile, currOffset, nextFile, nextOffest := fr.FileNum(table, bn)
+	var buf []byte
 	switch {
 	case currFile == nextFile:
 		f, err := fr.open(fname{name: table, num: int(currFile), ext: "cdat"})
