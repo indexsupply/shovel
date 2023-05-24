@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	_ "embed"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -30,6 +31,9 @@ func check(err error) {
 	}
 }
 
+//go:embed schema.sql
+var schema string
+
 func main() {
 
 	var (
@@ -41,6 +45,7 @@ func main() {
 		workers     uint64
 		batchSize   uint64
 		useTx       bool
+		reset       bool
 	)
 
 	flag.StringVar(&freezerPath, "f", "/storage/geth/geth/chaindata/ancient/chain/", "path to freezer files")
@@ -51,13 +56,29 @@ func main() {
 	flag.Uint64Var(&workers, "w", 1<<6, "number of concurrent workers")
 	flag.Uint64Var(&batchSize, "b", 1<<11, "batch size")
 	flag.BoolVar(&useTx, "t", false, "use pg tx")
+	flag.BoolVar(&reset, "reset", false, "drop public schame")
 	flag.Parse()
 
-	var (
-		ctx = context.Background()
-		rc  *jrpc.Client
-		err error
-	)
+	pg, err := pgxpool.New(context.Background(), pgURL)
+	check(err)
+
+	if reset {
+		h := pg.Config().ConnConfig.Host
+		if !(h == "localhost" || h == "/private/tmp") {
+			fmt.Printf("unable to reset non-local db: %s\n", h)
+			os.Exit(1)
+		}
+		_, err = pg.Exec(context.Background(), "drop schema public cascade")
+		check(err)
+		_, err = pg.Exec(context.Background(), "create schema public")
+		check(err)
+		for _, q := range strings.Split(schema, ";") {
+			_, err = pg.Exec(context.Background(), q)
+			check(err)
+		}
+	}
+
+	var rc *jrpc.Client
 	switch {
 	case strings.HasPrefix(rpcURL, "http"):
 		rc, err = jrpc.New(jrpc.WithHTTP(rpcURL))
@@ -67,9 +88,6 @@ func main() {
 		rc, err = jrpc.New(jrpc.WithSocket(defaultSocketPath))
 		check(err)
 	}
-	g := gethdb.New(freezerPath, rc)
-	pg, err := pgxpool.New(ctx, pgURL)
-	check(err)
 
 	var (
 		all = map[string]g2pg.Integration{
@@ -92,9 +110,10 @@ func main() {
 			running = append(running, ig)
 		}
 	}
+
 	drv := g2pg.NewDriver(batchSize, workers, running...)
 	go serveDashboard(listen, snaps, drv)
-	index(ctx, g, pg, useTx, drv, snaps)
+	index(context.Background(), gethdb.New(freezerPath, rc), pg, useTx, drv, snaps)
 }
 
 func index(
