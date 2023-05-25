@@ -8,6 +8,8 @@ import (
 	"fmt"
 	_ "net/http/pprof"
 	"os"
+	"os/exec"
+	"runtime/pprof"
 	"strings"
 	"time"
 
@@ -42,6 +44,7 @@ func main() {
 		useTx       bool
 		reset       bool
 		begin, end  int
+		profile     string
 	)
 
 	flag.StringVar(&freezerPath, "f", "/storage/geth/geth/chaindata/ancient/chain/", "path to freezer files")
@@ -55,6 +58,7 @@ func main() {
 	flag.BoolVar(&reset, "reset", false, "drop public schame")
 	flag.IntVar(&begin, "begin", -1, "starting block. -1 starts at latest")
 	flag.IntVar(&end, "end", -1, "ending block. -1 never ends")
+	flag.StringVar(&profile, "profile", "", "run profile after indexing")
 	flag.Parse()
 
 	pgp, err := pgxpool.New(ctx, pgURL)
@@ -138,20 +142,51 @@ func main() {
 		check(fmt.Errorf("-begin not available for initialized driver"))
 	}
 
+	var cpufile *os.File
+	if profile == "cpu" {
+		cpufile, err = os.CreateTemp("", "g2pg.cpu.*.prof")
+		check(err)
+		check(pprof.StartCPUProfile(cpufile))
+	}
+
 	for {
 		err = drv.Converge(g, pgp, useTx, uint64(end))
+		if err == nil {
+			go func() {
+				snap := drv.Status()
+				fmt.Printf("%s %s\n", snap.Num, snap.Hash)
+				select {
+				case snaps <- snap:
+				default:
+				}
+			}()
+			continue
+		}
 		if errors.Is(err, g2pg.ErrNothingNew) {
 			time.Sleep(time.Second)
 			continue
 		}
-		go func() {
-			snap := drv.Status()
-			fmt.Printf("%s %s\n", snap.Num, snap.Hash)
-			select {
-			case snaps <- snap:
-			default:
-			}
-		}()
+		if errors.Is(err, g2pg.ErrDone) {
+			break
+		}
+	}
+
+	switch profile {
+	case "cpu":
+		pprof.StopCPUProfile()
+		check(cpufile.Close())
+		cpucmd := exec.Command("go", "tool", "pprof", "-http=:", cpufile.Name())
+		cpucmd.Stdout = os.Stdout
+		cpucmd.Stderr = os.Stderr
+		check(cpucmd.Run())
+	case "heap":
+		heapfile, err := os.CreateTemp("", "g2pg.heap.*.prof")
 		check(err)
+		check(pprof.Lookup("heap").WriteTo(heapfile, 0))
+		check(heapfile.Close())
+		heapcmd := exec.Command("go", "tool", "pprof", "-http=:", heapfile.Name())
+		heapcmd.Stdout = os.Stdout
+		heapcmd.Stderr = os.Stderr
+		check(heapcmd.Run())
 	}
 }
