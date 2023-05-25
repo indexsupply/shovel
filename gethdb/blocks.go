@@ -26,16 +26,24 @@ type Handle struct {
 	fz *Freezer
 }
 
+func (h Handle) Hash(num uint64) ([32]byte, error) {
+	res, err := h.rc.GetDB1(headerHashKey(num))
+	if err != nil {
+		return [32]byte{}, fmt.Errorf("getting block hash: %w", err)
+	}
+	return [32]byte(res), nil
+}
+
 func (h Handle) Latest() (uint64, [32]byte, error) {
-	res, err := h.rc.GetDB1([]byte("LastBlock"))
+	hash, err := h.rc.GetDB1([]byte("LastBlock"))
 	if err != nil {
 		return 0, [32]byte{}, fmt.Errorf("getting last block hash: %w", err)
 	}
-	res, err = h.rc.GetDB1(append([]byte("H"), res...))
+	number, err := h.rc.GetDB1(append([]byte("H"), hash...))
 	if err != nil {
 		return 0, [32]byte{}, fmt.Errorf("getting last block hash: %w", err)
 	}
-	return binary.BigEndian.Uint64(res), [32]byte{}, nil
+	return binary.BigEndian.Uint64(number), [32]byte(hash), nil
 }
 
 func (h Handle) Blocks(blocks []eth.Block) error {

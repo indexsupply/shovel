@@ -18,11 +18,11 @@ var Integration = integration{
 	name: "NFT Transfer",
 }
 
-func (i integration) Delete(ctx context.Context, pg g2pg.PG, h []byte) error {
+func (i integration) Delete(pg g2pg.PG, h []byte) error {
 	return nil
 }
 
-func (i integration) Insert(ctx context.Context, pg g2pg.PG, blocks []eth.Block) (int64, error) {
+func (i integration) Insert(pg g2pg.PG, blocks []eth.Block) (int64, error) {
 	var rows = make([][]any, 0, 1<<12)
 	for bidx := 0; bidx < len(blocks); bidx++ {
 		for ridx := 0; ridx < blocks[bidx].Receipts.Len(); ridx++ {

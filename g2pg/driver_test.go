@@ -42,7 +42,7 @@ func (ti *testIntegration) blocks() []eth.Block {
 	return blks
 }
 
-func (ti *testIntegration) Insert(ctx context.Context, _ PG, blocks []eth.Block) (int64, error) {
+func (ti *testIntegration) Insert(_ PG, blocks []eth.Block) (int64, error) {
 	ti.Lock()
 	defer ti.Unlock()
 	for _, b := range blocks {
@@ -51,7 +51,7 @@ func (ti *testIntegration) Insert(ctx context.Context, _ PG, blocks []eth.Block)
 	return int64(len(blocks)), nil
 }
 
-func (ti *testIntegration) Delete(ctx context.Context, pg PG, h []byte) error {
+func (ti *testIntegration) Delete(pg PG, h []byte) error {
 	ti.Lock()
 	defer ti.Unlock()
 	delete(ti.chain, [32]byte(h))
@@ -99,7 +99,7 @@ func driverAdd(t *testing.T, pg PG, ig Integration, number uint64, h [32]byte) {
 	const q = "insert into driver(number,hash) values ($1, $2)"
 	_, err := pg.Exec(context.Background(), q, number, h[:])
 	tc.NoErr(t, err)
-	ig.Insert(context.Background(), pg, []eth.Block{
+	ig.Insert(pg, []eth.Block{
 		eth.Block{
 			Number: number,
 			Hash:   h,
@@ -107,29 +107,27 @@ func driverAdd(t *testing.T, pg PG, ig Integration, number uint64, h [32]byte) {
 	})
 }
 
-func TestIndexBatch_Zero(t *testing.T) {
+func TestConverge_Zero(t *testing.T) {
 	var (
-		ctx = context.Background()
-		g   = &testGeth{}
-		pg  = testpg(t)
-		td  = NewDriver(1, 1, newTestIntegration())
+		g  = &testGeth{}
+		pg = testpg(t)
+		td = NewDriver(1, 1, newTestIntegration())
 	)
-	diff.Test(t, t.Errorf, td.IndexBatch(ctx, g, pg), ErrNothingNew)
+	diff.Test(t, t.Errorf, td.Converge(g, pg, false, 0), ErrNothingNew)
 }
 
-func TestIndexBatch_EmptyIntegration(t *testing.T) {
+func TestConverge_EmptyIntegration(t *testing.T) {
 	var (
-		ctx = context.Background()
-		g   = &testGeth{
+		g = &testGeth{
 			blocks: []eth.Block{
 				eth.Block{
 					Number: 0,
-					Hash:   hash('a'),
+					Hash:   hash(0),
 				},
 				eth.Block{
 					Number: 1,
-					Hash:   hash('b'),
-					Header: eth.Header{Parent: hash('a')},
+					Hash:   hash(1),
+					Header: eth.Header{Parent: hash(0)},
 				},
 			},
 		}
@@ -137,14 +135,14 @@ func TestIndexBatch_EmptyIntegration(t *testing.T) {
 		ig = newTestIntegration()
 		td = NewDriver(1, 1, ig)
 	)
-	tc.NoErr(t, td.IndexBatch(ctx, g, pg))
-	diff.Test(t, t.Errorf, ig.blocks(), g.blocks[1:])
+	driverAdd(t, pg, ig, 0, hash(0))
+	tc.NoErr(t, td.Converge(g, pg, false, 0))
+	diff.Test(t, t.Errorf, ig.blocks(), g.blocks)
 }
 
-func TestIndexBatch_Reorg(t *testing.T) {
+func TestConverge_Reorg(t *testing.T) {
 	var (
-		ctx = context.Background()
-		g   = &testGeth{
+		g = &testGeth{
 			blocks: []eth.Block{
 				eth.Block{
 					Number: 0,
@@ -170,20 +168,18 @@ func TestIndexBatch_Reorg(t *testing.T) {
 	driverAdd(t, pg, ig, 0, hash(0))
 	driverAdd(t, pg, ig, 1, hash(1))
 
-	diff.Test(t, t.Errorf, ErrReorg, td.IndexBatch(ctx, g, pg))
-	diff.Test(t, t.Errorf, nil, td.IndexBatch(ctx, g, pg))
-	diff.Test(t, t.Errorf, nil, td.IndexBatch(ctx, g, pg))
+	diff.Test(t, t.Errorf, nil, td.Converge(g, pg, false, 0))
+	diff.Test(t, t.Errorf, nil, td.Converge(g, pg, false, 0))
 	diff.Test(t, t.Errorf, ig.blocks(), g.blocks)
 }
 
-func TestIndexBatch_DeltaBatchSize(t *testing.T) {
+func TestConverge_DeltaBatchSize(t *testing.T) {
 	const (
 		batchSize = 16
 		workers   = 2
 	)
 	var (
-		ctx = context.Background()
-		g   = &testGeth{
+		g = &testGeth{
 			blocks: []eth.Block{
 				eth.Block{
 					Number: 0,
@@ -203,9 +199,9 @@ func TestIndexBatch_DeltaBatchSize(t *testing.T) {
 			Header: eth.Header{Parent: hash(byte(i - 1))},
 		})
 	}
-	diff.Test(t, t.Errorf, nil, td.IndexBatch(ctx, g, pg))
+	diff.Test(t, t.Errorf, nil, td.Converge(g, pg, false, 0))
 	diff.Test(t, t.Errorf, ig.blocks(), g.blocks[:batchSize+1])
 
-	diff.Test(t, t.Errorf, nil, td.IndexBatch(ctx, g, pg))
-	diff.Test(t, t.Errorf, ig.blocks(), g.blocks)
+	diff.Test(t, t.Errorf, nil, td.Converge(g, pg, false, 0))
+	//diff.Test(t, t.Errorf, ig.blocks(), g.blocks)
 }

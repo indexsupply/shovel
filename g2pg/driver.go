@@ -8,8 +8,10 @@ import (
 	"time"
 
 	"github.com/indexsupply/x/eth"
+	"github.com/indexsupply/x/txlocker"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/bmizerany/perks/quantile"
 	"golang.org/x/sync/errgroup"
@@ -28,36 +30,31 @@ type PG interface {
 }
 
 type Integration interface {
-	Insert(context.Context, PG, []eth.Block) (int64, error)
-	Delete(context.Context, PG, []byte) error
+	Insert(PG, []eth.Block) (int64, error)
+	Delete(PG, []byte) error
 }
 
-func NewDriver(batchSize, workers uint64, intgs ...Integration) *Driver {
+func NewDriver(batchSize, workers int, intgs ...Integration) *Driver {
 	drv := &Driver{
-		intgs:      intgs,
-		batch:      make([]eth.Block, int(batchSize)),
-		batchSize:  batchSize,
-		workers:    workers,
-		workerSize: batchSize / workers,
+		intgs:     intgs,
+		batch:     make([]eth.Block, batchSize),
+		batchSize: batchSize,
+		workers:   workers,
 		stat: status{
 			tlat:  quantile.NewTargeted(0.50, 0.90, 0.99),
 			glat:  quantile.NewTargeted(0.50, 0.90, 0.99),
 			pglat: quantile.NewTargeted(0.50, 0.90, 0.99),
 		},
 	}
-	for i := 0; i < int(batchSize); i++ {
-		drv.batch[i] = eth.Block{}
-	}
 	return drv
 }
 
 type Driver struct {
-	intgs      []Integration
-	batch      []eth.Block
-	batchSize  uint64
-	workers    uint64
-	workerSize uint64
-	stat       status
+	intgs     []Integration
+	batch     []eth.Block
+	batchSize int
+	workers   int
+	stat      status
 }
 
 type status struct {
@@ -100,17 +97,23 @@ func (d *Driver) Status() StatusSnapshot {
 	return snap
 }
 
-func min(x, y uint64) uint64 {
+func min(x, y int) int {
 	if x < y {
 		return x
 	}
 	return y
 }
 
-func (d *Driver) Latest(ctx context.Context, pg PG) (uint64, [32]byte, error) {
+func (d *Driver) Insert(pg PG, n uint64, h [32]byte) error {
+	const q = `insert into driver (number, hash) values ($1, $2)`
+	_, err := pg.Exec(context.Background(), q, n, h[:])
+	return err
+}
+
+func (d *Driver) Latest(pg PG) (uint64, [32]byte, error) {
 	const q = `SELECT number, hash FROM driver ORDER BY number DESC LIMIT 1`
 	var n, h = uint64(0), []byte{}
-	err := pg.QueryRow(ctx, q).Scan(&n, &h)
+	err := pg.QueryRow(context.Background(), q).Scan(&n, &h)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return n, [32]byte{}, nil
 	}
@@ -120,65 +123,123 @@ func (d *Driver) Latest(ctx context.Context, pg PG) (uint64, [32]byte, error) {
 var (
 	ErrNothingNew = errors.New("no new blocks")
 	ErrReorg      = errors.New("reorg")
+	ErrDone       = errors.New("this is the end")
 )
 
-func (d *Driver) IndexBatch(ctx context.Context, g G, pg PG) error {
-	totalTime := time.Now()
-	localNum, localHash, err := d.Latest(ctx, pg)
-	if err != nil {
-		return fmt.Errorf("getting latest from driver: %w", err)
+// Indexes at most d.batchSize of the delta between min(g, limit) and pg.
+// If pg contains an invalid latest block (ie reorg) then [ErrReorg]
+// is returned and the caller may rollback the transaction resulting
+// in no side-effects.
+func (d *Driver) Converge(g G, pgp *pgxpool.Pool, tx bool, limit uint64) error {
+	var (
+		start       = time.Now()
+		ctx         = context.Background()
+		pg       PG = pgp
+		pgTx     pgx.Tx
+		commit   = func() error { return nil }
+		rollback = func() error { return nil }
+	)
+	for reorgs := 0; reorgs <= 10; {
+		localNum, localHash, err := d.Latest(pg)
+		if err != nil {
+			return fmt.Errorf("getting latest from driver: %w", err)
+		}
+		if limit > 0 && localNum >= limit {
+			return ErrDone
+		}
+		gethNum, gethHash, err := g.Latest()
+		if err != nil {
+			return fmt.Errorf("getting latest from eth: %w", err)
+		}
+		if limit > 0 && gethNum > limit {
+			gethNum = limit
+		}
+		delta := min(int(gethNum-localNum), d.batchSize)
+		if delta <= 0 {
+			return ErrNothingNew
+		}
+		for i := 0; i < delta; i++ {
+			d.batch[i].Number = localNum + 1 + uint64(i)
+		}
+		if tx {
+			pgTx, err = pgp.Begin(ctx)
+			if err != nil {
+				return err
+			}
+			pg = txlocker.NewTx(pgTx)
+			commit = func() error { return pgTx.Commit(ctx) }
+			rollback = func() error { return pgTx.Rollback(ctx) }
+		}
+		switch err := d.writeIndex(localHash, g, pg, delta); {
+		case errors.Is(err, ErrReorg):
+			reorgs++
+			fmt.Printf("reorg. deleting %d %x\n", localNum, localHash[:4])
+			const dq = "delete from driver where hash = $1"
+			_, err := pg.Exec(ctx, dq, localHash[:])
+			if err != nil {
+				return fmt.Errorf("deleting block from driver table: %w", err)
+			}
+			for _, ig := range d.intgs {
+				if err := ig.Delete(pg, localHash[:]); err != nil {
+					return fmt.Errorf("deleting block from integration: %w", err)
+				}
+			}
+		case err != nil:
+			err = errors.Join(rollback(), err)
+			d.stat.err = err
+			return err
+		default:
+			d.stat.enum = gethNum
+			d.stat.ehash = gethHash
+			d.stat.blocks += int64(delta)
+			d.stat.tlat.Insert(float64(time.Since(start)))
+			return commit()
+		}
 	}
-	gethNum, gethHash, err := g.Latest()
-	if err != nil {
-		return fmt.Errorf("getting latest from eth: %w", err)
-	}
-	delta := min(gethNum-localNum, d.batchSize)
-	if delta <= 0 {
-		return ErrNothingNew
-	}
-	for i := uint64(0); i < delta; i++ {
-		d.batch[i].Number = localNum + 1 + i
-	}
-	eg := errgroup.Group{}
-	for i := uint64(0); i < d.workers && i*d.workerSize < delta; i++ {
-		n := i * d.workerSize
-		m := n + d.workerSize
+	return ErrReorg
+}
+
+// Fills in d.batch with block data (headers, bodies, receipts) from
+// geth and then calls Index on the driver's integrations with the block
+// data.
+//
+// Once the block data has been read, it is checked against the parent
+// hash to ensure consistency in the local chain. If the newly read data
+// doesn't match [ErrReorg] is returned.
+//
+// The reading of block data and indexing of integrations happens concurrently
+// with the number of go routines controlled by c.
+func (d *Driver) writeIndex(parent [32]byte, g G, pg PG, delta int) error {
+	var (
+		eg    = errgroup.Group{}
+		wsize = d.batchSize / d.workers
+	)
+	for i := 0; i < d.workers && i*wsize < delta; i++ {
+		n := i * wsize
+		m := n + wsize
 		s := d.batch[n:min(m, delta)]
 		eg.Go(func() error { return g.Blocks(s) })
 	}
 	if err := eg.Wait(); err != nil {
 		return err
 	}
-	if localNum != 0 && d.batch[0].Header.Parent != localHash {
-		fmt.Printf("reorg. deleting: %d %x\n", localNum, localHash[:4])
-		const dq = "delete from driver where hash = $1"
-		_, err := pg.Exec(ctx, dq, localHash[:])
-		if err != nil {
-			return fmt.Errorf("deleting block from driver table: %w", err)
-		}
-		for _, ig := range d.intgs {
-			if err := ig.Delete(ctx, pg, localHash[:]); err != nil {
-				return fmt.Errorf("deleting block from integration: %w", err)
-			}
-		}
+	if parent != d.batch[0].Header.Parent {
+		fmt.Printf("parent: %x batch: %x\n", parent, d.batch[0].Header.Parent)
 		return ErrReorg
 	}
 	eg = errgroup.Group{}
-	for i := uint64(0); i < d.workers && i*d.workerSize < delta; i++ {
-		n := i * d.workerSize
-		m := n + d.workerSize
+	for i := 0; i < d.workers && i*wsize < delta; i++ {
+		n := i * wsize
+		m := n + wsize
 		s := d.batch[n:min(m, delta)]
 		eg.Go(func() error {
 			var igeg errgroup.Group
 			for _, ig := range d.intgs {
 				ig := ig
 				igeg.Go(func() error {
-					count, err := ig.Insert(ctx, pg, s)
-					if err != nil {
-						return fmt.Errorf("integration indexing: %w", err)
-					}
+					count, err := ig.Insert(pg, s)
 					atomic.AddInt64(&d.stat.events, count)
-					return nil
+					return err
 				})
 			}
 			return igeg.Wait()
@@ -187,19 +248,13 @@ func (d *Driver) IndexBatch(ctx context.Context, g G, pg PG) error {
 	if err := eg.Wait(); err != nil {
 		return fmt.Errorf("writing indexed data: %w", err)
 	}
-
 	var last = d.batch[delta-1]
 	const uq = "insert into driver (number, hash) values ($1, $2)"
-	_, err = pg.Exec(ctx, uq, last.Number, last.Hash[:])
+	_, err := pg.Exec(context.Background(), uq, last.Number, last.Hash[:])
 	if err != nil {
 		return fmt.Errorf("updating driver table: %w", err)
 	}
-
-	d.stat.enum = gethNum
-	d.stat.ehash = gethHash
 	d.stat.inum = last.Number
 	d.stat.ihash = last.Hash
-	d.stat.blocks += int64(delta)
-	d.stat.tlat.Insert(float64(time.Since(totalTime)))
 	return nil
 }
