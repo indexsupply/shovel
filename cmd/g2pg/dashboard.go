@@ -10,7 +10,68 @@ import (
 	"github.com/indexsupply/x/g2pg"
 )
 
-func serveDashboard(listen string, snaps <-chan g2pg.StatusSnapshot, drv *g2pg.Driver) {
+type dashHandler struct {
+	drv          *g2pg.Driver
+	clientsMutex sync.Mutex
+	clients      map[string]chan g2pg.StatusSnapshot
+}
+
+func newDashHandler(drv *g2pg.Driver, snaps <-chan g2pg.StatusSnapshot) *dashHandler {
+	dh := &dashHandler{
+		drv:     drv,
+		clients: make(map[string]chan g2pg.StatusSnapshot),
+	}
+	go func() {
+		for {
+			snap := <-snaps
+			for _, c := range dh.clients {
+				c <- snap
+			}
+		}
+	}()
+	return dh
+}
+
+func (dh *dashHandler) Updates(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+
+	fmt.Printf("(%d) opening %s\n", len(dh.clients), r.RemoteAddr)
+	c := make(chan g2pg.StatusSnapshot)
+	dh.clientsMutex.Lock()
+	dh.clients[r.RemoteAddr] = c
+	dh.clientsMutex.Unlock()
+	defer func() {
+		dh.clientsMutex.Lock()
+		delete(dh.clients, r.RemoteAddr)
+		dh.clientsMutex.Unlock()
+		close(c)
+		fmt.Printf("(%d) closing %s\n", len(dh.clients), r.RemoteAddr)
+	}()
+
+	for {
+		var snap g2pg.StatusSnapshot
+		select {
+		case snap = <-c:
+		case <-r.Context().Done():
+			return
+		}
+		sjson, err := json.Marshal(snap)
+		if err != nil {
+			fmt.Printf("error: %v\n", err)
+		}
+		fmt.Fprintf(w, "data: %s\n\n", sjson)
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			http.Error(w, "Streaming unsupported", http.StatusInternalServerError)
+			return
+		}
+		flusher.Flush()
+	}
+}
+
+func (dh *dashHandler) Index(w http.ResponseWriter, r *http.Request) {
 	const dashboardHTML = `
 		<!DOCTYPE html>
 		<html>
@@ -105,67 +166,14 @@ func serveDashboard(listen string, snaps <-chan g2pg.StatusSnapshot, drv *g2pg.D
 			</body>
 		</html>
 	`
-	var (
-		clientsMutex sync.Mutex
-		clients      = make(map[string]chan g2pg.StatusSnapshot)
-	)
-	go func() {
-		for {
-			snap := <-snaps
-			for _, c := range clients {
-				c <- snap
-			}
-		}
-	}()
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		tmpl, err := template.New("dashboard").Parse(dashboardHTML)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		err = tmpl.Execute(w, drv.Status())
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-	})
-	http.HandleFunc("/updates", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/event-stream")
-		w.Header().Set("Cache-Control", "no-cache")
-		w.Header().Set("Connection", "keep-alive")
-
-		fmt.Printf("(%d) opening %s\n", len(clients), r.RemoteAddr)
-		c := make(chan g2pg.StatusSnapshot)
-		clientsMutex.Lock()
-		clients[r.RemoteAddr] = c
-		clientsMutex.Unlock()
-		defer func() {
-			clientsMutex.Lock()
-			delete(clients, r.RemoteAddr)
-			clientsMutex.Unlock()
-			close(c)
-			fmt.Printf("(%d) closing %s\n", len(clients), r.RemoteAddr)
-		}()
-
-		for {
-			var snap g2pg.StatusSnapshot
-			select {
-			case snap = <-c:
-			case <-r.Context().Done():
-				return
-			}
-			sjson, err := json.Marshal(snap)
-			if err != nil {
-				fmt.Printf("error: %v\n", err)
-			}
-			fmt.Fprintf(w, "data: %s\n\n", sjson)
-			flusher, ok := w.(http.Flusher)
-			if !ok {
-				http.Error(w, "Streaming unsupported", http.StatusInternalServerError)
-				return
-			}
-			flusher.Flush()
-		}
-	})
-	http.ListenAndServe(listen, nil)
+	tmpl, err := template.New("dashboard").Parse(dashboardHTML)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	err = tmpl.Execute(w, dh.drv.Status())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 }

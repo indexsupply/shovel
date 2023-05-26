@@ -1,14 +1,14 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	_ "embed"
 	"errors"
 	"flag"
 	"fmt"
-	_ "net/http/pprof"
+	"net/http"
 	"os"
-	"os/exec"
 	"runtime/pprof"
 	"strings"
 	"time"
@@ -66,7 +66,7 @@ func main() {
 
 	if reset {
 		h := pgp.Config().ConnConfig.Host
-		if !(h == "localhost" || h == "/private/tmp") {
+		if !(h == "localhost" || h == "/private/tmp" || h == "/var/run/postgresql") {
 			fmt.Printf("unable to reset non-local db: %s\n", h)
 			os.Exit(1)
 		}
@@ -113,12 +113,20 @@ func main() {
 	}
 
 	var (
-		snaps = make(chan g2pg.StatusSnapshot)
+		pbuf  bytes.Buffer
 		drv   = g2pg.NewDriver(batchSize, workers, running...)
 		g     = gethdb.New(freezerPath, rc)
+		snaps = make(chan g2pg.StatusSnapshot)
+		dh    = newDashHandler(drv, snaps)
 	)
 
-	go serveDashboard(listen, snaps, drv)
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", dh.Index)
+	mux.HandleFunc("/updates", dh.Updates)
+	mux.HandleFunc("/debug/pprof/profile", func(w http.ResponseWriter, r *http.Request) {
+		w.Write(pbuf.Bytes())
+	})
+	go http.ListenAndServe(listen, mux)
 
 	gethNum, gethHash, err := g.Latest()
 	check(err)
@@ -142,11 +150,8 @@ func main() {
 		check(fmt.Errorf("-begin not available for initialized driver"))
 	}
 
-	var cpufile *os.File
 	if profile == "cpu" {
-		cpufile, err = os.CreateTemp("", "g2pg.cpu.*.prof")
-		check(err)
-		check(pprof.StartCPUProfile(cpufile))
+		check(pprof.StartCPUProfile(&pbuf))
 	}
 
 	for {
@@ -174,19 +179,9 @@ func main() {
 	switch profile {
 	case "cpu":
 		pprof.StopCPUProfile()
-		check(cpufile.Close())
-		cpucmd := exec.Command("go", "tool", "pprof", "-http=:", cpufile.Name())
-		cpucmd.Stdout = os.Stdout
-		cpucmd.Stderr = os.Stderr
-		check(cpucmd.Run())
+		select {}
 	case "heap":
-		heapfile, err := os.CreateTemp("", "g2pg.heap.*.prof")
-		check(err)
-		check(pprof.Lookup("heap").WriteTo(heapfile, 0))
-		check(heapfile.Close())
-		heapcmd := exec.Command("go", "tool", "pprof", "-http=:", heapfile.Name())
-		heapcmd.Stdout = os.Stdout
-		heapcmd.Stderr = os.Stderr
-		check(heapcmd.Run())
+		check(pprof.Lookup("heap").WriteTo(&pbuf, 0))
+		select {}
 	}
 }
