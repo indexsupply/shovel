@@ -244,13 +244,13 @@ import (
 	// event inputs from the log's data field into [{{ camel .Name }}]:
 	//	{{ (schema (unindexed .Inputs))}}
 	func Match{{ camel .Name }}(l eth.Log) ({{ camel .Name}}Event, error) {
-		if len(l.Topics) == 0 {
+		if l.Topics.Len() <= 0 {
 			return {{ camel .Name }}Event{}, abi.NoTopics
 		}
-		if len(l.Topics) > 0 && {{ camel .Name }}Signature != l.Topics[0] {
+		if !bytes.Equal({{ camel .Name }}Signature, l.Topics.At(0)) {
 			return {{ camel .Name }}Event{}, abi.SigMismatch
 		}
-		if len(l.Topics[1:]) != {{ camel .Name }}NumIndexed {
+		if l.Topics.Len() - 1 != {{ camel .Name }}NumIndexed {
 			return {{ camel .Name }}Event{}, abi.IndexMismatch
 		}
 		{{ if gt (len (unindexed .Inputs)) 0 -}}
@@ -263,7 +263,7 @@ import (
 			res := {{ camel .Name}}Event{}
 		{{ end -}}
 		{{ range $index, $inp := (indexed .Inputs) -}}
-			res.{{ camel $inp.Name }} = abi.Bytes(l.Topics[{{ add $index  1 }}][:]).{{ itemFunc $inp.Type }}()
+			res.{{ camel $inp.Name }} = abi.Bytes(l.Topics.At({{ add $index  1 }})).{{ itemFunc $inp.Type }}()
 		{{ end -}}
 		return res, nil
 	}

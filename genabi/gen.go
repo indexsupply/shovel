@@ -43,6 +43,7 @@ func imports(descriptors []Descriptor) []string {
 			break
 		}
 	}
+	imports = append(imports, "bytes")
 	imports = append(imports, "github.com/indexsupply/x/eth")
 	imports = append(imports, "github.com/indexsupply/x/abi")
 	imports = append(imports, "github.com/indexsupply/x/abi/schema")
@@ -286,7 +287,7 @@ func schema(fields []Field) string {
 }
 
 func hashLiteral(h [32]byte) string {
-	s := "[32]byte{"
+	s := "[]byte{"
 	for i := range h {
 		s += fmt.Sprintf("0x%x", h[i])
 		if i != len(h) {
