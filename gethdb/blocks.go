@@ -27,9 +27,20 @@ type Handle struct {
 }
 
 func (h Handle) Hash(num uint64) ([32]byte, error) {
-	res, err := h.rc.GetDB1(headerHashKey(num))
+	fmax, err := h.fz.Max("headers")
 	if err != nil {
-		return [32]byte{}, fmt.Errorf("getting block hash: %w", err)
+		return [32]byte{}, fmt.Errorf("loading max freezer: %w", err)
+	}
+	var res []byte
+	switch {
+	case num <= fmax:
+		res, err = h.fz.Read(nil, "headers", num)
+		res = isxhash.Keccak(res)
+	default:
+		res, err = h.rc.GetDB1(headerHashKey(num))
+	}
+	if err != nil {
+		return [32]byte{}, err
 	}
 	return [32]byte(res), nil
 }
