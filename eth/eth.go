@@ -97,21 +97,32 @@ func (rs *Receipts) Insert(i int, b []byte) {
 	}
 }
 
+type Topics struct {
+	d [4][]byte
+	n int
+}
+
+func (ts *Topics) Reset()          { ts.n = 0 }
+func (ts *Topics) Len() int        { return ts.n }
+func (ts *Topics) At(i int) []byte { return ts.d[i] }
+
+func (ts *Topics) Insert(i int, b []byte) {
+	ts.n++
+	ts.d[i] = b
+}
+
 type Log struct {
-	Address [20]byte
-	Topics  [][32]byte
+	Address []byte
+	Topics  Topics
 	Data    []byte
 }
 
 func (l *Log) Unmarshal(input []byte) {
 	iter := rlp.Iter(input)
-	l.Address = [20]byte(iter.Bytes())
-	if cap(l.Topics) != 4 {
-		l.Topics = make([][32]byte, 0, 4)
-	}
-	l.Topics = l.Topics[:0]
+	l.Address = iter.Bytes()
+	l.Topics.Reset()
 	for i, t := 0, rlp.Iter(iter.Bytes()); t.HasNext(); i++ {
-		l.Topics = append(l.Topics, [32]byte(t.Bytes()))
+		l.Topics.Insert(i, t.Bytes())
 	}
 	l.Data = iter.Bytes()
 }
