@@ -153,7 +153,7 @@ func main() {
 	if profile == "cpu" {
 		check(pprof.StartCPUProfile(&pbuf))
 	}
-
+	t0 := time.Now()
 	for {
 		err = drv.Converge(g, pgp, useTx, uint64(end))
 		if err == nil {
@@ -172,6 +172,7 @@ func main() {
 			continue
 		}
 		if errors.Is(err, g2pg.ErrDone) {
+			fmt.Printf("elapsed: %s\n", time.Since(t0))
 			break
 		}
 	}
