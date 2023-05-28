@@ -3,7 +3,7 @@ fz a command for interacting with Geth's freezer files
 
 Commands:
 
-	which [flags]
+	file [flags]
 
 		A sub-command that indicates which data file contains the
 		requested block range.
@@ -29,9 +29,8 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"sort"
 
-	"github.com/indexsupply/x/gethdb"
+	"github.com/indexsupply/x/freezer"
 )
 
 func check(err error) {
@@ -48,42 +47,33 @@ func main() {
 		fpath      string
 	)
 
-	cmdWhich := flag.NewFlagSet("which", flag.ExitOnError)
+	cmdFile := flag.NewFlagSet("file", flag.ExitOnError)
 
-	cmdWhich.StringVar(&fpath, "f", "/storage/geth/geth/chaindata/ancient/chain/", "path to freezer files")
-	cmdWhich.StringVar(&table, "t", "headers", "table ∈ {headers, bodies, receipts}")
-	cmdWhich.Uint64Var(&start, "start", 1, "starting block (inclusive)")
-	cmdWhich.Uint64Var(&end, "end", 1, "ending block (inclusive)")
+	cmdFile.StringVar(&fpath, "f", "/storage/geth/geth/chaindata/ancient/chain/", "path to freezer files")
+	cmdFile.StringVar(&table, "t", "headers", "table ∈ {headers, bodies, receipts}")
+	cmdFile.Uint64Var(&start, "start", 1, "starting block (inclusive)")
+	cmdFile.Uint64Var(&end, "end", 1, "ending block (inclusive)")
 
 	if len(os.Args) < 2 {
 		check(fmt.Errorf(`unknown command. possible commands: 'which'`))
 	}
 
 	switch arg := os.Args[1]; arg {
-	case "which":
-		cmdWhich.Parse(os.Args[2:])
-		which(fpath, table, start, end)
+	case "file":
+		cmdFile.Parse(os.Args[2:])
+		file(fpath, table, start, end)
 	default:
 		check(fmt.Errorf(`unknown command %q. possible commands: 'which'`, arg))
 	}
 }
 
-func which(fpath, table string, start, end uint64) {
-	fz := gethdb.NewFreezer(fpath)
-
-	var m = map[uint16]struct{}{}
+func file(fpath, table string, start, end uint64) {
+	fz := freezer.New(fpath)
 	for i := start; i <= end; i++ {
-		cur, _, nex, _ := fz.FileNum(table, i)
-		m[cur] = struct{}{}
-		m[nex] = struct{}{}
-	}
-
-	var files []int
-	for fn, _ := range m {
-		files = append(files, int(fn))
-	}
-	sort.Ints(files)
-	for _, fn := range files {
-		fmt.Printf("%d\n", fn)
+		f, length, offset, err := fz.File(table, i)
+		check(err)
+		fstat, err := f.Stat()
+		check(err)
+		fmt.Printf("block: %d file: %s length: %d offset: %d\n", i, fstat.Name(), length, offset)
 	}
 }

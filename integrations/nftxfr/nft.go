@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"github.com/indexsupply/x/contrib/erc721"
-	"github.com/indexsupply/x/eth"
 	"github.com/indexsupply/x/g2pg"
 
 	"github.com/jackc/pgx/v5"
@@ -22,14 +21,11 @@ func (i integration) Delete(pg g2pg.PG, h []byte) error {
 	return nil
 }
 
-func (i integration) Insert(pg g2pg.PG, blocks []eth.Block) (int64, error) {
+func (i integration) Insert(pg g2pg.PG, blocks []g2pg.Block) (int64, error) {
 	var rows = make([][]any, 0, 1<<12)
 	for bidx := 0; bidx < len(blocks); bidx++ {
 		for ridx := 0; ridx < blocks[bidx].Receipts.Len(); ridx++ {
-			var (
-				tx = blocks[bidx].Transactions.At(ridx)
-				r  = blocks[bidx].Receipts.At(ridx)
-			)
+			r := blocks[bidx].Receipts.At(ridx)
 			for lidx := 0; lidx < r.Logs.Len(); lidx++ {
 				l := r.Logs.At(lidx)
 				xfr, err := erc721.MatchTransfer(l)
@@ -38,11 +34,11 @@ func (i integration) Insert(pg g2pg.PG, blocks []eth.Block) (int64, error) {
 				}
 				rows = append(rows, []any{
 					blocks[bidx].Header.Number,
-					blocks[bidx].Hash[:],
-					tx.Hash[:],
+					blocks[bidx].Hash,
+					blocks[bidx].Transactions.At(ridx).Hash(),
 					ridx,
 					lidx,
-					l.Address[:],
+					l.Address,
 					xfr.TokenId.String(),
 					xfr.From[:],
 					xfr.To[:],

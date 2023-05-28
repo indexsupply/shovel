@@ -3,12 +3,12 @@ package g2pg
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"sort"
 	"sync"
 	"testing"
 
 	"blake.io/pqx/pqxtest"
-	"github.com/indexsupply/x/eth"
 	"github.com/indexsupply/x/tc"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/stdlib"
@@ -22,17 +22,17 @@ func TestMain(m *testing.M) {
 
 type testIntegration struct {
 	sync.Mutex
-	chain map[[32]byte]eth.Block
+	chain map[string]Block
 }
 
 func newTestIntegration() *testIntegration {
 	return &testIntegration{
-		chain: make(map[[32]byte]eth.Block),
+		chain: make(map[string]Block),
 	}
 }
 
-func (ti *testIntegration) blocks() []eth.Block {
-	var blks []eth.Block
+func (ti *testIntegration) blocks() []Block {
+	var blks []Block
 	for _, b := range ti.chain {
 		blks = append(blks, b)
 	}
@@ -42,11 +42,11 @@ func (ti *testIntegration) blocks() []eth.Block {
 	return blks
 }
 
-func (ti *testIntegration) Insert(_ PG, blocks []eth.Block) (int64, error) {
+func (ti *testIntegration) Insert(_ PG, blocks []Block) (int64, error) {
 	ti.Lock()
 	defer ti.Unlock()
 	for _, b := range blocks {
-		ti.chain[b.Hash] = b
+		ti.chain[fmt.Sprintf("%x", b.Hash)] = b
 	}
 	return int64(len(blocks)), nil
 }
@@ -54,23 +54,27 @@ func (ti *testIntegration) Insert(_ PG, blocks []eth.Block) (int64, error) {
 func (ti *testIntegration) Delete(pg PG, h []byte) error {
 	ti.Lock()
 	defer ti.Unlock()
-	delete(ti.chain, [32]byte(h))
+	delete(ti.chain, fmt.Sprintf("%x", h))
 	return nil
 }
 
 type testGeth struct {
-	blocks []eth.Block
+	blocks []Block
 }
 
-func (tg *testGeth) Latest() (uint64, [32]byte, error) {
+func (tg *testGeth) Hash(_ uint64) ([]byte, error) {
+	return nil, nil
+}
+
+func (tg *testGeth) Latest() (uint64, []byte, error) {
 	if len(tg.blocks) == 0 {
-		return 0, [32]byte{}, nil
+		return 0, nil, nil
 	}
 	b := tg.blocks[len(tg.blocks)-1]
 	return b.Number, b.Hash, nil
 }
 
-func (tg *testGeth) Blocks(blks []eth.Block) error {
+func (tg *testGeth) LoadBlocks(blks []Block) error {
 	for i := range blks {
 		for j := range tg.blocks {
 			if blks[i].Number == tg.blocks[j].Number {
@@ -82,9 +86,10 @@ func (tg *testGeth) Blocks(blks []eth.Block) error {
 	return nil
 }
 
-func hash(b byte) (res [32]byte) {
+func hash(b byte) []byte {
+	res := make([]byte, 32)
 	res[0] = b
-	return
+	return res
 }
 
 func testpg(t *testing.T) *pgxpool.Pool {
@@ -95,12 +100,12 @@ func testpg(t *testing.T) *pgxpool.Pool {
 	return pg
 }
 
-func driverAdd(t *testing.T, pg PG, ig Integration, number uint64, h [32]byte) {
+func driverAdd(t *testing.T, pg PG, ig Integration, number uint64, h []byte) {
 	const q = "insert into driver(number,hash) values ($1, $2)"
-	_, err := pg.Exec(context.Background(), q, number, h[:])
+	_, err := pg.Exec(context.Background(), q, number, h)
 	tc.NoErr(t, err)
-	ig.Insert(pg, []eth.Block{
-		eth.Block{
+	ig.Insert(pg, []Block{
+		Block{
 			Number: number,
 			Hash:   h,
 		},
@@ -111,65 +116,65 @@ func TestConverge_Zero(t *testing.T) {
 	var (
 		g  = &testGeth{}
 		pg = testpg(t)
-		td = NewDriver(1, 1, newTestIntegration())
+		td = NewDriver(1, 1, g, pg, newTestIntegration())
 	)
-	diff.Test(t, t.Errorf, td.Converge(g, pg, false, 0), ErrNothingNew)
+	diff.Test(t, t.Errorf, td.Converge(false, 0), ErrNothingNew)
 }
 
 func TestConverge_EmptyIntegration(t *testing.T) {
 	var (
 		g = &testGeth{
-			blocks: []eth.Block{
-				eth.Block{
+			blocks: []Block{
+				Block{
 					Number: 0,
 					Hash:   hash(0),
 				},
-				eth.Block{
+				Block{
 					Number: 1,
 					Hash:   hash(1),
-					Header: eth.Header{Parent: hash(0)},
+					Header: Header{Parent: hash(0)},
 				},
 			},
 		}
 		pg = testpg(t)
 		ig = newTestIntegration()
-		td = NewDriver(1, 1, ig)
+		td = NewDriver(1, 1, g, pg, ig)
 	)
 	driverAdd(t, pg, ig, 0, hash(0))
-	tc.NoErr(t, td.Converge(g, pg, false, 0))
+	tc.NoErr(t, td.Converge(false, 0))
 	diff.Test(t, t.Errorf, ig.blocks(), g.blocks)
 }
 
 func TestConverge_Reorg(t *testing.T) {
 	var (
 		g = &testGeth{
-			blocks: []eth.Block{
-				eth.Block{
+			blocks: []Block{
+				Block{
 					Number: 0,
 					Hash:   hash(0),
 				},
-				eth.Block{
+				Block{
 					Number: 1,
 					Hash:   hash(2),
-					Header: eth.Header{Parent: hash(0)},
+					Header: Header{Parent: hash(0)},
 				},
-				eth.Block{
+				Block{
 					Number: 2,
 					Hash:   hash(3),
-					Header: eth.Header{Parent: hash(2)},
+					Header: Header{Parent: hash(2)},
 				},
 			},
 		}
 		pg = testpg(t)
 		ig = newTestIntegration()
-		td = NewDriver(1, 1, ig)
+		td = NewDriver(1, 1, g, pg, ig)
 	)
 
 	driverAdd(t, pg, ig, 0, hash(0))
 	driverAdd(t, pg, ig, 1, hash(1))
 
-	diff.Test(t, t.Errorf, nil, td.Converge(g, pg, false, 0))
-	diff.Test(t, t.Errorf, nil, td.Converge(g, pg, false, 0))
+	diff.Test(t, t.Errorf, nil, td.Converge(false, 0))
+	diff.Test(t, t.Errorf, nil, td.Converge(false, 0))
 	diff.Test(t, t.Errorf, ig.blocks(), g.blocks)
 }
 
@@ -180,8 +185,8 @@ func TestConverge_DeltaBatchSize(t *testing.T) {
 	)
 	var (
 		g = &testGeth{
-			blocks: []eth.Block{
-				eth.Block{
+			blocks: []Block{
+				Block{
 					Number: 0,
 					Hash:   hash(0),
 				},
@@ -189,19 +194,19 @@ func TestConverge_DeltaBatchSize(t *testing.T) {
 		}
 		pg = testpg(t)
 		ig = newTestIntegration()
-		td = NewDriver(batchSize, workers, ig)
+		td = NewDriver(batchSize, workers, g, pg, ig)
 	)
 	driverAdd(t, pg, ig, 0, hash(0))
 	for i := uint64(1); i <= batchSize+1; i++ {
-		g.blocks = append(g.blocks, eth.Block{
+		g.blocks = append(g.blocks, Block{
 			Number: i,
 			Hash:   hash(byte(i)),
-			Header: eth.Header{Parent: hash(byte(i - 1))},
+			Header: Header{Parent: hash(byte(i - 1))},
 		})
 	}
-	diff.Test(t, t.Errorf, nil, td.Converge(g, pg, false, 0))
+	diff.Test(t, t.Errorf, nil, td.Converge(false, 0))
 	diff.Test(t, t.Errorf, ig.blocks(), g.blocks[:batchSize+1])
 
-	diff.Test(t, t.Errorf, nil, td.Converge(g, pg, false, 0))
-	//diff.Test(t, t.Errorf, ig.blocks(), g.blocks)
+	diff.Test(t, t.Errorf, nil, td.Converge(false, 0))
+	diff.Test(t, t.Errorf, ig.blocks(), g.blocks)
 }

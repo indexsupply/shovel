@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/indexsupply/x/g2pg"
-	"github.com/indexsupply/x/gethdb"
 	"github.com/indexsupply/x/integrations/nftxfr"
 	"github.com/indexsupply/x/jrpc"
 
@@ -114,8 +113,8 @@ func main() {
 
 	var (
 		pbuf  bytes.Buffer
-		drv   = g2pg.NewDriver(batchSize, workers, running...)
-		g     = gethdb.New(freezerPath, rc)
+		geth  = g2pg.NewGeth(freezerPath, rc)
+		drv   = g2pg.NewDriver(batchSize, workers, geth, pgp, running...)
 		snaps = make(chan g2pg.StatusSnapshot)
 		dh    = newDashHandler(drv, snaps)
 	)
@@ -128,25 +127,25 @@ func main() {
 	})
 	go http.ListenAndServe(listen, mux)
 
-	gethNum, gethHash, err := g.Latest()
+	gethNum, gethHash, err := geth.Latest()
 	check(err)
-	fmt.Printf("geth: %d %x\n", gethNum, gethHash[:4])
-	localNum, localHash, err := drv.Latest(pgp)
+	fmt.Printf("geth: %d %x\n", gethNum, gethHash)
+	localNum, localHash, err := drv.Latest()
 	check(err)
-	fmt.Printf("g2pg: %d %x\n", localNum, localHash[:4])
+	fmt.Printf("g2pg: %d %x\n", localNum, localHash)
 
 	switch {
-	case begin == -1 && localHash != [32]byte{}:
+	case begin == -1 && len(localHash) == 0:
 		break
-	case begin == -1 && localHash == [32]byte{}:
-		h, err := g.Hash(gethNum - 1)
+	case begin == -1 && len(localHash) == 0:
+		h, err := geth.Hash(gethNum - 1)
 		check(err)
-		check(drv.Insert(pgp, gethNum-1, h))
-	case begin != -1 && localHash == [32]byte{}:
-		h, err := g.Hash(uint64(begin) - 1)
+		check(drv.Insert(gethNum-1, h))
+	case begin != -1 && len(localHash) == 0:
+		h, err := geth.Hash(uint64(begin) - 1)
 		check(err)
-		check(drv.Insert(pgp, uint64(begin)-1, h))
-	case begin != -1 && localHash != [32]byte{}:
+		check(drv.Insert(uint64(begin)-1, h))
+	case begin != -1 && len(localHash) != 0:
 		check(fmt.Errorf("-begin not available for initialized driver"))
 	}
 
@@ -155,7 +154,7 @@ func main() {
 	}
 	t0 := time.Now()
 	for {
-		err = drv.Converge(g, pgp, useTx, uint64(end))
+		err = drv.Converge(useTx, uint64(end))
 		if err == nil {
 			go func() {
 				snap := drv.Status()
