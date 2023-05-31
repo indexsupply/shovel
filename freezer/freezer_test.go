@@ -1,4 +1,4 @@
-package gethdb
+package freezer
 
 import (
 	"encoding/binary"
@@ -8,16 +8,15 @@ import (
 	"testing"
 
 	"github.com/golang/snappy"
-	"github.com/indexsupply/x/tc"
 	"kr.dev/diff"
 )
 
 func fappend(t *testing.T, path string, data []byte) {
 	t.Helper()
 	file, err := os.OpenFile(path, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0644)
-	tc.NoErr(t, err)
+	diff.Test(t, t.Fatalf, nil, err)
 	n, err := file.Write(data)
-	tc.NoErr(t, err)
+	diff.Test(t, t.Fatalf, nil, err)
 	if n != len(data) {
 		t.Fatalf("expected to write %d wrote %d", len(data), n)
 	}
@@ -36,7 +35,7 @@ func compress(b []byte) []byte {
 
 func dumpFile(t *testing.T, name string) {
 	b, err := ioutil.ReadFile(name)
-	tc.NoErr(t, err)
+	diff.Test(t, t.Fatalf, nil, err)
 	t.Logf("name: %s\n%x\n", name, b)
 }
 
@@ -58,20 +57,32 @@ func TestRead(t *testing.T) {
 	dumpFile(t, path.Join(dir, "headers.0000.cdat"))
 	dumpFile(t, path.Join(dir, "headers.cidx"))
 
-	frz := &Freezer{
+	fc := &FileCache{
 		dir:   dir,
 		files: map[fname]*os.File{},
 	}
 
-	res, err := frz.Read(nil, "headers", 0)
-	tc.NoErr(t, err)
-	diff.Test(t, t.Errorf, foo, res)
+	f, length, offset, err := fc.File("headers", 0)
+	diff.Test(t, t.Fatalf, nil, err)
+	fstat, err := f.Stat()
+	diff.Test(t, t.Fatalf, nil, err)
+	diff.Test(t, t.Errorf, "headers.0000.cdat", fstat.Name())
+	diff.Test(t, t.Errorf, len(compress(foo)), length)
+	diff.Test(t, t.Errorf, int64(0), offset)
 
-	res, err = frz.Read(nil, "headers", 1)
-	tc.NoErr(t, err)
-	diff.Test(t, t.Errorf, bar, res)
+	f, length, offset, err = fc.File("headers", 1)
+	diff.Test(t, t.Fatalf, nil, err)
+	fstat, err = f.Stat()
+	diff.Test(t, t.Fatalf, nil, err)
+	diff.Test(t, t.Errorf, "headers.0001.cdat", fstat.Name())
+	diff.Test(t, t.Errorf, len(compress(bar)), length)
+	diff.Test(t, t.Errorf, int64(0), offset)
 
-	res, err = frz.Read(nil, "headers", 2)
-	tc.NoErr(t, err)
-	diff.Test(t, t.Errorf, baz, res)
+	f, length, offset, err = fc.File("headers", 2)
+	diff.Test(t, t.Fatalf, nil, err)
+	fstat, err = f.Stat()
+	diff.Test(t, t.Fatalf, nil, err)
+	diff.Test(t, t.Errorf, "headers.0001.cdat", fstat.Name())
+	diff.Test(t, t.Errorf, len(compress(baz)), length)
+	diff.Test(t, t.Errorf, int64(5), offset)
 }

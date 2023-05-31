@@ -7,7 +7,7 @@ import (
 	"bytes"
 	"github.com/indexsupply/x/abi"
 	"github.com/indexsupply/x/abi/schema"
-	"github.com/indexsupply/x/eth"
+	"github.com/indexsupply/x/g2pg"
 	"github.com/indexsupply/x/jrpc"
 	"math/big"
 )
@@ -48,7 +48,7 @@ var (
 // Uses the the following abi schema to decode the un-indexed
 // event inputs from the log's data field into [Approval]:
 //	()
-func MatchApproval(l eth.Log) (ApprovalEvent, error) {
+func MatchApproval(l *g2pg.Log) (ApprovalEvent, error) {
 	if l.Topics.Len() <= 0 {
 		return ApprovalEvent{}, abi.NoTopics
 	}
@@ -108,7 +108,7 @@ var (
 // Uses the the following abi schema to decode the un-indexed
 // event inputs from the log's data field into [ApprovalForAll]:
 //	(bool)
-func MatchApprovalForAll(l eth.Log) (ApprovalForAllEvent, error) {
+func MatchApprovalForAll(l *g2pg.Log) (ApprovalForAllEvent, error) {
 	if l.Topics.Len() <= 0 {
 		return ApprovalForAllEvent{}, abi.NoTopics
 	}
@@ -164,7 +164,7 @@ var (
 // Uses the the following abi schema to decode the un-indexed
 // event inputs from the log's data field into [Transfer]:
 //	()
-func MatchTransfer(l eth.Log) (TransferEvent, error) {
+func MatchTransfer(l *g2pg.Log) (TransferEvent, error) {
 	if l.Topics.Len() <= 0 {
 		return TransferEvent{}, abi.NoTopics
 	}
