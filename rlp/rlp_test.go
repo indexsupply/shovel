@@ -1,6 +1,7 @@
 package rlp
 
 import (
+	"crypto/rand"
 	"encoding/hex"
 	"testing"
 
@@ -138,6 +139,33 @@ func TestDecode_List(t *testing.T) {
 			res = append(res, itr.Bytes())
 		}
 		diff.Test(t, t.Errorf, tc.input, res)
+	}
+}
+
+func rb(n int) []byte {
+	b := make([]byte, n)
+	rand.Read(b)
+	return b
+}
+
+func TestDecode_List_Nested_Long(t *testing.T) {
+	a, b, c, d, e := rb(1<<6), rb(1<<6), rb(1<<6), rb(1<<6), rb(1<<6)
+	input := List(
+		Encode(a),
+		List(Encode(b, c, d)),
+		Encode(e),
+	)
+	for i, it := 0, Iter(input); it.HasNext(); i++ {
+		switch i {
+		case 0:
+			diff.Test(t, t.Errorf, a, it.Bytes())
+		case 1:
+			diff.Test(t, t.Errorf, List(Encode(b, c, d)), it.Bytes())
+		case 2:
+			diff.Test(t, t.Errorf, e, it.Bytes())
+		default:
+			t.Fatal("should only be three items")
+		}
 	}
 }
 

@@ -130,10 +130,10 @@ func (it *Iterator) Bytes() []byte {
 	case b <= list55H:
 		m, n := 1, int(b-list55L)
 		it.i += m + n
-		return data
+		return data[:m+n]
 	default:
 		m, n := decodeLength(list55H, data)
 		it.i += m + n
-		return data
+		return data[:m+n]
 	}
 }
