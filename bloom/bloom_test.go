@@ -4,6 +4,8 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"testing"
+
+	"kr.dev/diff"
 )
 
 func BenchmarkFilterAdd(b *testing.B) {
@@ -52,12 +54,20 @@ func BenchmarkFilterMissing(b *testing.B) {
 
 func TestFilter(t *testing.T) {
 	var data [32]byte
-	_, err := rand.Read(data[:])
-	if err != nil {
-		t.Fatal(err)
-	}
+	data[0] |= 0x07
+	data[1] |= 0xff
+	data[2] |= 0x0f
+	data[3] |= 0xf7
+	data[4] |= 0x07
+	data[5] |= 0xef
+
 	var bf Filter
 	bf.Add(data[:])
+
+	diff.Test(t, t.Errorf, uint8(128), bf[0])
+	diff.Test(t, t.Errorf, uint8(128), bf[1])
+	diff.Test(t, t.Errorf, uint8(128), bf[2])
+
 	if bf.Missing(data[:]) {
 		t.Errorf("expected data to exist in bloom filter")
 	}

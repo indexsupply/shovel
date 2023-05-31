@@ -16,7 +16,7 @@ type Filter [256]byte
 
 // (32) m(x,i) ≡ KEC(x)[i, i + 1] mod 2048
 func m(x []byte, i int) uint16 {
-	return (uint16(x[0])<<8 | uint16(x[1])) & 0x7ff
+	return (uint16(x[i])<<8 | uint16(x[i+1])) & 0x7ff
 }
 
 // returns byte position [0,255] based on m(x,i)
