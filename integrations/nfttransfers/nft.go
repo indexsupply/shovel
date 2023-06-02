@@ -1,4 +1,4 @@
-package nftxfr
+package nfttransfers
 
 import (
 	"context"

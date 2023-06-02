@@ -3,6 +3,7 @@ package g2pg
 import (
 	"bytes"
 	"context"
+	_ "embed"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -25,6 +26,9 @@ import (
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/text/message"
 )
+
+//go:embed schema.sql
+var Schema string
 
 type G interface {
 	LoadBlocks([]Block) error
@@ -572,7 +576,12 @@ type Header struct {
 	sbuf, rbuf []byte
 }
 
+func (h *Header) Hash() []byte {
+	return isxhash.Keccak(h.rbuf)
+}
+
 func (h *Header) Unmarshal(input []byte) {
+	h.rbuf = input
 	for i, itr := 0, rlp.Iter(input); itr.HasNext(); i++ {
 		d := itr.Bytes()
 		switch i {

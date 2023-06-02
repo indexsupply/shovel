@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/indexsupply/x/g2pg"
-	"github.com/indexsupply/x/integrations/nftxfr"
+	"github.com/indexsupply/x/integrations/nfttransfers"
 	"github.com/indexsupply/x/jrpc"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -26,9 +26,6 @@ func check(err error) {
 		os.Exit(1)
 	}
 }
-
-//go:embed schema.sql
-var schema string
 
 func main() {
 	var (
@@ -73,7 +70,7 @@ func main() {
 		check(err)
 		_, err = pgp.Exec(ctx, "create schema public")
 		check(err)
-		for _, q := range strings.Split(schema, ";") {
+		for _, q := range strings.Split(g2pg.Schema, ";") {
 			_, err = pgp.Exec(ctx, q)
 			check(err)
 		}
@@ -92,7 +89,7 @@ func main() {
 
 	var (
 		all = map[string]g2pg.Integration{
-			"nft": nftxfr.Integration,
+			"nft": nfttransfers.Integration,
 		}
 		running []g2pg.Integration
 	)
