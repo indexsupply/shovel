@@ -5,11 +5,14 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/valyala/fastjson"
 )
 
 type Error struct {
@@ -204,4 +207,44 @@ func jbool(b bool) json.RawMessage {
 		return json.RawMessage("true")
 	}
 	return json.RawMessage("false")
+}
+
+func (c Client) Do(p *fastjson.Parser, res [][]byte, req []Request) ([][]byte, error) {
+	if len(res) < len(req) {
+		res = append(res, make([][]byte, len(req)-len(res))...)
+	}
+	reqBody, err := json.Marshal(req)
+	if err != nil {
+		return res, fmt.Errorf("unable to marshal requests into json: %w", err)
+	}
+	hreq, err := http.NewRequest("POST", c.url+"/", bytes.NewReader(reqBody))
+	if err != nil {
+		return res, fmt.Errorf("unable to new request: %w", err)
+	}
+	hreq.Header.Add("content-type", "application/json")
+	hresp, err := c.hc.Do(hreq)
+	if err != nil {
+		return res, fmt.Errorf("unable to do http request: %w", err)
+	}
+	respBody, err := io.ReadAll(hresp.Body)
+	if err != nil {
+		return res, fmt.Errorf("unable to read response body: %w", err)
+	}
+
+	v, err := p.ParseBytes(respBody)
+	if err != nil {
+		return res, fmt.Errorf("unable to parse json body: %w", err)
+	}
+	respArray, err := v.Array()
+	if err != nil {
+		return res, fmt.Errorf("unable to parse array: %w", err)
+	}
+	for i, respObj := range respArray {
+		if respObj.Exists("error") {
+			errObj := respObj.Get("error")
+			return res, fmt.Errorf("error in response: %s", errObj.GetStringBytes("message"))
+		}
+		res[i] = respObj.Get("result").MarshalTo(res[i])
+	}
+	return res, nil
 }
