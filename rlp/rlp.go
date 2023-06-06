@@ -82,7 +82,7 @@ type Iterator struct {
 	i, n int
 }
 
-// Prepaers an [Iterator] so that the caller can iterate through
+// Prepares an [Iterator] so that the caller can iterate through
 // the values by calling [Iterator.Bytes].
 // This function also works for a non-list, single value. Calling
 // [Iterator.Bytes] will return the value.
