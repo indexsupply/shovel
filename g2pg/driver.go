@@ -182,6 +182,8 @@ func (d *Driver) Converge(usetx bool, limit uint64) error {
 		}
 		for i := 0; i < delta; i++ {
 			d.batch[i].Number = localNum + 1 + uint64(i)
+			d.batch[i].Transactions.Reset()
+			d.batch[i].Receipts.Reset()
 		}
 		if usetx {
 			pgTx, err = d.pgp.Begin(ctx)
@@ -407,7 +409,6 @@ func freezerBlocks(fc *freezer.FileCache, dest []Block) error {
 		if err != nil {
 			return fmt.Errorf("unable to read bodies file: %w", err)
 		}
-		dest[i].Transactions.Reset()
 		//rlp contains: [transactions,uncles]
 		for j, it := 0, rlp.Iter(rlp.Bytes(dest[i].Transactions.rbuf)); it.HasNext(); j++ {
 			dest[i].Transactions.Insert(j, it.Bytes())
@@ -423,7 +424,6 @@ func freezerBlocks(fc *freezer.FileCache, dest []Block) error {
 		if err != nil {
 			return fmt.Errorf("unable to read bodies file: %w", err)
 		}
-		dest[i].Receipts.Reset()
 		for j, it := 0, rlp.Iter(dest[i].Receipts.rbuf); it.HasNext(); j++ {
 			dest[i].Receipts.Insert(j, it.Bytes())
 		}
@@ -494,7 +494,6 @@ func dbBlocks(blocks []Block, rpc *jrpc.Client) error {
 	}
 	for i, body := range res {
 		bi := rlp.Iter(body) //block iter contains: [transactions,uncles]
-		blocks[i].Transactions.Reset()
 		for j, r := 0, rlp.Iter(bi.Bytes()); r.HasNext(); j++ {
 			blocks[i].Transactions.Insert(j, r.Bytes())
 		}
@@ -507,7 +506,6 @@ func dbBlocks(blocks []Block, rpc *jrpc.Client) error {
 		return fmt.Errorf("unable to load receipts: %w", err)
 	}
 	for i, rs := range res {
-		blocks[i].Receipts.Reset()
 		for j, r := 0, rlp.Iter(rs); r.HasNext(); j++ {
 			blocks[i].Receipts.Insert(j, r.Bytes())
 		}
@@ -799,14 +797,9 @@ type Transactions struct {
 	sbuf, rbuf []byte
 }
 
+func (txs *Transactions) Reset()                { txs.n = 0 }
 func (txs *Transactions) Len() int              { return txs.n }
 func (txs *Transactions) At(i int) *Transaction { return &txs.d[i] }
-func (txs *Transactions) Reset() {
-	txs.n = 0
-	for i := range txs.d {
-		txs.d[i].hash = nil
-	}
-}
 
 func (txs *Transactions) Insert(i int, b []byte) {
 	txs.n++
@@ -814,6 +807,7 @@ func (txs *Transactions) Insert(i int, b []byte) {
 	case i < len(txs.d):
 		txs.d[i].Unmarshal(b)
 		txs.d[i].rbuf = b
+		txs.d[i].hash = nil // reset hash cache on reuse
 	case len(txs.d) < cap(txs.d):
 		t := Transaction{}
 		t.rbuf = b
