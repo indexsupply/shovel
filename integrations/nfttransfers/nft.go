@@ -3,6 +3,7 @@ package nfttransfers
 import (
 	"context"
 
+	"github.com/indexsupply/x/bloom"
 	"github.com/indexsupply/x/contrib/erc721"
 	"github.com/indexsupply/x/g2pg"
 
@@ -19,6 +20,10 @@ var Integration = integration{
 
 func (i integration) Delete(pg g2pg.PG, h []byte) error {
 	return nil
+}
+
+func (i integration) Skip(bf bloom.Filter) bool {
+	return bf.Missing(erc721.TransferSignatureHash)
 }
 
 func (i integration) Insert(pg g2pg.PG, blocks []g2pg.Block) (int64, error) {

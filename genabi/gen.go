@@ -286,7 +286,7 @@ func schema(fields []Field) string {
 	return s.String()
 }
 
-func hashLiteral(h [32]byte) string {
+func hashLiteral(h []byte) string {
 	s := "[]byte{"
 	for i := range h {
 		s += fmt.Sprintf("0x%x", h[i])
@@ -455,15 +455,17 @@ func Gen(pkgName string, inputFileName string, js []byte) ([]byte, error) {
 		"camel":       camel,
 		"lower":       lower,
 		"hashLiteral": hashLiteral,
-		"keccak":      keccak,
-		"schema":      schema,
-		"goType":      goType,
-		"itemFunc":    itemFunc,
-		"hasTuple":    hasTuple,
-		"isTuple":     isTuple,
-		"isArray":     isArray,
-		"unindexed":   unindexed,
-		"indexed":     indexed,
+		//"keccak":      keccak,
+		"s2b":       func(s string) []byte { return []byte(s) },
+		"keccak":    isxhash.Keccak,
+		"schema":    schema,
+		"goType":    goType,
+		"itemFunc":  itemFunc,
+		"hasTuple":  hasTuple,
+		"isTuple":   isTuple,
+		"isArray":   isArray,
+		"unindexed": unindexed,
+		"indexed":   indexed,
 		"sub": func(x, y int) int {
 			return x - y
 		},
