@@ -629,6 +629,7 @@ func (r *Receipt) Unmarshal(input []byte) {
 	iter := rlp.Iter(input)
 	r.Status = iter.Bytes()
 	r.GasUsed = bint.Decode(iter.Bytes())
+	r.Logs.Reset()
 	for i, l := 0, rlp.Iter(iter.Bytes()); l.HasNext(); i++ {
 		r.Logs.Insert(i, l.Bytes())
 	}
@@ -640,15 +641,9 @@ type Receipts struct {
 	sbuf, rbuf []byte
 }
 
+func (rs *Receipts) Reset()            { rs.n = 0 }
 func (rs *Receipts) Len() int          { return rs.n }
 func (rs *Receipts) At(i int) *Receipt { return &rs.d[i] }
-
-func (rs *Receipts) Reset() {
-	rs.n = 0
-	for i := range rs.d {
-		rs.d[i].Logs.Reset()
-	}
-}
 
 func (rs *Receipts) Insert(i int, b []byte) {
 	rs.n++
@@ -690,6 +685,7 @@ type Log struct {
 func (l *Log) Unmarshal(input []byte) {
 	iter := rlp.Iter(input)
 	l.Address = iter.Bytes()
+	l.Topics.Reset()
 	for i, t := 0, rlp.Iter(iter.Bytes()); t.HasNext(); i++ {
 		l.Topics.Insert(i, t.Bytes())
 	}
@@ -768,15 +764,9 @@ type AccessList struct {
 	n int
 }
 
+func (al *AccessList) Reset()               { al.n = 0 }
 func (al *AccessList) Len() int             { return al.n }
 func (al *AccessList) At(i int) AccessTuple { return al.d[i] }
-
-func (al *AccessList) Reset() {
-	al.n = 0
-	for _, at := range al.d {
-		at.Reset()
-	}
-}
 
 func (al *AccessList) Insert(i int, b []byte) {
 	al.n++
