@@ -1,4 +1,4 @@
-package nfttransfers
+package erc721
 
 import (
 	"context"
@@ -15,7 +15,7 @@ type integration struct {
 }
 
 var Integration = integration{
-	name: "NFT Transfer",
+	name: "ERC721 Transfer",
 }
 
 func (i integration) Delete(pg g2pg.PG, h []byte) error {

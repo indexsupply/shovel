@@ -1,4 +1,4 @@
-package nfttransfers
+package erc721
 
 import (
 	"context"
