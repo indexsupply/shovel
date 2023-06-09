@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/indexsupply/x/g2pg"
+	"github.com/indexsupply/x/integrations/erc1155"
 	"github.com/indexsupply/x/integrations/nfttransfers"
 	"github.com/indexsupply/x/jrpc"
 
@@ -89,7 +90,8 @@ func main() {
 
 	var (
 		all = map[string]g2pg.Integration{
-			"nft": nfttransfers.Integration,
+			"nft":     nfttransfers.Integration,
+			"erc1155": erc1155.Integration,
 		}
 		running []g2pg.Integration
 	)
