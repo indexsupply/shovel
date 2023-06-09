@@ -227,8 +227,9 @@ import (
 	{{ template "struct" structHelper (printf "%sEvent" .Name) .Inputs -}}
 
 	var (
-		{{ camel .Name }}Signature = {{ (hashLiteral (keccak (s2b .InputSignature)))  }}
+		// Pre-compute for efficient bloom filter checks
 		{{ camel .Name }}SignatureHash = {{ (hashLiteral (keccak (keccak (s2b .InputSignature))))  }}
+		{{ camel .Name }}Signature = {{ (hashLiteral (keccak (s2b .InputSignature)))  }}
 		{{ camel .Name }}Schema = schema.Parse("{{ schema (unindexed .Inputs) }}")
 		{{ camel .Name }}NumIndexed = int({{ len (indexed .Inputs) }})
 	)
