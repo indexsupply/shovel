@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"blake.io/pqx/pqxtest"
+	"github.com/indexsupply/x/bloom"
 	"github.com/indexsupply/x/g2pg"
 	"github.com/indexsupply/x/isxhash"
 	"github.com/indexsupply/x/jrpc"
@@ -98,11 +99,19 @@ func (g *testGeth) Hash(n uint64) ([]byte, error) {
 	return isxhash.Keccak(get(g.tb, g.rc, "headers", n)), nil
 }
 
-func (g *testGeth) LoadBlocks(blocks []g2pg.Block) error {
+func (g *testGeth) LoadBlocks(sf g2pg.SkipFunc, blocks []g2pg.Block) error {
+	// TODO(r): I would like to remove this testing implentation
+	// and rely entirely on g2pg's G implementation. To do that,
+	// we will need to layout a freezer index based on the test data
+	// that we download in the get function.
 	for i := range blocks {
 		rlpd := get(g.tb, g.rc, "headers", blocks[i].Number)
 		blocks[i].Header.Unmarshal(rlpd)
 		blocks[i].Hash = isxhash.Keccak(rlpd)
+
+		if sf(bloom.Filter(blocks[i].Header.LogsBloom)) {
+			continue
+		}
 
 		blocks[i].Transactions.Reset()
 		rlpd = get(g.tb, g.rc, "bodies", blocks[i].Number)

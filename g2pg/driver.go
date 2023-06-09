@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/indexsupply/x/bint"
+	"github.com/indexsupply/x/bloom"
 	"github.com/indexsupply/x/freezer"
 	"github.com/indexsupply/x/isxhash"
 	"github.com/indexsupply/x/jrpc"
@@ -30,8 +31,16 @@ import (
 //go:embed schema.sql
 var Schema string
 
+// Integrations can use the block header's logs bloom
+// filter to indicate that the integration will not use
+// the data in the block. If all integrations indicate
+// a "skip" then the driver can skip loading and unmarshaling
+// data. For contracts with few transactions this can lead
+// to a massive decrease in the time it takes to index.
+type SkipFunc func(bloom.Filter) bool
+
 type G interface {
-	LoadBlocks([]Block) error
+	LoadBlocks(SkipFunc, []Block) error
 	Latest() (uint64, []byte, error)
 	Hash(uint64) ([]byte, error)
 }
@@ -45,6 +54,7 @@ type PG interface {
 type Integration interface {
 	Insert(PG, []Block) (int64, error)
 	Delete(PG, []byte) error
+	Skip(bloom.Filter) bool
 }
 
 func NewDriver(
@@ -223,6 +233,15 @@ func (d *Driver) Converge(usetx bool, limit uint64) error {
 	return ErrReorg
 }
 
+func (d *Driver) skip(bf bloom.Filter) bool {
+	for _, ig := range d.intgs {
+		if !ig.Skip(bf) {
+			return false
+		}
+	}
+	return true
+}
+
 // Fills in d.batch with block data (headers, bodies, receipts) from
 // geth and then calls Index on the driver's integrations with the block
 // data.
@@ -242,7 +261,7 @@ func (d *Driver) writeIndex(parent []byte, pg PG, delta int) error {
 		n := i * wsize
 		m := n + wsize
 		s := d.batch[n:min(m, delta)]
-		eg.Go(func() error { return d.geth.LoadBlocks(s) })
+		eg.Go(func() error { return d.geth.LoadBlocks(d.skip, s) })
 	}
 	if err := eg.Wait(); err != nil {
 		return err
@@ -323,7 +342,7 @@ func (g *Geth) Latest() (uint64, []byte, error) {
 	return binary.BigEndian.Uint64(number), hash, nil
 }
 
-func (g *Geth) LoadBlocks(dest []Block) error {
+func (g *Geth) LoadBlocks(sf SkipFunc, dest []Block) error {
 	if len(dest) == 0 {
 		return fmt.Errorf("no blocks to query")
 	}
@@ -334,7 +353,7 @@ func (g *Geth) LoadBlocks(dest []Block) error {
 	var first, last = dest[0], dest[len(dest)-1]
 	switch {
 	case last.Number <= fmax:
-		if err := freezerBlocks(g.fc, dest); err != nil {
+		if err := freezerBlocks(sf, g.fc, dest); err != nil {
 			return fmt.Errorf("loading freezer: %w", err)
 		}
 	case first.Number > fmax:
@@ -349,7 +368,7 @@ func (g *Geth) LoadBlocks(dest []Block) error {
 				break
 			}
 		}
-		if err := freezerBlocks(g.fc, dest[:split]); err != nil {
+		if err := freezerBlocks(sf, g.fc, dest[:split]); err != nil {
 			return fmt.Errorf("loading freezer: %w", err)
 		}
 		if err := dbBlocks(dest[split:], g.rc); err != nil {
@@ -380,7 +399,7 @@ func validate(blocks []Block) error {
 	return nil
 }
 
-func freezerBlocks(fc *freezer.FileCache, dest []Block) error {
+func freezerBlocks(sf SkipFunc, fc *freezer.FileCache, dest []Block) error {
 	for i := range dest {
 		var err error
 		dest[i].Header.sbuf, dest[i].Header.rbuf, err = fread(
@@ -398,6 +417,10 @@ func freezerBlocks(fc *freezer.FileCache, dest []Block) error {
 			return fmt.Errorf("unable to load headers: %w", err)
 		}
 		dest[i].Hash = isxhash.Keccak(dest[i].Header.rbuf)
+
+		if sf(bloom.Filter(dest[i].Header.LogsBloom)) {
+			continue
+		}
 
 		dest[i].Transactions.sbuf, dest[i].Transactions.rbuf, err = fread(
 			fc,
@@ -485,6 +508,7 @@ func dbBlocks(blocks []Block, rpc *jrpc.Client) error {
 		}
 		blocks[i].Header.Unmarshal(h)
 	}
+
 	for i := range blocks {
 		keys[i] = blockKey(blocks[i].Number, blocks[i].Hash)
 	}
@@ -719,6 +743,10 @@ func (sk *StorageKeys) Insert(i int, b []byte) {
 type AccessTuple struct {
 	Address     [20]byte
 	StorageKeys StorageKeys
+}
+
+func (at *AccessTuple) Reset() {
+	at.StorageKeys.Reset()
 }
 
 func (at *AccessTuple) Unmarshal(b []byte) error {

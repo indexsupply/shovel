@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"blake.io/pqx/pqxtest"
+	"github.com/indexsupply/x/bloom"
 	"github.com/indexsupply/x/tc"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/stdlib"
@@ -58,6 +59,10 @@ func (ti *testIntegration) Delete(pg PG, h []byte) error {
 	return nil
 }
 
+func (ti *testIntegration) Skip(_ bloom.Filter) bool {
+	return false
+}
+
 type testGeth struct {
 	blocks []Block
 }
@@ -74,7 +79,7 @@ func (tg *testGeth) Latest() (uint64, []byte, error) {
 	return b.Number, b.Hash, nil
 }
 
-func (tg *testGeth) LoadBlocks(blks []Block) error {
+func (tg *testGeth) LoadBlocks(sf SkipFunc, blks []Block) error {
 	for i := range blks {
 		for j := range tg.blocks {
 			if blks[i].Number == tg.blocks[j].Number {

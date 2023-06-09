@@ -185,7 +185,7 @@ import (
 		{{ template "struct" structHelper (printf "%sResponse" .Name) .Outputs -}}
 	{{ end -}}
 	var (
-		{{ camel .Name }}RequestSignature = {{ (hashLiteral (keccak .InputSignature)) }}
+		{{ camel .Name }}RequestSignature = {{ (hashLiteral (keccak (s2b .InputSignature))) }}
 		{{ camel .Name }}ResponseSchema = schema.Parse("{{ schema .Outputs }}")
 	)
 	{{ if eq .StateMutability "view" -}}
@@ -227,7 +227,9 @@ import (
 	{{ template "struct" structHelper (printf "%sEvent" .Name) .Inputs -}}
 
 	var (
-		{{ camel .Name }}Signature = {{ (hashLiteral (keccak .InputSignature))  }}
+		// Pre-compute for efficient bloom filter checks
+		{{ camel .Name }}SignatureHash = {{ (hashLiteral (keccak (keccak (s2b .InputSignature))))  }}
+		{{ camel .Name }}Signature = {{ (hashLiteral (keccak (s2b .InputSignature)))  }}
 		{{ camel .Name }}Schema = schema.Parse("{{ schema (unindexed .Inputs) }}")
 		{{ camel .Name }}NumIndexed = int({{ len (indexed .Inputs) }})
 	)
@@ -235,7 +237,7 @@ import (
 	// Event Signature:
 	//	{{ .InputSignature }}
 	// Checks the first log topic against the signature hash:
-	//	{{ printf "%x" (keccak .InputSignature) }}
+	//	{{ printf "%x" (keccak (s2b .InputSignature)) }}
 	//
 	// Copies indexed event inputs from the remaining topics
 	// into [{{ camel .Name }}]
