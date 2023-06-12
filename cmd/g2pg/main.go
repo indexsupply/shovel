@@ -135,8 +135,6 @@ func main() {
 
 	switch {
 	case begin == -1 && len(localHash) == 0:
-		break
-	case begin == -1 && len(localHash) == 0:
 		h, err := geth.Hash(gethNum - 1)
 		check(err)
 		check(drv.Insert(gethNum-1, h))
