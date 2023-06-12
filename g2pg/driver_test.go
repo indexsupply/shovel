@@ -8,9 +8,10 @@ import (
 	"sync"
 	"testing"
 
-	"blake.io/pqx/pqxtest"
-	"github.com/indexsupply/x/bloom"
+	"github.com/indexsupply/x/geth"
 	"github.com/indexsupply/x/tc"
+
+	"blake.io/pqx/pqxtest"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/stdlib"
 	"kr.dev/diff"
@@ -38,7 +39,7 @@ func (ti *testIntegration) blocks() []Block {
 		blks = append(blks, b)
 	}
 	sort.Slice(blks, func(i, j int) bool {
-		return blks[i].Number < blks[j].Number
+		return blks[i].Num() < blks[j].Num()
 	})
 	return blks
 }
@@ -47,7 +48,7 @@ func (ti *testIntegration) Insert(_ PG, blocks []Block) (int64, error) {
 	ti.Lock()
 	defer ti.Unlock()
 	for _, b := range blocks {
-		ti.chain[fmt.Sprintf("%x", b.Hash)] = b
+		ti.chain[fmt.Sprintf("%x", b.Hash())] = b
 	}
 	return int64(len(blocks)), nil
 }
@@ -59,8 +60,8 @@ func (ti *testIntegration) Delete(pg PG, h []byte) error {
 	return nil
 }
 
-func (ti *testIntegration) Skip(_ bloom.Filter) bool {
-	return false
+func (ti *testIntegration) Events() [][]byte {
+	return nil
 }
 
 type testGeth struct {
@@ -76,19 +77,28 @@ func (tg *testGeth) Latest() (uint64, []byte, error) {
 		return 0, nil, nil
 	}
 	b := tg.blocks[len(tg.blocks)-1]
-	return b.Number, b.Hash, nil
+	return b.Num(), b.Hash(), nil
 }
 
-func (tg *testGeth) LoadBlocks(sf SkipFunc, blks []Block) error {
-	for i := range blks {
+func (tg *testGeth) LoadBlocks(filter [][]byte, bufs []geth.Buffer, blks []Block) error {
+	for i := range bufs {
 		for j := range tg.blocks {
-			if blks[i].Number == tg.blocks[j].Number {
-				blks[i].Hash = tg.blocks[j].Hash
+			if bufs[i].Number == tg.blocks[j].Num() {
 				blks[i].Header = tg.blocks[j].Header
 			}
 		}
 	}
 	return nil
+}
+
+func (tg *testGeth) add(n uint64, h, p []byte) {
+	tg.blocks = append(tg.blocks, Block{
+		Header: Header{
+			Number: n,
+			Hash:   h,
+			Parent: p,
+		},
+	})
 }
 
 func hash(b byte) []byte {
@@ -105,14 +115,17 @@ func testpg(t *testing.T) *pgxpool.Pool {
 	return pg
 }
 
-func driverAdd(t *testing.T, pg PG, ig Integration, number uint64, h []byte) {
+func driverAdd(t *testing.T, pg PG, ig Integration, n uint64, h, p []byte) {
 	const q = "insert into driver(number,hash) values ($1, $2)"
-	_, err := pg.Exec(context.Background(), q, number, h)
+	_, err := pg.Exec(context.Background(), q, n, h)
 	tc.NoErr(t, err)
 	ig.Insert(pg, []Block{
 		Block{
-			Number: number,
-			Hash:   h,
+			Header: Header{
+				Number: n,
+				Hash:   h,
+				Parent: p,
+			},
 		},
 	})
 }
@@ -128,59 +141,37 @@ func TestConverge_Zero(t *testing.T) {
 
 func TestConverge_EmptyIntegration(t *testing.T) {
 	var (
-		g = &testGeth{
-			blocks: []Block{
-				Block{
-					Number: 0,
-					Hash:   hash(0),
-				},
-				Block{
-					Number: 1,
-					Hash:   hash(1),
-					Header: Header{Parent: hash(0)},
-				},
-			},
-		}
 		pg = testpg(t)
+		tg = &testGeth{}
 		ig = newTestIntegration()
-		td = NewDriver(1, 1, g, pg, ig)
+		td = NewDriver(1, 1, tg, pg, ig)
 	)
-	driverAdd(t, pg, ig, 0, hash(0))
-	tc.NoErr(t, td.Converge(false, 0))
-	diff.Test(t, t.Errorf, ig.blocks(), g.blocks)
+
+	tg.add(0, hash(0), hash(0))
+	tg.add(1, hash(1), hash(0))
+	driverAdd(t, pg, ig, 0, hash(0), hash(0))
+
+	diff.Test(t, t.Fatalf, td.Converge(false, 0), nil)
+	diff.Test(t, t.Errorf, ig.blocks(), tg.blocks)
 }
 
 func TestConverge_Reorg(t *testing.T) {
 	var (
-		g = &testGeth{
-			blocks: []Block{
-				Block{
-					Number: 0,
-					Hash:   hash(0),
-				},
-				Block{
-					Number: 1,
-					Hash:   hash(2),
-					Header: Header{Parent: hash(0)},
-				},
-				Block{
-					Number: 2,
-					Hash:   hash(3),
-					Header: Header{Parent: hash(2)},
-				},
-			},
-		}
 		pg = testpg(t)
+		tg = &testGeth{}
 		ig = newTestIntegration()
-		td = NewDriver(1, 1, g, pg, ig)
+		td = NewDriver(1, 1, tg, pg, ig)
 	)
 
-	driverAdd(t, pg, ig, 0, hash(0))
-	driverAdd(t, pg, ig, 1, hash(1))
+	tg.add(0, hash(0), hash(0))
+	tg.add(1, hash(2), hash(0))
+	tg.add(2, hash(3), hash(2))
+	driverAdd(t, pg, ig, 0, hash(0), hash(0))
+	driverAdd(t, pg, ig, 1, hash(1), hash(0))
 
-	diff.Test(t, t.Errorf, nil, td.Converge(false, 0))
-	diff.Test(t, t.Errorf, nil, td.Converge(false, 0))
-	diff.Test(t, t.Errorf, ig.blocks(), g.blocks)
+	diff.Test(t, t.Fatalf, td.Converge(false, 0), nil)
+	diff.Test(t, t.Fatalf, td.Converge(false, 0), nil)
+	diff.Test(t, t.Errorf, ig.blocks(), tg.blocks)
 }
 
 func TestConverge_DeltaBatchSize(t *testing.T) {
@@ -189,29 +180,22 @@ func TestConverge_DeltaBatchSize(t *testing.T) {
 		workers   = 2
 	)
 	var (
-		g = &testGeth{
-			blocks: []Block{
-				Block{
-					Number: 0,
-					Hash:   hash(0),
-				},
-			},
-		}
 		pg = testpg(t)
+		tg = &testGeth{}
 		ig = newTestIntegration()
-		td = NewDriver(batchSize, workers, g, pg, ig)
+		td = NewDriver(batchSize, workers, tg, pg, ig)
 	)
-	driverAdd(t, pg, ig, 0, hash(0))
+
+	tg.add(0, hash(0), hash(0))
+	driverAdd(t, pg, ig, 0, hash(0), hash(0))
+
 	for i := uint64(1); i <= batchSize+1; i++ {
-		g.blocks = append(g.blocks, Block{
-			Number: i,
-			Hash:   hash(byte(i)),
-			Header: Header{Parent: hash(byte(i - 1))},
-		})
+		tg.add(i, hash(byte(i)), hash(byte(i-1)))
 	}
-	diff.Test(t, t.Errorf, nil, td.Converge(false, 0))
-	diff.Test(t, t.Errorf, ig.blocks(), g.blocks[:batchSize+1])
 
 	diff.Test(t, t.Errorf, nil, td.Converge(false, 0))
-	diff.Test(t, t.Errorf, ig.blocks(), g.blocks)
+	diff.Test(t, t.Errorf, ig.blocks(), tg.blocks[:batchSize+1])
+
+	diff.Test(t, t.Errorf, nil, td.Converge(false, 0))
+	diff.Test(t, t.Errorf, ig.blocks(), tg.blocks)
 }

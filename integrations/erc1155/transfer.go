@@ -3,7 +3,6 @@ package erc1155
 import (
 	"context"
 
-	"github.com/indexsupply/x/bloom"
 	erc1155abi "github.com/indexsupply/x/contrib/erc1155"
 	"github.com/indexsupply/x/g2pg"
 
@@ -22,9 +21,11 @@ func (i integration) Delete(pg g2pg.PG, h []byte) error {
 	return nil
 }
 
-func (i integration) Skip(bf bloom.Filter) bool {
-	return bf.Missing(erc1155abi.TransferBatchSignatureHash) &&
-		bf.Missing(erc1155abi.TransferSingleSignatureHash)
+func (i integration) Events() [][]byte {
+	return [][]byte{
+		erc1155abi.TransferBatchSignatureHash,
+		erc1155abi.TransferSingleSignatureHash,
+	}
 }
 
 func (i integration) Insert(pg g2pg.PG, blocks []g2pg.Block) (int64, error) {
@@ -44,8 +45,8 @@ func (i integration) Insert(pg g2pg.PG, blocks []g2pg.Block) (int64, error) {
 					}
 					for i := 0; i < len(xfrb.Ids); i++ {
 						rows = append(rows, []any{
-							blocks[bidx].Header.Number,
-							blocks[bidx].Hash,
+							blocks[bidx].Num(),
+							blocks[bidx].Hash(),
 							t.Hash(),
 							ridx,
 							lidx,
@@ -59,8 +60,8 @@ func (i integration) Insert(pg g2pg.PG, blocks []g2pg.Block) (int64, error) {
 					xfrb.Done()
 				case errs == nil:
 					rows = append(rows, []any{
-						blocks[bidx].Header.Number,
-						blocks[bidx].Hash,
+						blocks[bidx].Num(),
+						blocks[bidx].Hash(),
 						t.Hash(),
 						ridx,
 						lidx,

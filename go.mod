@@ -10,7 +10,6 @@ require (
 	github.com/holiman/uint256 v1.2.1
 	github.com/jackc/pgx/v5 v5.3.1
 	github.com/kr/pretty v0.3.1
-	github.com/valyala/fastjson v1.6.4
 	golang.org/x/crypto v0.6.0
 	golang.org/x/net v0.6.0
 	golang.org/x/sync v0.1.0

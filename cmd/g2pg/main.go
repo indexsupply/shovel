@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/indexsupply/x/freezer"
 	"github.com/indexsupply/x/g2pg"
 	"github.com/indexsupply/x/integrations/erc1155"
 	"github.com/indexsupply/x/integrations/erc721"
@@ -49,8 +50,8 @@ func main() {
 	flag.StringVar(&rpcURL, "r", "http://zeus:8545", "address or socket for rpc server")
 	flag.StringVar(&intgs, "i", "all", "list of integrations")
 	flag.StringVar(&listen, "l", ":8546", "dashboard server listen address")
-	flag.IntVar(&workers, "w", 1<<6, "number of concurrent workers")
-	flag.IntVar(&batchSize, "b", 1<<11, "batch size")
+	flag.IntVar(&workers, "w", 2, "number of concurrent workers")
+	flag.IntVar(&batchSize, "b", 32, "batch size")
 	flag.BoolVar(&useTx, "t", false, "use pg tx")
 	flag.BoolVar(&reset, "reset", false, "drop public schame")
 	flag.IntVar(&begin, "begin", -1, "starting block. -1 starts at latest")
@@ -77,17 +78,6 @@ func main() {
 		}
 	}
 
-	var rc *jrpc.Client
-	switch {
-	case strings.HasPrefix(rpcURL, "http"):
-		rc, err = jrpc.New(jrpc.WithHTTP(rpcURL))
-		check(err)
-	default:
-		const defaultSocketPath = "/storage/geth/geth.ipc"
-		rc, err = jrpc.New(jrpc.WithSocket(defaultSocketPath))
-		check(err)
-	}
-
 	var (
 		all = map[string]g2pg.Integration{
 			"erc721":  erc721.Integration,
@@ -110,9 +100,20 @@ func main() {
 		}
 	}
 
+	var rc *jrpc.Client
+	switch {
+	case strings.HasPrefix(rpcURL, "http"):
+		rc, err = jrpc.New(jrpc.WithHTTP(rpcURL))
+		check(err)
+	default:
+		const defaultSocketPath = "/storage/geth/geth.ipc"
+		rc, err = jrpc.New(jrpc.WithSocket(defaultSocketPath))
+		check(err)
+	}
+
 	var (
 		pbuf  bytes.Buffer
-		geth  = g2pg.NewGeth(freezerPath, rc)
+		geth  = g2pg.NewGeth(freezer.New(freezerPath), rc)
 		drv   = g2pg.NewDriver(batchSize, workers, geth, pgp, running...)
 		snaps = make(chan g2pg.StatusSnapshot)
 		dh    = newDashHandler(drv, snaps)
@@ -129,7 +130,7 @@ func main() {
 	gethNum, gethHash, err := geth.Latest()
 	check(err)
 	fmt.Printf("geth: %d %x\n", gethNum, gethHash)
-	localNum, localHash, err := drv.Latest()
+	localNum, localHash, err := g2pg.Latest(pgp)
 	check(err)
 	fmt.Printf("g2pg: %d %x\n", localNum, localHash)
 
@@ -137,11 +138,11 @@ func main() {
 	case begin == -1 && len(localHash) == 0:
 		h, err := geth.Hash(gethNum - 1)
 		check(err)
-		check(drv.Insert(gethNum-1, h))
+		check(g2pg.Insert(pgp, gethNum-1, h))
 	case begin != -1 && len(localHash) == 0:
 		h, err := geth.Hash(uint64(begin) - 1)
 		check(err)
-		check(drv.Insert(uint64(begin)-1, h))
+		check(g2pg.Insert(pgp, uint64(begin)-1, h))
 	case begin != -1 && len(localHash) != 0:
 		check(fmt.Errorf("-begin not available for initialized driver"))
 	}
@@ -170,6 +171,9 @@ func main() {
 		if errors.Is(err, g2pg.ErrDone) {
 			fmt.Printf("elapsed: %s\n", time.Since(t0))
 			break
+		}
+		if err != nil {
+			fmt.Printf("error: %s\n", err)
 		}
 	}
 

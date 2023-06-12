@@ -57,32 +57,23 @@ func TestRead(t *testing.T) {
 	dumpFile(t, path.Join(dir, "headers.0000.cdat"))
 	dumpFile(t, path.Join(dir, "headers.cidx"))
 
-	fc := &FileCache{
+	fc := &fileCache{
 		dir:   dir,
 		files: map[fname]*os.File{},
 	}
 
-	f, length, offset, err := fc.File("headers", 0)
+	_, length, offset, err := fc.File("headers", 0)
 	diff.Test(t, t.Fatalf, nil, err)
-	fstat, err := f.Stat()
-	diff.Test(t, t.Fatalf, nil, err)
-	diff.Test(t, t.Errorf, "headers.0000.cdat", fstat.Name())
 	diff.Test(t, t.Errorf, len(compress(foo)), length)
 	diff.Test(t, t.Errorf, int64(0), offset)
 
-	f, length, offset, err = fc.File("headers", 1)
+	_, length, offset, err = fc.File("headers", 1)
 	diff.Test(t, t.Fatalf, nil, err)
-	fstat, err = f.Stat()
-	diff.Test(t, t.Fatalf, nil, err)
-	diff.Test(t, t.Errorf, "headers.0001.cdat", fstat.Name())
 	diff.Test(t, t.Errorf, len(compress(bar)), length)
 	diff.Test(t, t.Errorf, int64(0), offset)
 
-	f, length, offset, err = fc.File("headers", 2)
+	_, length, offset, err = fc.File("headers", 2)
 	diff.Test(t, t.Fatalf, nil, err)
-	fstat, err = f.Stat()
-	diff.Test(t, t.Fatalf, nil, err)
-	diff.Test(t, t.Errorf, "headers.0001.cdat", fstat.Name())
 	diff.Test(t, t.Errorf, len(compress(baz)), length)
 	diff.Test(t, t.Errorf, int64(5), offset)
 }

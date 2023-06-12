@@ -1,7 +1,6 @@
 package erc721
 
 import (
-	"context"
 	"database/sql"
 	"testing"
 
@@ -18,10 +17,9 @@ func TestMain(m *testing.M) {
 }
 
 func TestTransfer(t *testing.T) {
-	var (
-		ctx = context.Background()
-		th  = testhelper.New(t)
-	)
+	th := testhelper.New(t)
+	defer th.Done()
+
 	cases := []struct {
 		blockNum uint64
 		query    string
@@ -53,6 +51,6 @@ func TestTransfer(t *testing.T) {
 		th.Reset()
 		th.Process(Integration, tc.blockNum)
 		var found bool
-		diff.Test(t, t.Errorf, nil, th.DB.QueryRow(ctx, tc.query).Scan(&found))
+		diff.Test(t, t.Errorf, nil, th.PG.QueryRow(th.Context(), tc.query).Scan(&found))
 	}
 }
