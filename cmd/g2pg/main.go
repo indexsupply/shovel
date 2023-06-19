@@ -18,6 +18,7 @@ import (
 	"github.com/indexsupply/x/integrations/erc1155"
 	"github.com/indexsupply/x/integrations/erc721"
 	"github.com/indexsupply/x/jrpc"
+	"github.com/indexsupply/x/rlps"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -35,6 +36,7 @@ func main() {
 		freezerPath string
 		pgURL       string
 		rpcURL      string
+		rlpsURL     string
 		intgs       string
 		listen      string
 		workers     int
@@ -48,6 +50,7 @@ func main() {
 	flag.StringVar(&freezerPath, "f", "/storage/geth/geth/chaindata/ancient/chain/", "path to freezer files")
 	flag.StringVar(&pgURL, "pg", "postgres:///g2pg", "postgres url")
 	flag.StringVar(&rpcURL, "r", "http://zeus:8545", "address or socket for rpc server")
+	flag.StringVar(&rlpsURL, "rlps", "", "use rlps for reading blockchain data")
 	flag.StringVar(&intgs, "i", "all", "list of integrations")
 	flag.StringVar(&listen, "l", ":8546", "dashboard server listen address")
 	flag.IntVar(&workers, "w", 2, "number of concurrent workers")
@@ -111,9 +114,16 @@ func main() {
 		check(err)
 	}
 
+	var geth g2pg.G
+	switch {
+	case rlpsURL != "":
+		geth = rlps.NewClient(rlpsURL)
+	default:
+		geth = g2pg.NewGeth(freezer.New(freezerPath), rc)
+	}
+
 	var (
 		pbuf  bytes.Buffer
-		geth  = g2pg.NewGeth(freezer.New(freezerPath), rc)
 		drv   = g2pg.NewDriver(batchSize, workers, geth, pgp, running...)
 		snaps = make(chan g2pg.StatusSnapshot)
 		dh    = newDashHandler(drv, snaps)
