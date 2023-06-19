@@ -4,6 +4,7 @@ go 1.20
 
 require (
 	blake.io/pqx v0.2.1
+	github.com/aws/aws-sdk-go v1.44.285
 	github.com/bmizerany/perks v0.0.0-20230307044200-03f9df79da1e
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.1.0
 	github.com/golang/snappy v0.0.4
@@ -22,6 +23,7 @@ require (
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20221227161230-091c0ba34f0a // indirect
 	github.com/jackc/puddle/v2 v2.2.0 // indirect
+	github.com/jmespath/go-jmespath v0.4.0 // indirect
 	github.com/kr/text v0.2.0 // indirect
 	github.com/pkg/diff v0.0.0-20210226163009-20ebb0f2a09e // indirect
 	github.com/rogpeppe/go-internal v1.9.0 // indirect

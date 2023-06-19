@@ -1,0 +1,28 @@
+name: go
+on:
+  push:
+    branches: [main]
+jobs:
+  release:
+    name: go run ./cmd/release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+      - uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+      - uses: ./.github/actions/release
+        id: go-run-release
+        with:
+          cmd: 'g2pg'
+          dist: ${{ secrets.AWS_DISTRIBUTION_ID }}
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: 'us-west-2'

@@ -1,0 +1,16 @@
+name: 'go-run-release'
+description: 'Runs cmd/release'
+inputs:
+  cmd:
+    description: 'which command to build'
+    required: true
+    default: ''
+  dist:
+    description: 'which cloudfront distribution to invalidate'
+    required: true
+    default: ''
+runs:
+  using: "composite"
+  steps:
+    - run: go run ./cmd/release -dir ${{runner.temp}} -cmd ${{inputs.cmd}} -dist ${{inputs.dist}}
+      shell: bash
