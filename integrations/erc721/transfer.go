@@ -3,7 +3,6 @@ package erc721
 import (
 	"context"
 
-	"github.com/indexsupply/x/bloom"
 	"github.com/indexsupply/x/contrib/erc721"
 	"github.com/indexsupply/x/g2pg"
 
@@ -22,8 +21,8 @@ func (i integration) Delete(pg g2pg.PG, h []byte) error {
 	return nil
 }
 
-func (i integration) Skip(bf bloom.Filter) bool {
-	return bf.Missing(erc721.TransferSignatureHash)
+func (i integration) Events() [][]byte {
+	return [][]byte{erc721.TransferSignatureHash}
 }
 
 func (i integration) Insert(pg g2pg.PG, blocks []g2pg.Block) (int64, error) {
@@ -38,8 +37,8 @@ func (i integration) Insert(pg g2pg.PG, blocks []g2pg.Block) (int64, error) {
 					continue
 				}
 				rows = append(rows, []any{
-					blocks[bidx].Header.Number,
-					blocks[bidx].Hash,
+					blocks[bidx].Num(),
+					blocks[bidx].Hash(),
 					blocks[bidx].Transactions.At(ridx).Hash(),
 					ridx,
 					lidx,

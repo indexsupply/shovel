@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	_ "embed"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"sync/atomic"
@@ -13,13 +12,13 @@ import (
 	"github.com/indexsupply/x/bint"
 	"github.com/indexsupply/x/bloom"
 	"github.com/indexsupply/x/freezer"
+	"github.com/indexsupply/x/geth"
 	"github.com/indexsupply/x/isxhash"
 	"github.com/indexsupply/x/jrpc"
 	"github.com/indexsupply/x/rlp"
 	"github.com/indexsupply/x/txlocker"
 
 	"github.com/bmizerany/perks/quantile"
-	"github.com/golang/snappy"
 	"github.com/holiman/uint256"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -31,16 +30,8 @@ import (
 //go:embed schema.sql
 var Schema string
 
-// Integrations can use the block header's logs bloom
-// filter to indicate that the integration will not use
-// the data in the block. If all integrations indicate
-// a "skip" then the driver can skip loading and unmarshaling
-// data. For contracts with few transactions this can lead
-// to a massive decrease in the time it takes to index.
-type SkipFunc func(bloom.Filter) bool
-
 type G interface {
-	LoadBlocks(SkipFunc, []Block) error
+	LoadBlocks([][]byte, []geth.Buffer, []Block) error
 	Latest() (uint64, []byte, error)
 	Hash(uint64) ([]byte, error)
 }
@@ -54,23 +45,36 @@ type PG interface {
 type Integration interface {
 	Insert(PG, []Block) (int64, error)
 	Delete(PG, []byte) error
-	Skip(bloom.Filter) bool
+	Events() [][]byte
 }
 
 func NewDriver(
 	batchSize int,
 	workers int,
-	geth G,
+	g G,
 	pgp *pgxpool.Pool,
 	intgs ...Integration,
 ) *Driver {
+	var filter [][]byte
+	for i := range intgs {
+		e := intgs[i].Events()
+		// if one integration has no filter
+		// then the driver must consider all data
+		if len(e) == 0 {
+			filter = filter[:0]
+			break
+		}
+		filter = append(filter, e...)
+	}
 	return &Driver{
 		batch:     make([]Block, batchSize),
+		buffs:     make([]geth.Buffer, batchSize),
 		batchSize: batchSize,
 		workers:   workers,
-		geth:      geth,
+		geth:      g,
 		pgp:       pgp,
 		intgs:     intgs,
+		filter:    filter,
 		stat: status{
 			tlat:  quantile.NewTargeted(0.50, 0.90, 0.99),
 			glat:  quantile.NewTargeted(0.50, 0.90, 0.99),
@@ -81,7 +85,9 @@ func NewDriver(
 
 type Driver struct {
 	intgs     []Integration
+	filter    [][]byte
 	batch     []Block
+	buffs     []geth.Buffer
 	batchSize int
 	workers   int
 	stat      status
@@ -136,16 +142,16 @@ func min(x, y int) int {
 	return y
 }
 
-func (d *Driver) Insert(n uint64, h []byte) error {
+func Insert(pg PG, n uint64, h []byte) error {
 	const q = `insert into driver (number, hash) values ($1, $2)`
-	_, err := d.pgp.Exec(context.Background(), q, n, h)
+	_, err := pg.Exec(context.Background(), q, n, h)
 	return err
 }
 
-func (d *Driver) Latest() (uint64, []byte, error) {
+func Latest(pg PG) (uint64, []byte, error) {
 	const q = `SELECT number, hash FROM driver ORDER BY number DESC LIMIT 1`
 	var n, h = uint64(0), []byte{}
-	err := d.pgp.QueryRow(context.Background(), q).Scan(&n, &h)
+	err := pg.QueryRow(context.Background(), q).Scan(&n, &h)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return n, nil, nil
 	}
@@ -164,6 +170,7 @@ var (
 // in no side-effects.
 func (d *Driver) Converge(usetx bool, limit uint64) error {
 	var (
+		err      error
 		start       = time.Now()
 		ctx         = context.Background()
 		pg       PG = d.pgp
@@ -171,8 +178,18 @@ func (d *Driver) Converge(usetx bool, limit uint64) error {
 		commit   = func() error { return nil }
 		rollback = func() error { return nil }
 	)
+	if usetx {
+		pgTx, err = d.pgp.Begin(ctx)
+		if err != nil {
+			return err
+		}
+		pg = txlocker.NewTx(pgTx)
+		commit = func() error { return pgTx.Commit(ctx) }
+		rollback = func() error { return pgTx.Rollback(ctx) }
+		defer rollback()
+	}
 	for reorgs := 0; reorgs <= 10; {
-		localNum, localHash, err := d.Latest()
+		localNum, localHash, err := Latest(pg)
 		if err != nil {
 			return fmt.Errorf("getting latest from driver: %w", err)
 		}
@@ -191,23 +208,14 @@ func (d *Driver) Converge(usetx bool, limit uint64) error {
 			return ErrNothingNew
 		}
 		for i := 0; i < delta; i++ {
-			d.batch[i].Number = localNum + 1 + uint64(i)
+			d.buffs[i].Number = localNum + 1 + uint64(i)
 			d.batch[i].Transactions.Reset()
 			d.batch[i].Receipts.Reset()
-		}
-		if usetx {
-			pgTx, err = d.pgp.Begin(ctx)
-			if err != nil {
-				return err
-			}
-			pg = txlocker.NewTx(pgTx)
-			commit = func() error { return pgTx.Commit(ctx) }
-			rollback = func() error { return pgTx.Rollback(ctx) }
 		}
 		switch err := d.writeIndex(localHash, pg, delta); {
 		case errors.Is(err, ErrReorg):
 			reorgs++
-			fmt.Printf("reorg. deleting %d %x\n", localNum, localHash[:4])
+			fmt.Printf("reorg. deleting %d %x\n", localNum, localHash)
 			const dq = "delete from driver where hash = $1"
 			_, err := pg.Exec(ctx, dq, localHash)
 			if err != nil {
@@ -230,12 +238,15 @@ func (d *Driver) Converge(usetx bool, limit uint64) error {
 			return commit()
 		}
 	}
-	return ErrReorg
+	return errors.Join(ErrReorg, rollback())
 }
 
 func (d *Driver) skip(bf bloom.Filter) bool {
-	for _, ig := range d.intgs {
-		if !ig.Skip(bf) {
+	if len(d.filter) == 0 {
+		return false
+	}
+	for _, sig := range d.filter {
+		if !bf.Missing(sig) {
 			return false
 		}
 	}
@@ -252,7 +263,7 @@ func (d *Driver) skip(bf bloom.Filter) bool {
 //
 // The reading of block data and indexing of integrations happens concurrently
 // with the number of go routines controlled by c.
-func (d *Driver) writeIndex(parent []byte, pg PG, delta int) error {
+func (d *Driver) writeIndex(localHash []byte, pg PG, delta int) error {
 	var (
 		eg    = errgroup.Group{}
 		wsize = d.batchSize / d.workers
@@ -260,27 +271,37 @@ func (d *Driver) writeIndex(parent []byte, pg PG, delta int) error {
 	for i := 0; i < d.workers && i*wsize < delta; i++ {
 		n := i * wsize
 		m := n + wsize
-		s := d.batch[n:min(m, delta)]
-		eg.Go(func() error { return d.geth.LoadBlocks(d.skip, s) })
+		bfs := d.buffs[n:min(m, delta)]
+		blks := d.batch[n:min(m, delta)]
+		if len(blks) == 0 {
+			continue
+		}
+		eg.Go(func() error { return d.geth.LoadBlocks(d.filter, bfs, blks) })
 	}
 	if err := eg.Wait(); err != nil {
 		return err
 	}
-	if !bytes.Equal(parent, d.batch[0].Header.Parent) {
-		fmt.Printf("parent: %x batch: %x\n", parent, d.batch[0].Header.Parent)
+	if len(d.batch[0].Header.Parent) != 32 {
+		return fmt.Errorf("corrupt parent: %x\n", d.batch[0].Header.Parent)
+	}
+	if !bytes.Equal(localHash, d.batch[0].Header.Parent) {
+		fmt.Printf("local: %x new: %x\n", localHash, d.batch[0].Header.Parent)
 		return ErrReorg
 	}
 	eg = errgroup.Group{}
 	for i := 0; i < d.workers && i*wsize < delta; i++ {
 		n := i * wsize
 		m := n + wsize
-		s := d.batch[n:min(m, delta)]
+		blks := d.batch[n:min(m, delta)]
+		if len(blks) == 0 {
+			continue
+		}
 		eg.Go(func() error {
 			var igeg errgroup.Group
 			for _, ig := range d.intgs {
 				ig := ig
 				igeg.Go(func() error {
-					count, err := ig.Insert(pg, s)
+					count, err := ig.Insert(pg, blks)
 					atomic.AddInt64(&d.stat.events, count)
 					return err
 				})
@@ -293,91 +314,68 @@ func (d *Driver) writeIndex(parent []byte, pg PG, delta int) error {
 	}
 	var last = d.batch[delta-1]
 	const uq = "insert into driver (number, hash) values ($1, $2)"
-	_, err := pg.Exec(context.Background(), uq, last.Number, last.Hash[:])
+	_, err := pg.Exec(context.Background(), uq, last.Num(), last.Hash())
 	if err != nil {
 		return fmt.Errorf("updating driver table: %w", err)
 	}
-	d.stat.inum = last.Number
-	d.stat.ihash = last.Hash
+	d.stat.inum = last.Num()
+	d.stat.ihash = last.Hash()
 	return nil
 }
 
-func NewGeth(fpath string, rc *jrpc.Client) *Geth {
-	return &Geth{
-		fc: freezer.New(fpath),
-		rc: rc,
-	}
+func NewGeth(fc freezer.FileCache, rc *jrpc.Client) *Geth {
+	return &Geth{fc: fc, rc: rc}
 }
 
 type Geth struct {
-	fc *freezer.FileCache
+	fc freezer.FileCache
 	rc *jrpc.Client
 }
 
 func (g *Geth) Hash(num uint64) ([]byte, error) {
-	fmax, err := g.fc.Max("headers")
-	if err != nil {
-		return nil, fmt.Errorf("loading max freezer: %w", err)
-	}
-	var res []byte
-	switch {
-	case num <= fmax:
-		_, res, err = fread(g.fc, "headers", num, nil, nil)
-		res = isxhash.Keccak(res)
-	default:
-		res, err = g.rc.GetDB1(headerHashKey(num))
-	}
-	return res, err
+	return geth.Hash(num, g.fc, g.rc)
 }
 
 func (g *Geth) Latest() (uint64, []byte, error) {
-	hash, err := g.rc.GetDB1([]byte("LastBlock"))
+	n, h, err := geth.Latest(g.rc)
 	if err != nil {
 		return 0, nil, fmt.Errorf("getting last block hash: %w", err)
 	}
-	number, err := g.rc.GetDB1(append([]byte("H"), hash...))
-	if err != nil {
-		return 0, nil, fmt.Errorf("getting last block hash: %w", err)
-	}
-	return binary.BigEndian.Uint64(number), hash, nil
+	return bint.Uint64(n), h, nil
 }
 
-func (g *Geth) LoadBlocks(sf SkipFunc, dest []Block) error {
-	if len(dest) == 0 {
-		return fmt.Errorf("no blocks to query")
+func Skip(filter [][]byte, bf bloom.Filter) bool {
+	if len(filter) == 0 {
+		return false
 	}
-	fmax, err := g.fc.Max("headers")
+	for i := range filter {
+		if !bf.Missing(filter[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+func (g *Geth) LoadBlocks(filter [][]byte, bfs []geth.Buffer, blks []Block) error {
+	err := geth.Load(filter, bfs, g.fc, g.rc)
 	if err != nil {
-		return fmt.Errorf("loading max freezer: %w", err)
+		return fmt.Errorf("loading data: %w", err)
 	}
-	var first, last = dest[0], dest[len(dest)-1]
-	switch {
-	case last.Number <= fmax:
-		if err := freezerBlocks(sf, g.fc, dest); err != nil {
-			return fmt.Errorf("loading freezer: %w", err)
+	for i := range blks {
+		blks[i].Header.Unmarshal(bfs[i].Header())
+		if Skip(filter, bloom.Filter(blks[i].Header.LogsBloom)) {
+			continue
 		}
-	case first.Number > fmax:
-		if err := dbBlocks(dest, g.rc); err != nil {
-			return fmt.Errorf("loading db: %w", err)
+		//rlp contains: [transactions,uncles]
+		txs := rlp.Bytes(bfs[i].Bodies())
+		for j, it := 0, rlp.Iter(txs); it.HasNext(); j++ {
+			blks[i].Transactions.Insert(j, it.Bytes())
 		}
-	case first.Number <= fmax:
-		var split int
-		for i, b := range dest {
-			if b.Number == fmax+1 {
-				split = i
-				break
-			}
+		for j, it := 0, rlp.Iter(bfs[i].Receipts()); it.HasNext(); j++ {
+			blks[i].Receipts.Insert(j, it.Bytes())
 		}
-		if err := freezerBlocks(sf, g.fc, dest[:split]); err != nil {
-			return fmt.Errorf("loading freezer: %w", err)
-		}
-		if err := dbBlocks(dest[split:], g.rc); err != nil {
-			return fmt.Errorf("loading db: %w", err)
-		}
-	default:
-		panic("corrupt blocks query")
 	}
-	return validate(dest)
+	return validate(blks)
 }
 
 func validate(blocks []Block) error {
@@ -386,196 +384,37 @@ func validate(blocks []Block) error {
 	}
 	for i := 1; i < len(blocks); i++ {
 		prev, curr := blocks[i-1], blocks[i]
-		if !bytes.Equal(curr.Header.Parent, prev.Hash) {
-			return fmt.Errorf(
-				"invalid batch: %d %x != %d %x",
-				prev.Number,
-				prev.Hash[:4],
-				curr.Number,
-				curr.Header.Parent[:4],
-			)
+		if !bytes.Equal(curr.Header.Parent, prev.Hash()) {
+			return fmt.Errorf("invalid batch. prev=%s curr=%s", prev, curr)
 		}
 	}
 	return nil
-}
-
-func freezerBlocks(sf SkipFunc, fc *freezer.FileCache, dest []Block) error {
-	for i := range dest {
-		var err error
-		dest[i].Header.sbuf, dest[i].Header.rbuf, err = fread(
-			fc,
-			"headers",
-			dest[i].Number,
-			dest[i].Header.sbuf,
-			dest[i].Header.rbuf,
-		)
-		if err != nil {
-			return fmt.Errorf("unable to read header file: %w", err)
-		}
-		dest[i].Header.Unmarshal(dest[i].Header.rbuf)
-		if err != nil {
-			return fmt.Errorf("unable to load headers: %w", err)
-		}
-		dest[i].Hash = isxhash.Keccak(dest[i].Header.rbuf)
-
-		if sf(bloom.Filter(dest[i].Header.LogsBloom)) {
-			continue
-		}
-
-		dest[i].Transactions.sbuf, dest[i].Transactions.rbuf, err = fread(
-			fc,
-			"bodies",
-			dest[i].Number,
-			dest[i].Transactions.sbuf,
-			dest[i].Transactions.rbuf,
-		)
-		if err != nil {
-			return fmt.Errorf("unable to read bodies file: %w", err)
-		}
-		//rlp contains: [transactions,uncles]
-		for j, it := 0, rlp.Iter(rlp.Bytes(dest[i].Transactions.rbuf)); it.HasNext(); j++ {
-			dest[i].Transactions.Insert(j, it.Bytes())
-		}
-
-		dest[i].Receipts.sbuf, dest[i].Receipts.rbuf, err = fread(
-			fc,
-			"receipts",
-			dest[i].Number,
-			dest[i].Receipts.sbuf,
-			dest[i].Receipts.rbuf,
-		)
-		if err != nil {
-			return fmt.Errorf("unable to read bodies file: %w", err)
-		}
-		for j, it := 0, rlp.Iter(dest[i].Receipts.rbuf); it.HasNext(); j++ {
-			dest[i].Receipts.Insert(j, it.Bytes())
-		}
-	}
-	return nil
-}
-
-func grow(s []byte, n int) []byte {
-	if len(s) < n {
-		s = append(s, make([]byte, n-len(s))...)
-	}
-	return s
-}
-
-func fread(fc *freezer.FileCache, table string, n uint64, sb, rb []byte) ([]byte, []byte, error) {
-	f, length, offset, err := fc.File(table, n)
-	if err != nil {
-		return nil, nil, fmt.Errorf("getting file to read: %w", err)
-	}
-	sb = grow(sb, length)
-	nread, err := f.ReadAt(sb[:length], offset)
-	if err != nil {
-		return nil, nil, fmt.Errorf("reading file: %w", err)
-	}
-	if nread != length {
-		return nil, nil, fmt.Errorf("readat mismatch want: %d got: %d", length, nread)
-	}
-	slen, err := snappy.DecodedLen(sb[:length])
-	if err != nil {
-		return nil, nil, fmt.Errorf("reading snappy length: %w", err)
-	}
-	rb = grow(rb, slen)
-	rb, err = snappy.Decode(rb, sb[:length])
-	return sb, rb, err
-}
-
-func dbBlocks(blocks []Block, rpc *jrpc.Client) error {
-	keys := make([][]byte, len(blocks))
-	for i := range blocks {
-		keys[i] = headerHashKey(blocks[i].Number)
-	}
-	res, err := rpc.GetDB(keys)
-	if err != nil {
-		return fmt.Errorf("getting hashes: %w", err)
-	}
-	for i := 0; i < len(res); i++ {
-		blocks[i].Hash = res[i]
-	}
-	for i := range blocks {
-		keys[i] = headerKey(blocks[i].Number, blocks[i].Hash)
-	}
-	res, err = rpc.GetDB(keys)
-	if err != nil {
-		return fmt.Errorf("unable to load headers: %w", err)
-	}
-	for i, h := range res {
-		if !bytes.Equal(blocks[i].Hash, isxhash.Keccak(h)) {
-			return fmt.Errorf("block hash mismatch")
-		}
-		blocks[i].Header.Unmarshal(h)
-	}
-
-	for i := range blocks {
-		keys[i] = blockKey(blocks[i].Number, blocks[i].Hash)
-	}
-	res, err = rpc.GetDB(keys)
-	if err != nil {
-		return fmt.Errorf("unable to load bodies: %w", err)
-	}
-	for i, body := range res {
-		bi := rlp.Iter(body) //block iter contains: [transactions,uncles]
-		for j, r := 0, rlp.Iter(bi.Bytes()); r.HasNext(); j++ {
-			blocks[i].Transactions.Insert(j, r.Bytes())
-		}
-	}
-	for i := range blocks {
-		keys[i] = receiptsKey(blocks[i].Number, blocks[i].Hash)
-	}
-	res, err = rpc.GetDB(keys)
-	if err != nil {
-		return fmt.Errorf("unable to load receipts: %w", err)
-	}
-	for i, rs := range res {
-		for j, r := 0, rlp.Iter(rs); r.HasNext(); j++ {
-			blocks[i].Receipts.Insert(j, r.Bytes())
-		}
-	}
-	return nil
-}
-
-func headerHashKey(num uint64) (key []byte) {
-	key = append(key, 'h')
-	key = append(key, binary.BigEndian.AppendUint64([]byte{}, num)...)
-	key = append(key, 'n')
-	return
-}
-
-func headerKey(num uint64, hash []byte) (key []byte) {
-	key = append(key, 'h')
-	key = append(key, binary.BigEndian.AppendUint64([]byte{}, num)...)
-	key = append(key, hash...)
-	return
-}
-
-func blockKey(num uint64, hash []byte) (key []byte) {
-	key = append(key, 'b')
-	key = append(key, binary.BigEndian.AppendUint64([]byte{}, num)...)
-	key = append(key, hash...)
-	return
-}
-
-func receiptsKey(num uint64, hash []byte) (key []byte) {
-	key = append(key, 'r')
-	key = append(key, binary.BigEndian.AppendUint64([]byte{}, num)...)
-	key = append(key, hash...)
-	return
 }
 
 type Block struct {
-	Number uint64 // dup
-	Hash   []byte // cache
-
 	Header       Header
 	Transactions Transactions
 	Receipts     Receipts
 	Uncles       []Header
 }
 
+func (b Block) Num() uint64  { return b.Header.Number }
+func (b Block) Hash() []byte { return b.Header.Hash }
+
+func (b Block) String() string {
+	sp := b.Header.Parent
+	if len(sp) > 4 {
+		sp = sp[:4]
+	}
+	sh := b.Header.Hash
+	if len(sh) > 4 {
+		sh = sh[:4]
+	}
+	return fmt.Sprintf("{%d %x %x}", b.Header.Number, sp, sh)
+}
+
 type Header struct {
+	Hash        []byte
 	Parent      []byte
 	Uncle       []byte
 	Coinbase    []byte
@@ -594,16 +433,10 @@ type Header struct {
 	BaseFee     []byte
 	Withdraw    []byte
 	ExcessData  []byte
-
-	sbuf, rbuf []byte
-}
-
-func (h *Header) Hash() []byte {
-	return isxhash.Keccak(h.rbuf)
 }
 
 func (h *Header) Unmarshal(input []byte) {
-	h.rbuf = input
+	h.Hash = isxhash.Keccak(input)
 	for i, itr := 0, rlp.Iter(input); itr.HasNext(); i++ {
 		d := itr.Bytes()
 		switch i {
@@ -636,9 +469,8 @@ func (r *Receipt) Unmarshal(input []byte) {
 }
 
 type Receipts struct {
-	d          []Receipt
-	n          int
-	sbuf, rbuf []byte
+	d []Receipt
+	n int
 }
 
 func (rs *Receipts) Reset()            { rs.n = 0 }
@@ -820,9 +652,8 @@ func (t *Transaction) Hash() []byte {
 }
 
 type Transactions struct {
-	d          []Transaction
-	n          int
-	sbuf, rbuf []byte
+	d []Transaction
+	n int
 }
 
 func (txs *Transactions) Reset()                { txs.n = 0 }

@@ -5,14 +5,11 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/valyala/fastjson"
 )
 
 type Error struct {
@@ -75,7 +72,7 @@ func New(opts ...Option) (*Client, error) {
 	return c, nil
 }
 
-func (c Client) request(req []Request, dest []any) error {
+func (c Client) Request(req []Request, dest []any) error {
 	var resp = []Response{}
 	switch {
 	case c.ipc != nil:
@@ -122,7 +119,7 @@ func (c Client) request(req []Request, dest []any) error {
 }
 
 func (c Client) request1(req Request, dest any) error {
-	return c.request([]Request{req}, []any{dest})
+	return c.Request([]Request{req}, []any{dest})
 }
 
 func (c Client) EthCall(contract [20]byte, data []byte) ([]byte, error) {
@@ -151,45 +148,6 @@ func (c Client) EthCall(contract [20]byte, data []byte) ([]byte, error) {
 	return res, nil
 }
 
-func (c Client) GetDB(keys [][]byte) ([][]byte, error) {
-	var (
-		requests  = make([]Request, len(keys))
-		responses = make([]any, len(keys))
-		values    = make([]string, len(keys))
-		result    = make([][]byte, len(keys))
-	)
-	for i := range keys {
-		requests[i] = Request{
-			Version: "2.0",
-			ID:      fmt.Sprintf("%d", i),
-			Method:  "debug_dbGet",
-			Params:  []json.RawMessage{jbytes(keys[i])},
-		}
-		responses[i] = &values[i]
-	}
-	err := c.request(requests, responses)
-	if err != nil {
-		return nil, fmt.Errorf("requesting debug_dbGet: %w", err)
-	}
-	for i := range responses {
-		str := *responses[i].(*string)
-		b, err := hex.DecodeString(str[2:])
-		if err != nil {
-			return nil, fmt.Errorf("hex decode debug_dbGet resp: %w", err)
-		}
-		result[i] = b
-	}
-	return result, nil
-}
-
-func (c Client) GetDB1(key []byte) ([]byte, error) {
-	res, err := c.GetDB([][]byte{key})
-	if err != nil {
-		return nil, err
-	}
-	return res[0], nil
-}
-
 func jbytes(b []byte) json.RawMessage {
 	return json.RawMessage(fmt.Sprintf(`"0x%s"`, hex.EncodeToString(b)))
 }
@@ -209,42 +167,48 @@ func jbool(b bool) json.RawMessage {
 	return json.RawMessage("false")
 }
 
-func (c Client) Do(p *fastjson.Parser, res [][]byte, req []Request) ([][]byte, error) {
-	if len(res) < len(req) {
-		res = append(res, make([][]byte, len(req)-len(res))...)
-	}
-	reqBody, err := json.Marshal(req)
-	if err != nil {
-		return res, fmt.Errorf("unable to marshal requests into json: %w", err)
-	}
-	hreq, err := http.NewRequest("POST", c.url+"/", bytes.NewReader(reqBody))
-	if err != nil {
-		return res, fmt.Errorf("unable to new request: %w", err)
-	}
-	hreq.Header.Add("content-type", "application/json")
-	hresp, err := c.hc.Do(hreq)
-	if err != nil {
-		return res, fmt.Errorf("unable to do http request: %w", err)
-	}
-	respBody, err := io.ReadAll(hresp.Body)
-	if err != nil {
-		return res, fmt.Errorf("unable to read response body: %w", err)
-	}
+type HexBytes []byte
 
-	v, err := p.ParseBytes(respBody)
+func (b HexBytes) MarshalJSON() ([]byte, error) {
+	return json.Marshal(hex.EncodeToString(b))
+}
+
+func (b *HexBytes) UnmarshalJSON(data []byte) error {
+	var s string
+	err := json.Unmarshal(data, &s)
 	if err != nil {
-		return res, fmt.Errorf("unable to parse json body: %w", err)
+		return err
 	}
-	respArray, err := v.Array()
-	if err != nil {
-		return res, fmt.Errorf("unable to parse array: %w", err)
+	if len(s) < 2 || s[0] != '0' || (s[0] == 'x' || s[1] == 'X') {
+		return fmt.Errorf("expected 0x prefix on hex string")
 	}
-	for i, respObj := range respArray {
-		if respObj.Exists("error") {
-			errObj := respObj.Get("error")
-			return res, fmt.Errorf("error in response: %s", errObj.GetStringBytes("message"))
+	*b, err = hex.DecodeString(s[2:])
+	return err
+}
+
+func (c Client) Get(dst []HexBytes, keys [][]byte) error {
+	requests := make([]Request, len(keys))
+	for i := range keys {
+		requests[i] = Request{
+			Version: "2.0",
+			ID:      "1",
+			Method:  "debug_dbGet",
+			Params:  []json.RawMessage{jbytes(keys[i])},
 		}
-		res[i] = respObj.Get("result").MarshalTo(res[i])
 	}
-	return res, nil
+	// https://go.dev/doc/faq#convert_slice_of_interface
+	tmp := make([]any, len(dst))
+	for i := range dst {
+		tmp[i] = &dst[i]
+	}
+	return c.Request(requests, tmp)
+}
+
+func (c Client) Get1(key []byte) ([]byte, error) {
+	res := make([]HexBytes, 1)
+	err := c.Get(res, [][]byte{key})
+	if err != nil {
+		return nil, err
+	}
+	return res[0], nil
 }

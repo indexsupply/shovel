@@ -3,6 +3,7 @@ package freezer
 import (
 	"encoding/binary"
 	"fmt"
+	"io"
 	"os"
 	"path"
 	"sync"
@@ -21,7 +22,13 @@ func (fn fname) String() string {
 	return fmt.Sprintf("%s.%04d.%s", fn.name, fn.num, fn.ext)
 }
 
-type FileCache struct {
+type FileCache interface {
+	File(string, uint64) (*os.File, int, int64, error)
+	ReaderAt(string, uint64) (io.ReaderAt, int, int64, error)
+	Max(string) (uint64, error)
+}
+
+type fileCache struct {
 	dir string
 
 	// formatting strings can be expensive
@@ -31,14 +38,14 @@ type FileCache struct {
 	files map[fname]*os.File
 }
 
-func New(dir string) *FileCache {
-	return &FileCache{
+func New(dir string) FileCache {
+	return &fileCache{
 		dir:   dir,
 		files: make(map[fname]*os.File),
 	}
 }
 
-func (fc *FileCache) open(fn fname) (*os.File, error) {
+func (fc *fileCache) open(fn fname) (*os.File, error) {
 	fc.RLock()
 	f, ok := fc.files[fn]
 	if ok {
@@ -58,7 +65,7 @@ func (fc *FileCache) open(fn fname) (*os.File, error) {
 
 // Returns the highest block number in the freezer
 // Max(...) + 1 can be found in Geth's LevelDB
-func (fc *FileCache) Max(table string) (uint64, error) {
+func (fc *fileCache) Max(table string) (uint64, error) {
 	f, err := fc.open(fname{name: table, num: -1, ext: "cidx"})
 	if err != nil {
 		return 0, err
@@ -70,7 +77,11 @@ func (fc *FileCache) Max(table string) (uint64, error) {
 	return uint64(s.Size()/6) - 2, nil
 }
 
-func (fc *FileCache) File(table string, blockNum uint64) (*os.File, int, int64, error) {
+func (fc *fileCache) ReaderAt(table string, blockNum uint64) (io.ReaderAt, int, int64, error) {
+	return fc.File(table, blockNum)
+}
+
+func (fc *fileCache) File(table string, blockNum uint64) (*os.File, int, int64, error) {
 	idx, err := fc.open(fname{name: table, num: -1, ext: "cidx"})
 	if err != nil {
 		return nil, 0, 0, err
