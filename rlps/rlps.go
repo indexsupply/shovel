@@ -180,7 +180,7 @@ func (s *Server) Index(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		fmt.Fprintf(w, "error: %s\n", err)
 	}
-	fmt.Fprintf(w, "%d %x\n", bint.Uint64(num), hash)
+	fmt.Fprintf(w, "%d %x\n%s\n", bint.Uint64(num), hash, doc)
 }
 
 func (s *Server) Blocks(w http.ResponseWriter, r *http.Request) {
@@ -277,3 +277,16 @@ func short(h []byte) []byte {
 	}
 	return h
 }
+
+const doc = `
+API:
+
+-> https://rlps.indexsupply.net/latest
+<- rlp([uint64, uint8[32]])
+
+- https://rlps.indexsupply.net/hash?n=XXX
+<- uint8[32]
+
+- https://rlps.indexsupply.net/blocks?n=XXX&limit=YYY&z=ZZZ
+<- rlp([[header, bodies, receipts], ..., [header, bodies, receipts]])
+`
