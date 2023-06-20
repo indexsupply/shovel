@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/indexsupply/x/contrib/erc721"
-	"github.com/indexsupply/x/g2pg"
+	"github.com/indexsupply/x/e2pg"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -17,7 +17,7 @@ var Integration = integration{
 	name: "ERC721 Transfer",
 }
 
-func (i integration) Delete(pg g2pg.PG, h []byte) error {
+func (i integration) Delete(pg e2pg.PG, h []byte) error {
 	return nil
 }
 
@@ -25,7 +25,7 @@ func (i integration) Events() [][]byte {
 	return [][]byte{erc721.TransferSignatureHash}
 }
 
-func (i integration) Insert(pg g2pg.PG, blocks []g2pg.Block) (int64, error) {
+func (i integration) Insert(pg e2pg.PG, blocks []e2pg.Block) (int64, error) {
 	var rows = make([][]any, 0, 1<<12)
 	for bidx := 0; bidx < len(blocks); bidx++ {
 		for ridx := 0; ridx < blocks[bidx].Receipts.Len(); ridx++ {

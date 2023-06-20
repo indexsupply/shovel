@@ -14,8 +14,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/indexsupply/x/e2pg"
 	"github.com/indexsupply/x/freezer"
-	"github.com/indexsupply/x/g2pg"
 	"github.com/indexsupply/x/integrations/erc1155"
 	"github.com/indexsupply/x/integrations/erc721"
 	"github.com/indexsupply/x/jrpc"
@@ -50,7 +50,7 @@ func main() {
 	)
 
 	flag.StringVar(&freezerPath, "f", "/storage/geth/geth/chaindata/ancient/chain/", "path to freezer files")
-	flag.StringVar(&pgURL, "pg", "postgres:///g2pg", "postgres url")
+	flag.StringVar(&pgURL, "pg", "postgres:///e2pg", "postgres url")
 	flag.StringVar(&rpcURL, "r", "http://zeus:8545", "address or socket for rpc server")
 	flag.StringVar(&rlpsURL, "rlps", "", "use rlps for reading blockchain data")
 	flag.StringVar(&intgs, "i", "all", "list of integrations")
@@ -83,18 +83,18 @@ func main() {
 		check(err)
 		_, err = pgp.Exec(ctx, "create schema public")
 		check(err)
-		for _, q := range strings.Split(g2pg.Schema, ";") {
+		for _, q := range strings.Split(e2pg.Schema, ";") {
 			_, err = pgp.Exec(ctx, q)
 			check(err)
 		}
 	}
 
 	var (
-		all = map[string]g2pg.Integration{
+		all = map[string]e2pg.Integration{
 			"erc721":  erc721.Integration,
 			"erc1155": erc1155.Integration,
 		}
-		running []g2pg.Integration
+		running []e2pg.Integration
 	)
 	switch {
 	case intgs == "all":
@@ -122,18 +122,18 @@ func main() {
 		check(err)
 	}
 
-	var geth g2pg.G
+	var node e2pg.Node
 	switch {
 	case rlpsURL != "":
-		geth = rlps.NewClient(rlpsURL)
+		node = rlps.NewClient(rlpsURL)
 	default:
-		geth = g2pg.NewGeth(freezer.New(freezerPath), rc)
+		node = e2pg.NewGeth(freezer.New(freezerPath), rc)
 	}
 
 	var (
 		pbuf  bytes.Buffer
-		drv   = g2pg.NewDriver(batchSize, workers, geth, pgp, running...)
-		snaps = make(chan g2pg.StatusSnapshot)
+		drv   = e2pg.NewDriver(batchSize, workers, node, pgp, running...)
+		snaps = make(chan e2pg.StatusSnapshot)
 		dh    = newDashHandler(drv, snaps)
 	)
 
@@ -145,22 +145,22 @@ func main() {
 	})
 	go http.ListenAndServe(listen, mux)
 
-	gethNum, gethHash, err := geth.Latest()
+	gethNum, gethHash, err := node.Latest()
 	check(err)
-	fmt.Printf("geth: %d %x\n", gethNum, gethHash)
-	localNum, localHash, err := g2pg.Latest(pgp)
+	fmt.Printf("node: %d %x\n", gethNum, gethHash)
+	localNum, localHash, err := e2pg.Latest(pgp)
 	check(err)
-	fmt.Printf("g2pg: %d %x\n", localNum, localHash)
+	fmt.Printf("e2pg: %d %x\n", localNum, localHash)
 
 	switch {
 	case begin == -1 && len(localHash) == 0:
-		h, err := geth.Hash(gethNum - 1)
+		h, err := node.Hash(gethNum - 1)
 		check(err)
-		check(g2pg.Insert(pgp, gethNum-1, h))
+		check(e2pg.Insert(pgp, gethNum-1, h))
 	case begin != -1 && len(localHash) == 0:
-		h, err := geth.Hash(uint64(begin) - 1)
+		h, err := node.Hash(uint64(begin) - 1)
 		check(err)
-		check(g2pg.Insert(pgp, uint64(begin)-1, h))
+		check(e2pg.Insert(pgp, uint64(begin)-1, h))
 	case begin != -1 && len(localHash) != 0:
 		check(fmt.Errorf("-begin not available for initialized driver"))
 	}
@@ -182,11 +182,11 @@ func main() {
 			}()
 			continue
 		}
-		if errors.Is(err, g2pg.ErrNothingNew) {
+		if errors.Is(err, e2pg.ErrNothingNew) {
 			time.Sleep(time.Second)
 			continue
 		}
-		if errors.Is(err, g2pg.ErrDone) {
+		if errors.Is(err, e2pg.ErrDone) {
 			fmt.Printf("elapsed: %s\n", time.Since(t0))
 			break
 		}

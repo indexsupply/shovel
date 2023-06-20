@@ -7,19 +7,19 @@ import (
 	"sync"
 	"text/template"
 
-	"github.com/indexsupply/x/g2pg"
+	"github.com/indexsupply/x/e2pg"
 )
 
 type dashHandler struct {
-	drv          *g2pg.Driver
+	drv          *e2pg.Driver
 	clientsMutex sync.Mutex
-	clients      map[string]chan g2pg.StatusSnapshot
+	clients      map[string]chan e2pg.StatusSnapshot
 }
 
-func newDashHandler(drv *g2pg.Driver, snaps <-chan g2pg.StatusSnapshot) *dashHandler {
+func newDashHandler(drv *e2pg.Driver, snaps <-chan e2pg.StatusSnapshot) *dashHandler {
 	dh := &dashHandler{
 		drv:     drv,
-		clients: make(map[string]chan g2pg.StatusSnapshot),
+		clients: make(map[string]chan e2pg.StatusSnapshot),
 	}
 	go func() {
 		for {
@@ -38,7 +38,7 @@ func (dh *dashHandler) Updates(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Connection", "keep-alive")
 
 	fmt.Printf("(%d) opening %s\n", len(dh.clients), r.RemoteAddr)
-	c := make(chan g2pg.StatusSnapshot)
+	c := make(chan e2pg.StatusSnapshot)
 	dh.clientsMutex.Lock()
 	dh.clients[r.RemoteAddr] = c
 	dh.clientsMutex.Unlock()
@@ -51,7 +51,7 @@ func (dh *dashHandler) Updates(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	for {
-		var snap g2pg.StatusSnapshot
+		var snap e2pg.StatusSnapshot
 		select {
 		case snap = <-c:
 		case <-r.Context().Done():
@@ -76,7 +76,7 @@ func (dh *dashHandler) Index(w http.ResponseWriter, r *http.Request) {
 		<!DOCTYPE html>
 		<html>
 			<head>
-				<meta charset="utf-8"><title>g2pg</title>
+				<meta charset="utf-8"><title>e2pg</title>
 				<style>
 					body {
 						font-family: "Courier New", Courier, monospace;
@@ -102,7 +102,7 @@ func (dh *dashHandler) Index(w http.ResponseWriter, r *http.Request) {
 				</style>
 			</head>
 			<body>
-				<h1>g2pg</h1>
+				<h1>e2pg</h1>
 				<div id="driver">
 					<table id="driver-status">
 						<thead>
