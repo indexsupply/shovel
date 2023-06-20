@@ -11,8 +11,8 @@ import (
 
 	"github.com/indexsupply/x/bint"
 	"github.com/indexsupply/x/bloom"
+	"github.com/indexsupply/x/e2pg"
 	"github.com/indexsupply/x/freezer"
-	"github.com/indexsupply/x/g2pg"
 	"github.com/indexsupply/x/geth"
 	"github.com/indexsupply/x/jrpc"
 	"github.com/indexsupply/x/rlp"
@@ -30,7 +30,7 @@ type Client struct {
 	hc   *http.Client
 }
 
-func (c *Client) LoadBlocks(filter [][]byte, bfs []geth.Buffer, blocks []g2pg.Block) error {
+func (c *Client) LoadBlocks(filter [][]byte, bfs []geth.Buffer, blocks []e2pg.Block) error {
 	u, err := url.Parse(c.surl + "/blocks")
 	if err != nil {
 		return fmt.Errorf("unable to parse rpls server url")
@@ -159,10 +159,10 @@ func (s *Server) get(filter [][]byte, n, limit uint64) ([]byte, error) {
 	}
 	for i := 0; i < len(bufs); i++ {
 		hrlp := bufs[i].Header()
-		header := g2pg.Header{}
+		header := e2pg.Header{}
 		header.Unmarshal(hrlp)
 		switch {
-		case g2pg.Skip(filter, bloom.Filter(header.LogsBloom)):
+		case e2pg.Skip(filter, bloom.Filter(header.LogsBloom)):
 			res[i] = rlp.List(rlp.Encode(hrlp, zero, zero))
 		default:
 			res[i] = rlp.List(rlp.Encode(

@@ -7,7 +7,7 @@ import (
 	"bytes"
 	"github.com/indexsupply/x/abi"
 	"github.com/indexsupply/x/abi/schema"
-	"github.com/indexsupply/x/g2pg"
+	"github.com/indexsupply/x/e2pg"
 	"github.com/indexsupply/x/jrpc"
 	"math/big"
 )
@@ -57,7 +57,7 @@ var (
 // Uses the the following abi schema to decode the un-indexed
 // event inputs from the log's data field into [ApprovalForAll]:
 //	(bool)
-func MatchApprovalForAll(l *g2pg.Log) (ApprovalForAllEvent, error) {
+func MatchApprovalForAll(l *e2pg.Log) (ApprovalForAllEvent, error) {
 	if l.Topics.Len() <= 0 {
 		return ApprovalForAllEvent{}, abi.NoTopics
 	}
@@ -155,7 +155,7 @@ var (
 // Uses the the following abi schema to decode the un-indexed
 // event inputs from the log's data field into [TransferBatch]:
 //	(uint256[],uint256[])
-func MatchTransferBatch(l *g2pg.Log) (TransferBatchEvent, error) {
+func MatchTransferBatch(l *e2pg.Log) (TransferBatchEvent, error) {
 	if l.Topics.Len() <= 0 {
 		return TransferBatchEvent{}, abi.NoTopics
 	}
@@ -226,7 +226,7 @@ var (
 // Uses the the following abi schema to decode the un-indexed
 // event inputs from the log's data field into [TransferSingle]:
 //	(uint256,uint256)
-func MatchTransferSingle(l *g2pg.Log) (TransferSingleEvent, error) {
+func MatchTransferSingle(l *e2pg.Log) (TransferSingleEvent, error) {
 	if l.Topics.Len() <= 0 {
 		return TransferSingleEvent{}, abi.NoTopics
 	}
@@ -290,7 +290,7 @@ var (
 // Uses the the following abi schema to decode the un-indexed
 // event inputs from the log's data field into [URI]:
 //	(string)
-func MatchURI(l *g2pg.Log) (URIEvent, error) {
+func MatchURI(l *e2pg.Log) (URIEvent, error) {
 	if l.Topics.Len() <= 0 {
 		return URIEvent{}, abi.NoTopics
 	}

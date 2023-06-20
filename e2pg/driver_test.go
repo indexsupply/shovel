@@ -1,4 +1,4 @@
-package g2pg
+package e2pg
 
 import (
 	"context"

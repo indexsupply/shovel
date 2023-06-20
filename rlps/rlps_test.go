@@ -5,7 +5,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/indexsupply/x/g2pg"
+	"github.com/indexsupply/x/e2pg"
 	"github.com/indexsupply/x/geth"
 	"github.com/indexsupply/x/geth/gethtest"
 	"kr.dev/diff"
@@ -70,7 +70,7 @@ func TestLoadBlocks(t *testing.T) {
 
 	var (
 		buffers = []geth.Buffer{geth.Buffer{Number: 16000000}}
-		blocks  = make([]g2pg.Block, 1)
+		blocks  = make([]e2pg.Block, 1)
 	)
 	err := cli.LoadBlocks(nil, buffers, blocks)
 	diff.Test(t, t.Fatalf, err, nil)
@@ -101,7 +101,7 @@ func TestLoadBlocks_Filter(t *testing.T) {
 
 	var (
 		buffers = []geth.Buffer{geth.Buffer{Number: 16000000}}
-		blocks  = make([]g2pg.Block, 1)
+		blocks  = make([]e2pg.Block, 1)
 		filter  = [][]byte{repeat('2', 32)}
 	)
 	err := cli.LoadBlocks(filter, buffers, blocks)
@@ -125,7 +125,7 @@ func TestLoadBlocks_Filter_Error(t *testing.T) {
 
 	var (
 		buffers = []geth.Buffer{geth.Buffer{Number: 16000000}}
-		blocks  = make([]g2pg.Block, 1)
+		blocks  = make([]e2pg.Block, 1)
 		filter  = [][]byte{repeat('2', 33)}
 	)
 	err := cli.LoadBlocks(filter, buffers, blocks)

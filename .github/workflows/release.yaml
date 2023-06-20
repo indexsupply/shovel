@@ -20,7 +20,7 @@ jobs:
       - uses: ./.github/actions/release
         id: go-run-release
         with:
-          cmd: 'g2pg'
+          cmd: 'e2pg'
           dist: ${{ secrets.AWS_DISTRIBUTION_ID }}
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}

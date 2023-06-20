@@ -1,4 +1,4 @@
-// Easily test g2pg integrations
+// Easily test e2pg integrations
 //
 package testhelper
 
@@ -6,7 +6,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/indexsupply/x/g2pg"
+	"github.com/indexsupply/x/e2pg"
 	"github.com/indexsupply/x/geth/gethtest"
 
 	"blake.io/pqx/pqxtest"
@@ -33,7 +33,7 @@ type H struct {
 func New(tb testing.TB) *H {
 	ctx := context.Background()
 
-	pqxtest.CreateDB(tb, g2pg.Schema)
+	pqxtest.CreateDB(tb, e2pg.Schema)
 	pg, err := pgxpool.New(ctx, pqxtest.DSNForTest(tb))
 	diff.Test(tb, tb.Fatalf, err, nil)
 
@@ -64,16 +64,16 @@ func (th *H) Done() {
 // In the case that it needs to fetch the data, an RPC
 // client will be used. The RPC endpoint needs to support
 // the debug_dbAncient and debug_dbGet methods.
-func (th *H) Process(ig g2pg.Integration, n uint64) {
+func (th *H) Process(ig e2pg.Integration, n uint64) {
 	var (
-		geth   = g2pg.NewGeth(th.gt.FileCache, th.gt.Client)
-		driver = g2pg.NewDriver(1, 1, geth, th.PG, ig)
+		geth   = e2pg.NewGeth(th.gt.FileCache, th.gt.Client)
+		driver = e2pg.NewDriver(1, 1, geth, th.PG, ig)
 	)
 	cur, err := geth.Hash(n)
 	check(th.tb, err)
 	prev, err := geth.Hash(n - 1)
 	check(th.tb, err)
 	th.gt.SetLatest(n, cur)
-	check(th.tb, g2pg.Insert(th.PG, n-1, prev))
+	check(th.tb, e2pg.Insert(th.PG, n-1, prev))
 	check(th.tb, driver.Converge(true, n))
 }

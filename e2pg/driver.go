@@ -1,4 +1,4 @@
-package g2pg
+package e2pg
 
 import (
 	"bytes"
@@ -30,7 +30,7 @@ import (
 //go:embed schema.sql
 var Schema string
 
-type G interface {
+type Node interface {
 	LoadBlocks([][]byte, []geth.Buffer, []Block) error
 	Latest() (uint64, []byte, error)
 	Hash(uint64) ([]byte, error)
@@ -51,7 +51,7 @@ type Integration interface {
 func NewDriver(
 	batchSize int,
 	workers int,
-	g G,
+	node Node,
 	pgp *pgxpool.Pool,
 	intgs ...Integration,
 ) *Driver {
@@ -71,7 +71,7 @@ func NewDriver(
 		buffs:     make([]geth.Buffer, batchSize),
 		batchSize: batchSize,
 		workers:   workers,
-		geth:      g,
+		node:      node,
 		pgp:       pgp,
 		intgs:     intgs,
 		filter:    filter,
@@ -91,7 +91,7 @@ type Driver struct {
 	batchSize int
 	workers   int
 	stat      status
-	geth      G
+	node      Node
 	pgp       *pgxpool.Pool
 }
 
@@ -196,7 +196,7 @@ func (d *Driver) Converge(usetx bool, limit uint64) error {
 		if limit > 0 && localNum >= limit {
 			return ErrDone
 		}
-		gethNum, gethHash, err := d.geth.Latest()
+		gethNum, gethHash, err := d.node.Latest()
 		if err != nil {
 			return fmt.Errorf("getting latest from eth: %w", err)
 		}
@@ -276,7 +276,7 @@ func (d *Driver) writeIndex(localHash []byte, pg PG, delta int) error {
 		if len(blks) == 0 {
 			continue
 		}
-		eg.Go(func() error { return d.geth.LoadBlocks(d.filter, bfs, blks) })
+		eg.Go(func() error { return d.node.LoadBlocks(d.filter, bfs, blks) })
 	}
 	if err := eg.Wait(); err != nil {
 		return err
