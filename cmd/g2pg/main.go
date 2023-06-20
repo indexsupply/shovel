@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"runtime/debug"
 	"runtime/pprof"
 	"strings"
 	"time"
@@ -45,6 +46,7 @@ func main() {
 		reset       bool
 		begin, end  int
 		profile     string
+		version     bool
 	)
 
 	flag.StringVar(&freezerPath, "f", "/storage/geth/geth/chaindata/ancient/chain/", "path to freezer files")
@@ -60,7 +62,13 @@ func main() {
 	flag.IntVar(&begin, "begin", -1, "starting block. -1 starts at latest")
 	flag.IntVar(&end, "end", -1, "ending block. -1 never ends")
 	flag.StringVar(&profile, "profile", "", "run profile after indexing")
+	flag.BoolVar(&version, "v", false, "version")
 	flag.Parse()
+
+	if version {
+		fmt.Printf("v%s-%s\n", Version, commit())
+		os.Exit(0)
+	}
 
 	pgp, err := pgxpool.New(ctx, pgURL)
 	check(err)
@@ -195,4 +203,30 @@ func main() {
 		check(pprof.Lookup("heap").WriteTo(&pbuf, 0))
 		select {}
 	}
+}
+
+//Set using: go build -ldflags="-X main.Version=XXX"
+var Version string
+
+func commit() string {
+	bi, ok := debug.ReadBuildInfo()
+	if !ok {
+		return "ernobuildinfo"
+	}
+	var (
+		revision = "missing"
+		modified bool
+	)
+	for _, s := range bi.Settings {
+		switch s.Key {
+		case "vcs.revision":
+			revision = s.Value[:8]
+		case "vcs.modified":
+			modified = s.Value == "true"
+		}
+	}
+	if !modified {
+		return revision
+	}
+	return revision + "-modified"
 }
