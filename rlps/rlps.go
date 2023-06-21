@@ -279,14 +279,30 @@ func short(h []byte) []byte {
 }
 
 const doc = `
-API:
 
--> https://rlps.indexsupply.net/latest
-<- rlp([uint64, uint8[32]])
+Latest
 
-- https://rlps.indexsupply.net/hash?n=XXX
-<- uint8[32]
+	Returns number and hash of latest block
 
-- https://rlps.indexsupply.net/blocks?n=XXX&limit=YYY&z=ZZZ
-<- rlp([[header, bodies, receipts], ..., [header, bodies, receipts]])
+	> https://rlps.indexsupply.net/latest
+	< rlp([uint64, uint8[32]])
+
+Hash
+
+	Returns hash of block number n
+
+	> GET https://rlps.indexsupply.net/hash?n=XXX
+	< uint8[32]
+
+Blocks
+
+	Returns [n, n+limit) blocks starting at block number n
+
+	Filter is a csv of hex encoded, 32 byte event signatures. If a filter value
+	is in the header's bloom filter then the bodies and receipts are
+	materialized. Otherwise the header is materialized but bodies
+	and receipts are an empty RLP list.
+
+	> GET https://rlps.indexsupply.net/blocks?n=XXX&limit=YYY&filter=ZZZ
+	< rlp([[header, bodies, receipts], ..., [header, bodies, receipts]])
 `
