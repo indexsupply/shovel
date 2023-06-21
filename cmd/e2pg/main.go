@@ -62,7 +62,7 @@ func main() {
 	flag.IntVar(&begin, "begin", -1, "starting block. -1 starts at latest")
 	flag.IntVar(&end, "end", -1, "ending block. -1 never ends")
 	flag.StringVar(&profile, "profile", "", "run profile after indexing")
-	flag.BoolVar(&version, "v", false, "version")
+	flag.BoolVar(&version, "version", false, "version")
 	flag.Parse()
 
 	if version {
