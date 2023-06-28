@@ -2,7 +2,7 @@
 name: New Integration
 about: Request a new contract integration
 title: 'integrations: new XXX'
-labels: ''
+labels: 'integration'
 assignees: ryandotsmith
 
 ---
