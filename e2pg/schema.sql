@@ -1,4 +1,4 @@
-CREATE TABLE driver (
+CREATE TABLE main_driver (
 	number bigint,
 	hash bytea,
 	insert_at timestamptz default now()

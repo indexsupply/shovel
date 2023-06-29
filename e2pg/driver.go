@@ -6,6 +6,7 @@ import (
 	_ "embed"
 	"errors"
 	"fmt"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -49,6 +50,7 @@ type Integration interface {
 }
 
 func NewDriver(
+	name string,
 	batchSize int,
 	workers int,
 	node Node,
@@ -67,6 +69,7 @@ func NewDriver(
 		filter = append(filter, e...)
 	}
 	return &Driver{
+		Name:      name,
 		batch:     make([]Block, batchSize),
 		buffs:     make([]geth.Buffer, batchSize),
 		batchSize: batchSize,
@@ -84,15 +87,18 @@ func NewDriver(
 }
 
 type Driver struct {
-	intgs     []Integration
+	Name string
+
+	node  Node
+	pgp   *pgxpool.Pool
+	intgs []Integration
+
 	filter    [][]byte
 	batch     []Block
 	buffs     []geth.Buffer
 	batchSize int
 	workers   int
 	stat      status
-	node      Node
-	pgp       *pgxpool.Pool
 }
 
 type status struct {
@@ -106,6 +112,7 @@ type status struct {
 }
 
 type StatusSnapshot struct {
+	Name            string `json:"name"`
 	EthHash         string `json:"eth_hash"`
 	EthNum          string `json:"eth_num"`
 	Hash            string `json:"hash"`
@@ -121,6 +128,7 @@ type StatusSnapshot struct {
 func (d *Driver) Status() StatusSnapshot {
 	printer := message.NewPrinter(message.MatchLanguage("en"))
 	snap := StatusSnapshot{}
+	snap.Name = d.Name
 	snap.EthHash = fmt.Sprintf("%x", d.stat.ehash[:4])
 	snap.EthNum = fmt.Sprintf("%d", d.stat.enum)
 	snap.Hash = fmt.Sprintf("%x", d.stat.ihash[:4])
@@ -142,16 +150,20 @@ func min(x, y int) int {
 	return y
 }
 
-func Insert(pg PG, n uint64, h []byte) error {
-	const q = `insert into driver (number, hash) values ($1, $2)`
-	_, err := pg.Exec(context.Background(), q, n, h)
+func (d *Driver) table(query string) string {
+	return strings.ReplaceAll(query, "$table", d.Name+"_driver")
+}
+
+func (d *Driver) Insert(n uint64, h []byte) error {
+	const q = `insert into $table (number, hash) values ($1, $2)`
+	_, err := d.pgp.Exec(context.Background(), d.table(q), n, h)
 	return err
 }
 
-func Latest(pg PG) (uint64, []byte, error) {
-	const q = `SELECT number, hash FROM driver ORDER BY number DESC LIMIT 1`
+func (d *Driver) Latest() (uint64, []byte, error) {
+	const q = `SELECT number, hash FROM $table ORDER BY number DESC LIMIT 1`
 	var n, h = uint64(0), []byte{}
-	err := pg.QueryRow(context.Background(), q).Scan(&n, &h)
+	err := d.pgp.QueryRow(context.Background(), d.table(q)).Scan(&n, &h)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return n, nil, nil
 	}
@@ -189,8 +201,10 @@ func (d *Driver) Converge(usetx bool, limit uint64) error {
 		defer rollback()
 	}
 	for reorgs := 0; reorgs <= 10; {
-		localNum, localHash, err := Latest(pg)
-		if err != nil {
+		localNum, localHash := uint64(0), []byte{}
+		const q = `SELECT number, hash FROM $table ORDER BY number DESC LIMIT 1`
+		err = pg.QueryRow(ctx, d.table(q)).Scan(&localNum, &localHash)
+		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 			return fmt.Errorf("getting latest from driver: %w", err)
 		}
 		if limit > 0 && localNum >= limit {
@@ -216,8 +230,8 @@ func (d *Driver) Converge(usetx bool, limit uint64) error {
 		case errors.Is(err, ErrReorg):
 			reorgs++
 			fmt.Printf("reorg. deleting %d %x\n", localNum, localHash)
-			const dq = "delete from driver where hash = $1"
-			_, err := pg.Exec(ctx, dq, localHash)
+			const dq = "delete from $table where hash = $1"
+			_, err := pg.Exec(ctx, d.table(dq), localHash)
 			if err != nil {
 				return fmt.Errorf("deleting block from driver table: %w", err)
 			}
@@ -313,8 +327,8 @@ func (d *Driver) writeIndex(localHash []byte, pg PG, delta int) error {
 		return fmt.Errorf("writing indexed data: %w", err)
 	}
 	var last = d.batch[delta-1]
-	const uq = "insert into driver (number, hash) values ($1, $2)"
-	_, err := pg.Exec(context.Background(), uq, last.Num(), last.Hash())
+	const uq = "insert into $table (number, hash) values ($1, $2)"
+	_, err := pg.Exec(context.Background(), d.table(uq), last.Num(), last.Hash())
 	if err != nil {
 		return fmt.Errorf("updating driver table: %w", err)
 	}

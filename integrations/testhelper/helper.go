@@ -47,7 +47,7 @@ func New(tb testing.TB) *H {
 
 // Reset the driver table. Call this in-between test cases
 func (th *H) Reset() {
-	_, err := th.PG.Exec(context.Background(), "truncate table driver")
+	_, err := th.PG.Exec(context.Background(), "truncate table main_driver")
 	check(th.tb, err)
 }
 
@@ -67,13 +67,13 @@ func (th *H) Done() {
 func (th *H) Process(ig e2pg.Integration, n uint64) {
 	var (
 		geth   = e2pg.NewGeth(th.gt.FileCache, th.gt.Client)
-		driver = e2pg.NewDriver(1, 1, geth, th.PG, ig)
+		driver = e2pg.NewDriver("main", 1, 1, geth, th.PG, ig)
 	)
 	cur, err := geth.Hash(n)
 	check(th.tb, err)
 	prev, err := geth.Hash(n - 1)
 	check(th.tb, err)
 	th.gt.SetLatest(n, cur)
-	check(th.tb, e2pg.Insert(th.PG, n-1, prev))
+	check(th.tb, driver.Insert(n-1, prev))
 	check(th.tb, driver.Converge(true, n))
 }

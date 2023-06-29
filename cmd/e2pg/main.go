@@ -132,7 +132,7 @@ func main() {
 
 	var (
 		pbuf  bytes.Buffer
-		drv   = e2pg.NewDriver(batchSize, workers, node, pgp, running...)
+		drv   = e2pg.NewDriver("main", batchSize, workers, node, pgp, running...)
 		snaps = make(chan e2pg.StatusSnapshot)
 		dh    = newDashHandler(drv, snaps)
 	)
@@ -148,7 +148,7 @@ func main() {
 	gethNum, gethHash, err := node.Latest()
 	check(err)
 	fmt.Printf("node: %d %x\n", gethNum, gethHash)
-	localNum, localHash, err := e2pg.Latest(pgp)
+	localNum, localHash, err := drv.Latest()
 	check(err)
 	fmt.Printf("e2pg: %d %x\n", localNum, localHash)
 
@@ -156,11 +156,11 @@ func main() {
 	case begin == -1 && len(localHash) == 0:
 		h, err := node.Hash(gethNum - 1)
 		check(err)
-		check(e2pg.Insert(pgp, gethNum-1, h))
+		check(drv.Insert(gethNum-1, h))
 	case begin != -1 && len(localHash) == 0:
 		h, err := node.Hash(uint64(begin) - 1)
 		check(err)
-		check(e2pg.Insert(pgp, uint64(begin)-1, h))
+		check(drv.Insert(uint64(begin)-1, h))
 	case begin != -1 && len(localHash) != 0:
 		check(fmt.Errorf("-begin not available for initialized driver"))
 	}

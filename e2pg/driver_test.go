@@ -108,7 +108,7 @@ func hash(b byte) []byte {
 }
 
 func testpg(t *testing.T) *pgxpool.Pool {
-	pqxtest.CreateDB(t, `create table driver (number bigint, hash bytea)`)
+	pqxtest.CreateDB(t, `create table main_driver (number bigint, hash bytea)`)
 	ctx := context.Background()
 	pg, err := pgxpool.New(ctx, pqxtest.DSNForTest(t))
 	tc.NoErr(t, err)
@@ -116,7 +116,7 @@ func testpg(t *testing.T) *pgxpool.Pool {
 }
 
 func driverAdd(t *testing.T, pg PG, ig Integration, n uint64, h, p []byte) {
-	const q = "insert into driver(number,hash) values ($1, $2)"
+	const q = "insert into main_driver(number,hash) values ($1, $2)"
 	_, err := pg.Exec(context.Background(), q, n, h)
 	tc.NoErr(t, err)
 	ig.Insert(pg, []Block{
@@ -134,7 +134,7 @@ func TestConverge_Zero(t *testing.T) {
 	var (
 		g  = &testGeth{}
 		pg = testpg(t)
-		td = NewDriver(1, 1, g, pg, newTestIntegration())
+		td = NewDriver("main", 1, 1, g, pg, newTestIntegration())
 	)
 	diff.Test(t, t.Errorf, td.Converge(false, 0), ErrNothingNew)
 }
@@ -144,7 +144,7 @@ func TestConverge_EmptyIntegration(t *testing.T) {
 		pg = testpg(t)
 		tg = &testGeth{}
 		ig = newTestIntegration()
-		td = NewDriver(1, 1, tg, pg, ig)
+		td = NewDriver("main", 1, 1, tg, pg, ig)
 	)
 
 	tg.add(0, hash(0), hash(0))
@@ -160,7 +160,7 @@ func TestConverge_Reorg(t *testing.T) {
 		pg = testpg(t)
 		tg = &testGeth{}
 		ig = newTestIntegration()
-		td = NewDriver(1, 1, tg, pg, ig)
+		td = NewDriver("main", 1, 1, tg, pg, ig)
 	)
 
 	tg.add(0, hash(0), hash(0))
@@ -183,7 +183,7 @@ func TestConverge_DeltaBatchSize(t *testing.T) {
 		pg = testpg(t)
 		tg = &testGeth{}
 		ig = newTestIntegration()
-		td = NewDriver(batchSize, workers, tg, pg, ig)
+		td = NewDriver("main", batchSize, workers, tg, pg, ig)
 	)
 
 	tg.add(0, hash(0), hash(0))
