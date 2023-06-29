@@ -11,14 +11,14 @@ import (
 )
 
 type dashHandler struct {
-	drv          *e2pg.Driver
+	drivers      []*e2pg.Driver
 	clientsMutex sync.Mutex
 	clients      map[string]chan e2pg.StatusSnapshot
 }
 
-func newDashHandler(drv *e2pg.Driver, snaps <-chan e2pg.StatusSnapshot) *dashHandler {
+func newDashHandler(drivers []*e2pg.Driver, snaps <-chan e2pg.StatusSnapshot) *dashHandler {
 	dh := &dashHandler{
-		drv:     drv,
+		drivers: drivers,
 		clients: make(map[string]chan e2pg.StatusSnapshot),
 	}
 	go func() {
@@ -54,7 +54,7 @@ func (dh *dashHandler) Updates(w http.ResponseWriter, r *http.Request) {
 		var snap e2pg.StatusSnapshot
 		select {
 		case snap = <-c:
-		case <-r.Context().Done():
+		case <-r.Context().Done(): // disconnect
 			return
 		}
 		sjson, err := json.Marshal(snap)
@@ -76,10 +76,10 @@ func (dh *dashHandler) Index(w http.ResponseWriter, r *http.Request) {
 		<!DOCTYPE html>
 		<html>
 			<head>
-				<meta charset="utf-8"><title>e2pg</title>
+				<meta charset="utf-8"><title>E2PG</title>
 				<style>
 					body {
-						font-family: "Courier New", Courier, monospace;
+						font-family: 'SF Mono', ui-monospace, monospace;
 						max-width: 800px;
 						margin: 0 auto;
 					}
@@ -102,11 +102,12 @@ func (dh *dashHandler) Index(w http.ResponseWriter, r *http.Request) {
 				</style>
 			</head>
 			<body>
-				<h1>e2pg</h1>
+				<h1>E2PG</h1>
 				<div id="driver">
 					<table id="driver-status">
 						<thead>
 							<tr>
+								<td>Driver</td>
 								<td>Block</td>
 								<td>Hash</td>
 								<td>Blocks</td>
@@ -116,51 +117,37 @@ func (dh *dashHandler) Index(w http.ResponseWriter, r *http.Request) {
 							</tr>
 						</thead>
 						<tbody>
+							{{ range $name, $status := . -}}
 							<tr>
-								<td id="num">{{ .Num }}</td>
-								<td id="hash">{{ .Hash }}</td>
-								<td id="block-count">{{ .BlockCount }}</td>
-								<td id="event-count">{{ .EventCount }}</td>
-								<td id="latency">{{ .TotalLatencyP50 }}</td>
-								<td>{{ .Error }}</td>
+								<td id="{{ printf "%s-name" $name}}">{{ $name }}</td>
+								<td id="{{ printf "%s-num" $name}}">{{ $status.Num }}</td>
+								<td id="{{ printf "%s-hash" $name}}">{{ $status.Hash }}</td>
+								<td id="{{ printf "%s-block_count" $name}}">{{ $status.BlockCount }}</td>
+								<td id="{{ printf "%s-event_count" $name}}">{{ $status.EventCount }}</td>
+								<td id="{{ printf "%s-total_latency_p50" $name}}">{{ $status.TotalLatencyP50 }}</td>
+								<td id="{{ printf "%s-error" $name}}">{{ $status.Error }}</td>
 							</tr>
+							{{ end -}}
 						</tbody>
 					</table>
 				</div>
 				<script>
+					function update(snap, field) {
+						const elm = document.getElementById(snap.name + "-" + field);
+						elm.textContent = snap[field];
+						elm.classList.add("highlight");
+						setTimeout(function() {
+							elm.classList.remove("highlight")
+						}, 1000);
+					};
 					var updates = new EventSource("/updates");
 					updates.onmessage = function(event) {
 						const snap = JSON.parse(event.data);
-						const numDiv = document.getElementById('num');
-						numDiv.textContent = snap.num;
-						numDiv.classList.add("highlight");
-						setTimeout(function() {
-							numDiv.classList.remove("highlight")
-						}, 1000);
-
-						const hashDiv = document.getElementById('hash');
-						hashDiv.textContent = snap.hash;
-						hashDiv.classList.add("highlight")
-						setTimeout(function() {
-							hashDiv.classList.remove("highlight")
-						}, 1000);
-
-						const blockCountDiv = document.getElementById('block-count');
-						blockCountDiv.textContent = snap.block_count;
-						blockCountDiv.classList.add("highlight")
-						setTimeout(function() {
-							blockCountDiv.classList.remove("highlight")
-						}, 1000);
-
-						const eventCountDiv = document.getElementById('event-count');
-						eventCountDiv.textContent = snap.event_count;
-						eventCountDiv.classList.add("highlight")
-						setTimeout(function() {
-							eventCountDiv.classList.remove("highlight")
-						}, 1000);
-
-						const latDiv = document.getElementById('latency');
-						latDiv.textContent = snap.total_latency_p50;
+						update(snap, "num");
+						update(snap, "hash");
+						update(snap, "block_count");
+						update(snap, "event_count");
+						update(snap, "total_latency_p50");
 					};
 				</script>
 			</body>
@@ -171,7 +158,11 @@ func (dh *dashHandler) Index(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	err = tmpl.Execute(w, dh.drv.Status())
+	snaps := make(map[string]e2pg.StatusSnapshot)
+	for _, drv := range dh.drivers {
+		snaps[drv.Name] = drv.Status()
+	}
+	err = tmpl.Execute(w, snaps)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

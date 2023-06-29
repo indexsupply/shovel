@@ -134,7 +134,7 @@ func main() {
 		pbuf  bytes.Buffer
 		drv   = e2pg.NewDriver("main", batchSize, workers, node, pgp, running...)
 		snaps = make(chan e2pg.StatusSnapshot)
-		dh    = newDashHandler(drv, snaps)
+		dh    = newDashHandler([]*e2pg.Driver{drv}, snaps)
 	)
 
 	mux := http.NewServeMux()
