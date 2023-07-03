@@ -168,6 +168,61 @@ func (task *Task) Latest() (uint64, []byte, error) {
 	return n, h, err
 }
 
+func (task *Task) Setup(begin uint64) error {
+	_, localHash, err := task.Latest()
+	if err != nil {
+		return err
+	}
+	if len(localHash) > 0 {
+		// already setup
+		return nil
+	}
+	if begin > 0 {
+		h, err := task.node.Hash(begin - 1)
+		if err != nil {
+			return err
+		}
+		return task.Insert(begin-1, h)
+	}
+	gethNum, _, err := task.node.Latest()
+	if err != nil {
+		return err
+	}
+	h, err := task.node.Hash(gethNum - 1)
+	if err != nil {
+		return fmt.Errorf("getting hash for %d: %w", gethNum-1, err)
+	}
+	fmt.Printf("n: %d h: %x\n", gethNum-1, h)
+	return task.Insert(gethNum-1, h)
+}
+
+func (task *Task) Run(snaps chan<- StatusSnapshot, usetx bool, end uint64) error {
+	for {
+		err := task.Converge(usetx, end)
+		if err == nil {
+			go func() {
+				snap := task.Status()
+				fmt.Printf("%s\t%s\t%s\n", snap.Name, snap.Num, snap.Hash)
+				select {
+				case snaps <- snap:
+				default:
+				}
+			}()
+			continue
+		}
+		if errors.Is(err, ErrNothingNew) {
+			time.Sleep(time.Second)
+			continue
+		}
+		if errors.Is(err, ErrDone) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+	}
+}
+
 var (
 	ErrNothingNew = errors.New("no new blocks")
 	ErrReorg      = errors.New("reorg")

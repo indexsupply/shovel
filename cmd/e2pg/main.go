@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	_ "embed"
-	"errors"
 	"flag"
 	"fmt"
 	"net/http"
@@ -12,7 +11,6 @@ import (
 	"runtime/debug"
 	"runtime/pprof"
 	"strings"
-	"time"
 
 	"github.com/indexsupply/x/e2pg"
 	"github.com/indexsupply/x/freezer"
@@ -42,9 +40,9 @@ func main() {
 		listen      string
 		workers     int
 		batchSize   int
-		useTx       bool
+		usetx       bool
 		reset       bool
-		begin, end  int
+		begin, end  uint64
 		profile     string
 		version     bool
 	)
@@ -57,10 +55,10 @@ func main() {
 	flag.StringVar(&listen, "l", ":8546", "dashboard server listen address")
 	flag.IntVar(&workers, "w", 2, "number of concurrent workers")
 	flag.IntVar(&batchSize, "b", 32, "batch size")
-	flag.BoolVar(&useTx, "t", false, "use pg tx")
+	flag.BoolVar(&usetx, "t", false, "use pg tx")
 	flag.BoolVar(&reset, "reset", false, "drop public schame")
-	flag.IntVar(&begin, "begin", -1, "starting block. -1 starts at latest")
-	flag.IntVar(&end, "end", -1, "ending block. -1 never ends")
+	flag.Uint64Var(&begin, "begin", 0, "starting block. 0 starts at latest")
+	flag.Uint64Var(&end, "end", 0, "ending block. -1 never ends")
 	flag.StringVar(&profile, "profile", "", "run profile after indexing")
 	flag.BoolVar(&version, "version", false, "version")
 	flag.Parse()
@@ -132,7 +130,7 @@ func main() {
 
 	var (
 		pbuf  bytes.Buffer
-		task  = e2pg.NewTask(1, "main", batchSize, workers, node, pgp, running...)
+		task  = e2pg.NewTask(1, "mainnet", batchSize, workers, node, pgp, running...)
 		snaps = make(chan e2pg.StatusSnapshot)
 		dh    = newDashHandler([]*e2pg.Task{task}, snaps)
 	)
@@ -145,56 +143,11 @@ func main() {
 	})
 	go http.ListenAndServe(listen, mux)
 
-	gethNum, gethHash, err := node.Latest()
-	check(err)
-	fmt.Printf("node: %d %x\n", gethNum, gethHash)
-	localNum, localHash, err := task.Latest()
-	check(err)
-	fmt.Printf("e2pg: %d %x\n", localNum, localHash)
-
-	switch {
-	case begin == -1 && len(localHash) == 0:
-		h, err := node.Hash(gethNum - 1)
-		check(err)
-		check(task.Insert(gethNum-1, h))
-	case begin != -1 && len(localHash) == 0:
-		h, err := node.Hash(uint64(begin) - 1)
-		check(err)
-		check(task.Insert(uint64(begin)-1, h))
-	case begin != -1 && len(localHash) != 0:
-		check(fmt.Errorf("-begin not available for initialized task"))
-	}
-
 	if profile == "cpu" {
 		check(pprof.StartCPUProfile(&pbuf))
 	}
-	t0 := time.Now()
-	for {
-		err = task.Converge(useTx, uint64(end))
-		if err == nil {
-			go func() {
-				snap := task.Status()
-				fmt.Printf("%s %s\n", snap.Num, snap.Hash)
-				select {
-				case snaps <- snap:
-				default:
-				}
-			}()
-			continue
-		}
-		if errors.Is(err, e2pg.ErrNothingNew) {
-			time.Sleep(time.Second)
-			continue
-		}
-		if errors.Is(err, e2pg.ErrDone) {
-			fmt.Printf("elapsed: %s\n", time.Since(t0))
-			break
-		}
-		if err != nil {
-			fmt.Printf("error: %s\n", err)
-		}
-	}
-
+	check(task.Setup(begin))
+	check(task.Run(snaps, usetx, end))
 	switch profile {
 	case "cpu":
 		pprof.StopCPUProfile()

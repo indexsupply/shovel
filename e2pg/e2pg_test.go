@@ -80,8 +80,13 @@ type testGeth struct {
 	blocks []Block
 }
 
-func (tg *testGeth) Hash(_ uint64) ([]byte, error) {
-	return nil, nil
+func (tg *testGeth) Hash(n uint64) ([]byte, error) {
+	for j := range tg.blocks {
+		if tg.blocks[j].Header.Number == n {
+			return tg.blocks[j].Header.Hash, nil
+		}
+	}
+	return nil, fmt.Errorf("not found: %d", n)
 }
 
 func (tg *testGeth) Latest() (uint64, []byte, error) {
@@ -124,6 +129,36 @@ func testpg(t *testing.T) *pgxpool.Pool {
 	pg, err := pgxpool.New(context.Background(), pqxtest.DSNForTest(t))
 	tc.NoErr(t, err)
 	return pg
+}
+
+func TestSetup(t *testing.T) {
+	var (
+		tg   = &testGeth{}
+		pg   = testpg(t)
+		task = NewTask(0, "main", 1, 1, tg, pg, newTestIntegration())
+	)
+	tg.add(0, hash(0), hash(0))
+	tg.add(1, hash(1), hash(0))
+	tg.add(2, hash(2), hash(1))
+	diff.Test(t, t.Errorf, task.Setup(0), nil)
+
+	n, h, err := task.Latest()
+	diff.Test(t, t.Errorf, err, nil)
+	diff.Test(t, t.Errorf, n, uint64(1))
+	diff.Test(t, t.Errorf, h, hash(1))
+}
+
+func TestRun(t *testing.T) {
+	var (
+		tg   = &testGeth{}
+		pg   = testpg(t)
+		task = NewTask(0, "main", 1, 1, tg, pg, newTestIntegration())
+	)
+	tg.add(0, hash(0), hash(0))
+	tg.add(1, hash(1), hash(0))
+	tg.add(2, hash(2), hash(1))
+	diff.Test(t, t.Errorf, task.Setup(0), nil)
+	diff.Test(t, t.Errorf, task.Run(nil, true, 2), nil)
 }
 
 func TestConverge_Zero(t *testing.T) {
