@@ -53,6 +53,18 @@ func (ti *testIntegration) Insert(_ PG, blocks []Block) (int64, error) {
 	return int64(len(blocks)), nil
 }
 
+func (ti *testIntegration) add(n uint64, hash, parent []byte) {
+	ti.Insert(nil, []Block{
+		Block{
+			Header: Header{
+				Number: n,
+				Hash:   hash,
+				Parent: parent,
+			},
+		},
+	})
+}
+
 func (ti *testIntegration) Delete(pg PG, h []byte) error {
 	ti.Lock()
 	defer ti.Unlock()
@@ -114,21 +126,6 @@ func testpg(t *testing.T) *pgxpool.Pool {
 	return pg
 }
 
-func taskUpdate(t *testing.T, pg PG, ig Integration, n uint64, h, p []byte) {
-	const q = "insert into task(id,number,hash) values (0, $1, $2)"
-	_, err := pg.Exec(context.Background(), q, n, h)
-	tc.NoErr(t, err)
-	ig.Insert(pg, []Block{
-		Block{
-			Header: Header{
-				Number: n,
-				Hash:   h,
-				Parent: p,
-			},
-		},
-	})
-}
-
 func TestConverge_Zero(t *testing.T) {
 	var (
 		g    = &testGeth{}
@@ -145,12 +142,11 @@ func TestConverge_EmptyIntegration(t *testing.T) {
 		ig   = newTestIntegration()
 		task = NewTask(0, "main", 1, 1, tg, pg, ig)
 	)
-
 	tg.add(0, hash(0), hash(0))
 	tg.add(1, hash(1), hash(0))
-	taskUpdate(t, pg, ig, 0, hash(0), hash(0))
-
-	diff.Test(t, t.Fatalf, task.Converge(false, 0), nil)
+	ig.add(0, hash(0), hash(0))
+	task.Insert(0, hash(0))
+	diff.Test(t, t.Fatalf, task.Converge(true, 0), nil)
 	diff.Test(t, t.Errorf, ig.blocks(), tg.blocks)
 }
 
@@ -165,8 +161,12 @@ func TestConverge_Reorg(t *testing.T) {
 	tg.add(0, hash(0), hash(0))
 	tg.add(1, hash(2), hash(0))
 	tg.add(2, hash(3), hash(2))
-	taskUpdate(t, pg, ig, 0, hash(0), hash(0))
-	taskUpdate(t, pg, ig, 1, hash(1), hash(0))
+
+	ig.add(0, hash(0), hash(0))
+	ig.add(1, hash(2), hash(0))
+
+	task.Insert(0, hash(0))
+	task.Insert(1, hash(1))
 
 	diff.Test(t, t.Fatalf, task.Converge(false, 0), nil)
 	diff.Test(t, t.Fatalf, task.Converge(false, 0), nil)
@@ -186,7 +186,8 @@ func TestConverge_DeltaBatchSize(t *testing.T) {
 	)
 
 	tg.add(0, hash(0), hash(0))
-	taskUpdate(t, pg, ig, 0, hash(0), hash(0))
+	ig.add(0, hash(0), hash(0))
+	task.Insert(0, hash(0))
 
 	for i := uint64(1); i <= batchSize+1; i++ {
 		tg.add(i, hash(byte(i)), hash(byte(i-1)))
@@ -197,4 +198,26 @@ func TestConverge_DeltaBatchSize(t *testing.T) {
 
 	diff.Test(t, t.Errorf, nil, task.Converge(false, 0))
 	diff.Test(t, t.Errorf, ig.blocks(), tg.blocks)
+}
+
+func TestConverge_MultipleTasks(t *testing.T) {
+	var (
+		tg    = &testGeth{}
+		pg    = testpg(t)
+		ig1   = newTestIntegration()
+		ig2   = newTestIntegration()
+		task1 = NewTask(0, "one", 3, 1, tg, pg, ig1)
+		task2 = NewTask(1, "two", 3, 1, tg, pg, ig2)
+	)
+	tg.add(1, hash(1), hash(0))
+	tg.add(2, hash(2), hash(1))
+
+	task1.Insert(0, hash(0))
+	task2.Insert(0, hash(0))
+
+	diff.Test(t, t.Errorf, task1.Converge(true, 0), nil)
+	diff.Test(t, t.Errorf, ig1.blocks(), tg.blocks)
+	diff.Test(t, t.Errorf, len(ig2.blocks()), 0)
+	diff.Test(t, t.Errorf, task2.Converge(true, 0), nil)
+	diff.Test(t, t.Errorf, ig2.blocks(), tg.blocks)
 }
