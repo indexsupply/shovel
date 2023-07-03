@@ -132,9 +132,9 @@ func main() {
 
 	var (
 		pbuf  bytes.Buffer
-		drv   = e2pg.NewDriver("main", batchSize, workers, node, pgp, running...)
+		task  = e2pg.NewTask(1, "main", batchSize, workers, node, pgp, running...)
 		snaps = make(chan e2pg.StatusSnapshot)
-		dh    = newDashHandler([]*e2pg.Driver{drv}, snaps)
+		dh    = newDashHandler([]*e2pg.Task{task}, snaps)
 	)
 
 	mux := http.NewServeMux()
@@ -148,7 +148,7 @@ func main() {
 	gethNum, gethHash, err := node.Latest()
 	check(err)
 	fmt.Printf("node: %d %x\n", gethNum, gethHash)
-	localNum, localHash, err := drv.Latest()
+	localNum, localHash, err := task.Latest()
 	check(err)
 	fmt.Printf("e2pg: %d %x\n", localNum, localHash)
 
@@ -156,13 +156,13 @@ func main() {
 	case begin == -1 && len(localHash) == 0:
 		h, err := node.Hash(gethNum - 1)
 		check(err)
-		check(drv.Insert(gethNum-1, h))
+		check(task.Insert(gethNum-1, h))
 	case begin != -1 && len(localHash) == 0:
 		h, err := node.Hash(uint64(begin) - 1)
 		check(err)
-		check(drv.Insert(uint64(begin)-1, h))
+		check(task.Insert(uint64(begin)-1, h))
 	case begin != -1 && len(localHash) != 0:
-		check(fmt.Errorf("-begin not available for initialized driver"))
+		check(fmt.Errorf("-begin not available for initialized task"))
 	}
 
 	if profile == "cpu" {
@@ -170,10 +170,10 @@ func main() {
 	}
 	t0 := time.Now()
 	for {
-		err = drv.Converge(useTx, uint64(end))
+		err = task.Converge(useTx, uint64(end))
 		if err == nil {
 			go func() {
-				snap := drv.Status()
+				snap := task.Status()
 				fmt.Printf("%s %s\n", snap.Num, snap.Hash)
 				select {
 				case snaps <- snap:

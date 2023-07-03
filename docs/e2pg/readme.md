@@ -125,7 +125,7 @@ To start with the network's current latest block, use the following flag:
 If E2PG gets a block from its Ethereum source where the new block's parent doesn't match the local block's hash, then the local block, and all it's integration data are deleted. After the deletion, E2PG attempts to add the new block. This process is repeated up to 10 times or until a hash/parent match is made. If there is a reorg of more than 10 blocks the database transaction is rolled back (meaning no data was deleted) and E2PG will halt progress. This condition requires operator intervention via SQL:
 
 ```sql
-delete from driver where number > XXX;
+delete from task where number > XXX;
 delete from nft_transfers where block_number > XXX;
 --etc...
 ```

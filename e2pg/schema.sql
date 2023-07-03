@@ -1,4 +1,5 @@
-CREATE TABLE main_driver (
+CREATE TABLE task (
+	id smallint not null,
 	number bigint,
 	hash bytea,
 	insert_at timestamptz default now()

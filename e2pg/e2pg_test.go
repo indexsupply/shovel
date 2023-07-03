@@ -108,15 +108,14 @@ func hash(b byte) []byte {
 }
 
 func testpg(t *testing.T) *pgxpool.Pool {
-	pqxtest.CreateDB(t, `create table main_driver (number bigint, hash bytea)`)
-	ctx := context.Background()
-	pg, err := pgxpool.New(ctx, pqxtest.DSNForTest(t))
+	pqxtest.CreateDB(t, Schema)
+	pg, err := pgxpool.New(context.Background(), pqxtest.DSNForTest(t))
 	tc.NoErr(t, err)
 	return pg
 }
 
-func driverAdd(t *testing.T, pg PG, ig Integration, n uint64, h, p []byte) {
-	const q = "insert into main_driver(number,hash) values ($1, $2)"
+func taskUpdate(t *testing.T, pg PG, ig Integration, n uint64, h, p []byte) {
+	const q = "insert into task(id,number,hash) values (0, $1, $2)"
 	_, err := pg.Exec(context.Background(), q, n, h)
 	tc.NoErr(t, err)
 	ig.Insert(pg, []Block{
@@ -132,45 +131,45 @@ func driverAdd(t *testing.T, pg PG, ig Integration, n uint64, h, p []byte) {
 
 func TestConverge_Zero(t *testing.T) {
 	var (
-		g  = &testGeth{}
-		pg = testpg(t)
-		td = NewDriver("main", 1, 1, g, pg, newTestIntegration())
+		g    = &testGeth{}
+		pg   = testpg(t)
+		task = NewTask(0, "main", 1, 1, g, pg, newTestIntegration())
 	)
-	diff.Test(t, t.Errorf, td.Converge(false, 0), ErrNothingNew)
+	diff.Test(t, t.Errorf, task.Converge(false, 0), ErrNothingNew)
 }
 
 func TestConverge_EmptyIntegration(t *testing.T) {
 	var (
-		pg = testpg(t)
-		tg = &testGeth{}
-		ig = newTestIntegration()
-		td = NewDriver("main", 1, 1, tg, pg, ig)
+		pg   = testpg(t)
+		tg   = &testGeth{}
+		ig   = newTestIntegration()
+		task = NewTask(0, "main", 1, 1, tg, pg, ig)
 	)
 
 	tg.add(0, hash(0), hash(0))
 	tg.add(1, hash(1), hash(0))
-	driverAdd(t, pg, ig, 0, hash(0), hash(0))
+	taskUpdate(t, pg, ig, 0, hash(0), hash(0))
 
-	diff.Test(t, t.Fatalf, td.Converge(false, 0), nil)
+	diff.Test(t, t.Fatalf, task.Converge(false, 0), nil)
 	diff.Test(t, t.Errorf, ig.blocks(), tg.blocks)
 }
 
 func TestConverge_Reorg(t *testing.T) {
 	var (
-		pg = testpg(t)
-		tg = &testGeth{}
-		ig = newTestIntegration()
-		td = NewDriver("main", 1, 1, tg, pg, ig)
+		pg   = testpg(t)
+		tg   = &testGeth{}
+		ig   = newTestIntegration()
+		task = NewTask(0, "main", 1, 1, tg, pg, ig)
 	)
 
 	tg.add(0, hash(0), hash(0))
 	tg.add(1, hash(2), hash(0))
 	tg.add(2, hash(3), hash(2))
-	driverAdd(t, pg, ig, 0, hash(0), hash(0))
-	driverAdd(t, pg, ig, 1, hash(1), hash(0))
+	taskUpdate(t, pg, ig, 0, hash(0), hash(0))
+	taskUpdate(t, pg, ig, 1, hash(1), hash(0))
 
-	diff.Test(t, t.Fatalf, td.Converge(false, 0), nil)
-	diff.Test(t, t.Fatalf, td.Converge(false, 0), nil)
+	diff.Test(t, t.Fatalf, task.Converge(false, 0), nil)
+	diff.Test(t, t.Fatalf, task.Converge(false, 0), nil)
 	diff.Test(t, t.Errorf, ig.blocks(), tg.blocks)
 }
 
@@ -180,22 +179,22 @@ func TestConverge_DeltaBatchSize(t *testing.T) {
 		workers   = 2
 	)
 	var (
-		pg = testpg(t)
-		tg = &testGeth{}
-		ig = newTestIntegration()
-		td = NewDriver("main", batchSize, workers, tg, pg, ig)
+		pg   = testpg(t)
+		tg   = &testGeth{}
+		ig   = newTestIntegration()
+		task = NewTask(0, "main", batchSize, workers, tg, pg, ig)
 	)
 
 	tg.add(0, hash(0), hash(0))
-	driverAdd(t, pg, ig, 0, hash(0), hash(0))
+	taskUpdate(t, pg, ig, 0, hash(0), hash(0))
 
 	for i := uint64(1); i <= batchSize+1; i++ {
 		tg.add(i, hash(byte(i)), hash(byte(i-1)))
 	}
 
-	diff.Test(t, t.Errorf, nil, td.Converge(false, 0))
+	diff.Test(t, t.Errorf, nil, task.Converge(false, 0))
 	diff.Test(t, t.Errorf, ig.blocks(), tg.blocks[:batchSize+1])
 
-	diff.Test(t, t.Errorf, nil, td.Converge(false, 0))
+	diff.Test(t, t.Errorf, nil, task.Converge(false, 0))
 	diff.Test(t, t.Errorf, ig.blocks(), tg.blocks)
 }
