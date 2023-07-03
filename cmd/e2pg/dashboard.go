@@ -11,14 +11,14 @@ import (
 )
 
 type dashHandler struct {
-	drivers      []*e2pg.Driver
+	tasks        []*e2pg.Task
 	clientsMutex sync.Mutex
 	clients      map[string]chan e2pg.StatusSnapshot
 }
 
-func newDashHandler(drivers []*e2pg.Driver, snaps <-chan e2pg.StatusSnapshot) *dashHandler {
+func newDashHandler(tasks []*e2pg.Task, snaps <-chan e2pg.StatusSnapshot) *dashHandler {
 	dh := &dashHandler{
-		drivers: drivers,
+		tasks:   tasks,
 		clients: make(map[string]chan e2pg.StatusSnapshot),
 	}
 	go func() {
@@ -103,11 +103,11 @@ func (dh *dashHandler) Index(w http.ResponseWriter, r *http.Request) {
 			</head>
 			<body>
 				<h1>E2PG</h1>
-				<div id="driver">
-					<table id="driver-status">
+				<div id="tasks">
+					<table id="tasks-status">
 						<thead>
 							<tr>
-								<td>Driver</td>
+								<td>Task</td>
 								<td>Block</td>
 								<td>Hash</td>
 								<td>Blocks</td>
@@ -159,8 +159,8 @@ func (dh *dashHandler) Index(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	snaps := make(map[string]e2pg.StatusSnapshot)
-	for _, drv := range dh.drivers {
-		snaps[drv.Name] = drv.Status()
+	for _, task := range dh.tasks {
+		snaps[task.Name] = task.Status()
 	}
 	err = tmpl.Execute(w, snaps)
 	if err != nil {

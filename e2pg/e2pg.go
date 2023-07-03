@@ -6,7 +6,6 @@ import (
 	_ "embed"
 	"errors"
 	"fmt"
-	"strings"
 	"sync/atomic"
 	"time"
 
@@ -49,26 +48,28 @@ type Integration interface {
 	Events() [][]byte
 }
 
-func NewDriver(
+func NewTask(
+	id uint8,
 	name string,
 	batchSize int,
 	workers int,
 	node Node,
 	pgp *pgxpool.Pool,
 	intgs ...Integration,
-) *Driver {
+) *Task {
 	var filter [][]byte
 	for i := range intgs {
 		e := intgs[i].Events()
 		// if one integration has no filter
-		// then the driver must consider all data
+		// then the task must consider all data
 		if len(e) == 0 {
 			filter = filter[:0]
 			break
 		}
 		filter = append(filter, e...)
 	}
-	return &Driver{
+	return &Task{
+		ID:        id,
 		Name:      name,
 		batch:     make([]Block, batchSize),
 		buffs:     make([]geth.Buffer, batchSize),
@@ -86,7 +87,8 @@ func NewDriver(
 	}
 }
 
-type Driver struct {
+type Task struct {
+	ID   uint8
 	Name string
 
 	node  Node
@@ -125,21 +127,21 @@ type StatusSnapshot struct {
 	Error           string `json:"error"`
 }
 
-func (d *Driver) Status() StatusSnapshot {
+func (task *Task) Status() StatusSnapshot {
 	printer := message.NewPrinter(message.MatchLanguage("en"))
 	snap := StatusSnapshot{}
-	snap.Name = d.Name
-	snap.EthHash = fmt.Sprintf("%x", d.stat.ehash[:4])
-	snap.EthNum = fmt.Sprintf("%d", d.stat.enum)
-	snap.Hash = fmt.Sprintf("%x", d.stat.ihash[:4])
-	snap.Num = printer.Sprintf("%d", d.stat.inum)
-	snap.BlockCount = fmt.Sprintf("%d", atomic.SwapInt64(&d.stat.blocks, 0))
-	snap.EventCount = fmt.Sprintf("%d", atomic.SwapInt64(&d.stat.events, 0))
-	snap.TotalLatencyP50 = fmt.Sprintf("%s", time.Duration(d.stat.tlat.Query(0.50)).Round(time.Millisecond))
-	snap.TotalLatencyP95 = fmt.Sprintf("%.2f", d.stat.tlat.Query(0.95))
-	snap.TotalLatencyP99 = fmt.Sprintf("%.2f", d.stat.tlat.Query(0.99))
-	snap.Error = fmt.Sprintf("%v", d.stat.err)
-	d.stat.tlat.Reset()
+	snap.Name = task.Name
+	snap.EthHash = fmt.Sprintf("%x", task.stat.ehash[:4])
+	snap.EthNum = fmt.Sprintf("%d", task.stat.enum)
+	snap.Hash = fmt.Sprintf("%x", task.stat.ihash[:4])
+	snap.Num = printer.Sprintf("%d", task.stat.inum)
+	snap.BlockCount = fmt.Sprintf("%d", atomic.SwapInt64(&task.stat.blocks, 0))
+	snap.EventCount = fmt.Sprintf("%d", atomic.SwapInt64(&task.stat.events, 0))
+	snap.TotalLatencyP50 = fmt.Sprintf("%s", time.Duration(task.stat.tlat.Query(0.50)).Round(time.Millisecond))
+	snap.TotalLatencyP95 = fmt.Sprintf("%.2f", task.stat.tlat.Query(0.95))
+	snap.TotalLatencyP99 = fmt.Sprintf("%.2f", task.stat.tlat.Query(0.99))
+	snap.Error = fmt.Sprintf("%v", task.stat.err)
+	task.stat.tlat.Reset()
 	return snap
 }
 
@@ -150,20 +152,16 @@ func min(x, y int) int {
 	return y
 }
 
-func (d *Driver) table(query string) string {
-	return strings.ReplaceAll(query, "$table", d.Name+"_driver")
-}
-
-func (d *Driver) Insert(n uint64, h []byte) error {
-	const q = `insert into $table (number, hash) values ($1, $2)`
-	_, err := d.pgp.Exec(context.Background(), d.table(q), n, h)
+func (task *Task) Insert(n uint64, h []byte) error {
+	const q = `insert into task (id, number, hash) values ($1, $2, $3)`
+	_, err := task.pgp.Exec(context.Background(), q, task.ID, n, h)
 	return err
 }
 
-func (d *Driver) Latest() (uint64, []byte, error) {
-	const q = `SELECT number, hash FROM $table ORDER BY number DESC LIMIT 1`
+func (task *Task) Latest() (uint64, []byte, error) {
+	const q = `SELECT number, hash FROM task WHERE id = $1 ORDER BY number DESC LIMIT 1`
 	var n, h = uint64(0), []byte{}
-	err := d.pgp.QueryRow(context.Background(), d.table(q)).Scan(&n, &h)
+	err := task.pgp.QueryRow(context.Background(), q, task.ID).Scan(&n, &h)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return n, nil, nil
 	}
@@ -176,22 +174,22 @@ var (
 	ErrDone       = errors.New("this is the end")
 )
 
-// Indexes at most d.batchSize of the delta between min(g, limit) and pg.
+// Indexes at most task.batchSize of the delta between min(g, limit) and pg.
 // If pg contains an invalid latest block (ie reorg) then [ErrReorg]
 // is returned and the caller may rollback the transaction resulting
 // in no side-effects.
-func (d *Driver) Converge(usetx bool, limit uint64) error {
+func (task *Task) Converge(usetx bool, limit uint64) error {
 	var (
 		err      error
 		start       = time.Now()
 		ctx         = context.Background()
-		pg       PG = d.pgp
+		pg       PG = task.pgp
 		pgTx     pgx.Tx
 		commit   = func() error { return nil }
 		rollback = func() error { return nil }
 	)
 	if usetx {
-		pgTx, err = d.pgp.Begin(ctx)
+		pgTx, err = task.pgp.Begin(ctx)
 		if err != nil {
 			return err
 		}
@@ -202,64 +200,64 @@ func (d *Driver) Converge(usetx bool, limit uint64) error {
 	}
 	for reorgs := 0; reorgs <= 10; {
 		localNum, localHash := uint64(0), []byte{}
-		const q = `SELECT number, hash FROM $table ORDER BY number DESC LIMIT 1`
-		err = pg.QueryRow(ctx, d.table(q)).Scan(&localNum, &localHash)
+		const q = `SELECT number, hash FROM task WHERE id = $1 ORDER BY number DESC LIMIT 1`
+		err = pg.QueryRow(ctx, q, task.ID).Scan(&localNum, &localHash)
 		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-			return fmt.Errorf("getting latest from driver: %w", err)
+			return fmt.Errorf("getting latest from task: %w", err)
 		}
 		if limit > 0 && localNum >= limit {
 			return ErrDone
 		}
-		gethNum, gethHash, err := d.node.Latest()
+		gethNum, gethHash, err := task.node.Latest()
 		if err != nil {
 			return fmt.Errorf("getting latest from eth: %w", err)
 		}
 		if limit > 0 && gethNum > limit {
 			gethNum = limit
 		}
-		delta := min(int(gethNum-localNum), d.batchSize)
+		delta := min(int(gethNum-localNum), task.batchSize)
 		if delta <= 0 {
 			return ErrNothingNew
 		}
 		for i := 0; i < delta; i++ {
-			d.buffs[i].Number = localNum + 1 + uint64(i)
-			d.batch[i].Transactions.Reset()
-			d.batch[i].Receipts.Reset()
+			task.buffs[i].Number = localNum + 1 + uint64(i)
+			task.batch[i].Transactions.Reset()
+			task.batch[i].Receipts.Reset()
 		}
-		switch err := d.writeIndex(localHash, pg, delta); {
+		switch err := task.writeIndex(localHash, pg, delta); {
 		case errors.Is(err, ErrReorg):
 			reorgs++
 			fmt.Printf("reorg. deleting %d %x\n", localNum, localHash)
-			const dq = "delete from $table where hash = $1"
-			_, err := pg.Exec(ctx, d.table(dq), localHash)
+			const dq = "delete from task where id = $1 AND hash = $2"
+			_, err := pg.Exec(ctx, dq, task.ID, localHash)
 			if err != nil {
-				return fmt.Errorf("deleting block from driver table: %w", err)
+				return fmt.Errorf("deleting block from task table: %w", err)
 			}
-			for _, ig := range d.intgs {
+			for _, ig := range task.intgs {
 				if err := ig.Delete(pg, localHash); err != nil {
 					return fmt.Errorf("deleting block from integration: %w", err)
 				}
 			}
 		case err != nil:
 			err = errors.Join(rollback(), err)
-			d.stat.err = err
+			task.stat.err = err
 			return err
 		default:
-			d.stat.enum = gethNum
-			d.stat.ehash = gethHash
-			d.stat.blocks += int64(delta)
-			d.stat.tlat.Insert(float64(time.Since(start)))
+			task.stat.enum = gethNum
+			task.stat.ehash = gethHash
+			task.stat.blocks += int64(delta)
+			task.stat.tlat.Insert(float64(time.Since(start)))
 			return commit()
 		}
 	}
 	return errors.Join(ErrReorg, rollback())
 }
 
-func (d *Driver) skip(bf bloom.Filter) bool {
-	if len(d.filter) == 0 {
+func (task *Task) skip(bf bloom.Filter) bool {
+	if len(task.filter) == 0 {
 		return false
 	}
-	for _, sig := range d.filter {
+	for _, sig := range task.filter {
 		if !bf.Missing(sig) {
 			return false
 		}
@@ -267,8 +265,8 @@ func (d *Driver) skip(bf bloom.Filter) bool {
 	return true
 }
 
-// Fills in d.batch with block data (headers, bodies, receipts) from
-// geth and then calls Index on the driver's integrations with the block
+// Fills in task.batch with block data (headers, bodies, receipts) from
+// geth and then calls Index on the task's integrations with the block
 // data.
 //
 // Once the block data has been read, it is checked against the parent
@@ -277,46 +275,46 @@ func (d *Driver) skip(bf bloom.Filter) bool {
 //
 // The reading of block data and indexing of integrations happens concurrently
 // with the number of go routines controlled by c.
-func (d *Driver) writeIndex(localHash []byte, pg PG, delta int) error {
+func (task *Task) writeIndex(localHash []byte, pg PG, delta int) error {
 	var (
 		eg    = errgroup.Group{}
-		wsize = d.batchSize / d.workers
+		wsize = task.batchSize / task.workers
 	)
-	for i := 0; i < d.workers && i*wsize < delta; i++ {
+	for i := 0; i < task.workers && i*wsize < delta; i++ {
 		n := i * wsize
 		m := n + wsize
-		bfs := d.buffs[n:min(m, delta)]
-		blks := d.batch[n:min(m, delta)]
+		bfs := task.buffs[n:min(m, delta)]
+		blks := task.batch[n:min(m, delta)]
 		if len(blks) == 0 {
 			continue
 		}
-		eg.Go(func() error { return d.node.LoadBlocks(d.filter, bfs, blks) })
+		eg.Go(func() error { return task.node.LoadBlocks(task.filter, bfs, blks) })
 	}
 	if err := eg.Wait(); err != nil {
 		return err
 	}
-	if len(d.batch[0].Header.Parent) != 32 {
-		return fmt.Errorf("corrupt parent: %x\n", d.batch[0].Header.Parent)
+	if len(task.batch[0].Header.Parent) != 32 {
+		return fmt.Errorf("corrupt parent: %x\n", task.batch[0].Header.Parent)
 	}
-	if !bytes.Equal(localHash, d.batch[0].Header.Parent) {
-		fmt.Printf("local: %x new: %x\n", localHash, d.batch[0].Header.Parent)
+	if !bytes.Equal(localHash, task.batch[0].Header.Parent) {
+		fmt.Printf("local: %x new: %x\n", localHash, task.batch[0].Header.Parent)
 		return ErrReorg
 	}
 	eg = errgroup.Group{}
-	for i := 0; i < d.workers && i*wsize < delta; i++ {
+	for i := 0; i < task.workers && i*wsize < delta; i++ {
 		n := i * wsize
 		m := n + wsize
-		blks := d.batch[n:min(m, delta)]
+		blks := task.batch[n:min(m, delta)]
 		if len(blks) == 0 {
 			continue
 		}
 		eg.Go(func() error {
 			var igeg errgroup.Group
-			for _, ig := range d.intgs {
+			for _, ig := range task.intgs {
 				ig := ig
 				igeg.Go(func() error {
 					count, err := ig.Insert(pg, blks)
-					atomic.AddInt64(&d.stat.events, count)
+					atomic.AddInt64(&task.stat.events, count)
 					return err
 				})
 			}
@@ -326,14 +324,14 @@ func (d *Driver) writeIndex(localHash []byte, pg PG, delta int) error {
 	if err := eg.Wait(); err != nil {
 		return fmt.Errorf("writing indexed data: %w", err)
 	}
-	var last = d.batch[delta-1]
-	const uq = "insert into $table (number, hash) values ($1, $2)"
-	_, err := pg.Exec(context.Background(), d.table(uq), last.Num(), last.Hash())
+	var last = task.batch[delta-1]
+	const uq = "insert into task (id, number, hash) values ($1, $2, $3)"
+	_, err := pg.Exec(context.Background(), uq, task.ID, last.Num(), last.Hash())
 	if err != nil {
-		return fmt.Errorf("updating driver table: %w", err)
+		return fmt.Errorf("updating task table: %w", err)
 	}
-	d.stat.inum = last.Num()
-	d.stat.ihash = last.Hash()
+	task.stat.inum = last.Num()
+	task.stat.ihash = last.Hash()
 	return nil
 }
 
