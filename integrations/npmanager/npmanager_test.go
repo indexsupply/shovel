@@ -16,7 +16,7 @@ func TestMain(m *testing.M) {
 	pqxtest.TestMain(m)
 }
 
-func TestTransfer(t *testing.T) {
+func TestDAODeployed(t *testing.T) {
 	th := testhelper.New(t)
 	defer th.Done()
 
