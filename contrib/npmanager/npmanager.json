@@ -1,0 +1,68 @@
+[
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": false,
+        "name": "token",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "name": "metadata",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "name": "auction",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "name": "treasury",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "name": "governor",
+        "type": "address"
+      }
+    ],
+    "name": "DAODeployed",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": false,
+        "name": "baseImpl",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "name": "upgradeImpl",
+        "type": "address"
+      }
+    ],
+    "name": "UpgradeRegistered",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": false,
+        "name": "baseImpl",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "name": "upgradeImpl",
+        "type": "address"
+      }
+    ],
+    "name": "UpgradeRemoved",
+    "type": "event"
+  }
+]

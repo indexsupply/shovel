@@ -19,3 +19,19 @@ CREATE UNLOGGED TABLE nft_transfers (
 	transaction_index numeric,
 	log_index numeric
 );
+
+CREATE TABLE npmanager_dao_deployed(
+	contract bytea,
+	token bytea,
+	metadata bytea,
+	auction bytea,
+	treasury bytea,
+	governor bytea,
+	tx_sender bytea,
+	eth numeric,
+	block_hash bytea,
+	block_number numeric,
+	transaction_hash bytea,
+	transaction_index numeric,
+	log_index numeric
+);
