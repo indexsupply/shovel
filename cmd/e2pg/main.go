@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	_ "embed"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"net/http"
@@ -13,11 +14,8 @@ import (
 	"strings"
 
 	"github.com/indexsupply/x/e2pg"
-	"github.com/indexsupply/x/freezer"
-	"github.com/indexsupply/x/integrations/erc1155"
-	"github.com/indexsupply/x/integrations/erc721"
-	"github.com/indexsupply/x/jrpc"
-	"github.com/indexsupply/x/rlps"
+	"github.com/indexsupply/x/e2pg/config"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -31,34 +29,31 @@ func check(err error) {
 
 func main() {
 	var (
-		ctx         = context.Background()
-		freezerPath string
-		pgURL       string
-		rpcURL      string
-		rlpsURL     string
-		intgs       string
-		listen      string
-		workers     int
-		batchSize   int
-		usetx       bool
-		reset       bool
-		begin, end  uint64
-		profile     string
-		version     bool
-	)
+		ctx   = context.Background()
+		cfile string
 
-	flag.StringVar(&freezerPath, "f", "/storage/geth/geth/chaindata/ancient/chain/", "path to freezer files")
-	flag.StringVar(&pgURL, "pg", "postgres:///e2pg", "postgres url")
-	flag.StringVar(&rpcURL, "r", "http://zeus:8545", "address or socket for rpc server")
-	flag.StringVar(&rlpsURL, "rlps", "", "use rlps for reading blockchain data")
+		conf  config.Config
+		intgs string
+
+		listen  string
+		usetx   bool
+		reset   bool
+		profile string
+		version bool
+	)
+	flag.StringVar(&cfile, "config", "", "task config file")
+	flag.StringVar(&conf.FreezerPath, "ef", "/storage/geth/geth/chaindata/ancient/chain/", "path to freezer files")
+	flag.StringVar(&conf.PGURL, "pg", "postgres:///e2pg", "postgres url")
+	flag.StringVar(&conf.ETHURL, "e", "http://zeus:8545", "address or socket for rpc server")
+	flag.Uint64Var(&conf.Concurrency, "c", 2, "number of concurrent workers")
+	flag.Uint64Var(&conf.Batch, "b", 32, "batch size")
 	flag.StringVar(&intgs, "i", "all", "list of integrations")
+	flag.Uint64Var(&conf.Begin, "begin", 0, "starting block. 0 starts at latest")
+	flag.Uint64Var(&conf.End, "end", 0, "ending block. -1 never ends")
+
 	flag.StringVar(&listen, "l", ":8546", "dashboard server listen address")
-	flag.IntVar(&workers, "w", 2, "number of concurrent workers")
-	flag.IntVar(&batchSize, "b", 32, "batch size")
 	flag.BoolVar(&usetx, "t", false, "use pg tx")
 	flag.BoolVar(&reset, "reset", false, "drop public schame")
-	flag.Uint64Var(&begin, "begin", 0, "starting block. 0 starts at latest")
-	flag.Uint64Var(&end, "end", 0, "ending block. -1 never ends")
 	flag.StringVar(&profile, "profile", "", "run profile after indexing")
 	flag.BoolVar(&version, "version", false, "version")
 	flag.Parse()
@@ -68,10 +63,9 @@ func main() {
 		os.Exit(0)
 	}
 
-	pgp, err := pgxpool.New(ctx, pgURL)
-	check(err)
-
 	if reset {
+		pgp, err := pgxpool.New(ctx, conf.PGURL)
+		check(err)
 		h := pgp.Config().ConnConfig.Host
 		if !(h == "localhost" || h == "/private/tmp" || h == "/var/run/postgresql") {
 			fmt.Printf("unable to reset non-local db: %s\n", h)
@@ -85,56 +79,32 @@ func main() {
 			_, err = pgp.Exec(ctx, q)
 			check(err)
 		}
+		pgp.Close()
 	}
 
-	var (
-		all = map[string]e2pg.Integration{
-			"erc721":  erc721.Integration,
-			"erc1155": erc1155.Integration,
-		}
-		running []e2pg.Integration
-	)
+	var tasks []*e2pg.Task
 	switch {
-	case intgs == "all":
-		for _, ig := range all {
-			running = append(running, ig)
-		}
-	default:
-		for _, name := range strings.Split(intgs, ",") {
-			ig, ok := all[name]
-			if !ok {
-				check(fmt.Errorf("unable to find integration: %q", name))
-			}
-			running = append(running, ig)
-		}
-	}
-
-	var rc *jrpc.Client
-	switch {
-	case strings.HasPrefix(rpcURL, "http"):
-		rc, err = jrpc.New(jrpc.WithHTTP(rpcURL))
+	case cfile != "" && !conf.Empty():
+		fmt.Printf("unable to use config file and command line args")
+		os.Exit(1)
+	case cfile != "":
+		f, err := os.Open(cfile)
 		check(err)
-	default:
-		const defaultSocketPath = "/storage/geth/geth.ipc"
-		rc, err = jrpc.New(jrpc.WithSocket(defaultSocketPath))
+		confs := []config.Config{}
+		check(json.NewDecoder(f).Decode(&confs))
+		tasks, err = config.NewTasks(confs...)
 		check(err)
-	}
-
-	var node e2pg.Node
-	switch {
-	case rlpsURL != "":
-		node = rlps.NewClient(rlpsURL)
-	default:
-		node = e2pg.NewGeth(freezer.New(freezerPath), rc)
+	case !conf.Empty():
+		var err error
+		tasks, err = config.NewTasks(conf)
+		check(err)
 	}
 
 	var (
 		pbuf  bytes.Buffer
-		task  = e2pg.NewTask(1, "mainnet", batchSize, workers, node, pgp, running...)
 		snaps = make(chan e2pg.StatusSnapshot)
-		dh    = newDashHandler([]*e2pg.Task{task}, snaps)
+		dh    = newDashHandler(tasks, snaps)
 	)
-
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", dh.Index)
 	mux.HandleFunc("/updates", dh.Updates)
@@ -146,8 +116,16 @@ func main() {
 	if profile == "cpu" {
 		check(pprof.StartCPUProfile(&pbuf))
 	}
-	check(task.Setup(begin))
-	check(task.Run(snaps, usetx, end))
+	var eg errgroup.Group
+	for i := range tasks {
+		i := i
+		eg.Go(func() error {
+			check(tasks[i].Setup())
+			check(tasks[i].Run(snaps, usetx))
+			return nil
+		})
+	}
+	eg.Wait()
 	switch profile {
 	case "cpu":
 		pprof.StopCPUProfile()

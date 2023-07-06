@@ -35,7 +35,6 @@ func (c *Client) LoadBlocks(filter [][]byte, bfs []geth.Buffer, blocks []e2pg.Bl
 	if err != nil {
 		return fmt.Errorf("unable to parse rpls server url")
 	}
-
 	q := u.Query()
 	q.Add("n", strconv.FormatUint(bfs[0].Number, 10))
 	q.Add("limit", strconv.Itoa(len(blocks)))

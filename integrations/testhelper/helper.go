@@ -67,7 +67,7 @@ func (th *H) Done() {
 func (th *H) Process(ig e2pg.Integration, n uint64) {
 	var (
 		geth = e2pg.NewGeth(th.gt.FileCache, th.gt.Client)
-		task = e2pg.NewTask(0, "main", 1, 1, geth, th.PG, ig)
+		task = e2pg.NewTask(0, 0, "main", 1, 1, geth, th.PG, 0, 0, ig)
 	)
 	cur, err := geth.Hash(n)
 	check(th.tb, err)
@@ -75,5 +75,5 @@ func (th *H) Process(ig e2pg.Integration, n uint64) {
 	check(th.tb, err)
 	th.gt.SetLatest(n, cur)
 	check(th.tb, task.Insert(n-1, prev))
-	check(th.tb, task.Converge(true, n))
+	check(th.tb, task.Converge(true))
 }

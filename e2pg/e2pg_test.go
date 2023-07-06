@@ -44,7 +44,7 @@ func (ti *testIntegration) blocks() []Block {
 	return blks
 }
 
-func (ti *testIntegration) Insert(_ PG, blocks []Block) (int64, error) {
+func (ti *testIntegration) Insert(_ context.Context, _ PG, blocks []Block) (int64, error) {
 	ti.Lock()
 	defer ti.Unlock()
 	for _, b := range blocks {
@@ -54,7 +54,7 @@ func (ti *testIntegration) Insert(_ PG, blocks []Block) (int64, error) {
 }
 
 func (ti *testIntegration) add(n uint64, hash, parent []byte) {
-	ti.Insert(nil, []Block{
+	ti.Insert(context.Background(), nil, []Block{
 		Block{
 			Header: Header{
 				Number: n,
@@ -65,14 +65,14 @@ func (ti *testIntegration) add(n uint64, hash, parent []byte) {
 	})
 }
 
-func (ti *testIntegration) Delete(pg PG, h []byte) error {
+func (ti *testIntegration) Delete(_ context.Context, pg PG, h []byte) error {
 	ti.Lock()
 	defer ti.Unlock()
 	delete(ti.chain, fmt.Sprintf("%x", h))
 	return nil
 }
 
-func (ti *testIntegration) Events() [][]byte {
+func (ti *testIntegration) Events(_ context.Context) [][]byte {
 	return nil
 }
 
@@ -135,12 +135,12 @@ func TestSetup(t *testing.T) {
 	var (
 		tg   = &testGeth{}
 		pg   = testpg(t)
-		task = NewTask(0, "main", 1, 1, tg, pg, newTestIntegration())
+		task = NewTask(0, 0, "main", 1, 1, tg, pg, 0, 0, newTestIntegration())
 	)
 	tg.add(0, hash(0), hash(0))
 	tg.add(1, hash(1), hash(0))
 	tg.add(2, hash(2), hash(1))
-	diff.Test(t, t.Errorf, task.Setup(0), nil)
+	diff.Test(t, t.Errorf, task.Setup(), nil)
 
 	n, h, err := task.Latest()
 	diff.Test(t, t.Errorf, err, nil)
@@ -152,22 +152,22 @@ func TestRun(t *testing.T) {
 	var (
 		tg   = &testGeth{}
 		pg   = testpg(t)
-		task = NewTask(0, "main", 1, 1, tg, pg, newTestIntegration())
+		task = NewTask(0, 0, "main", 1, 1, tg, pg, 0, 2, newTestIntegration())
 	)
 	tg.add(0, hash(0), hash(0))
 	tg.add(1, hash(1), hash(0))
 	tg.add(2, hash(2), hash(1))
-	diff.Test(t, t.Errorf, task.Setup(0), nil)
-	diff.Test(t, t.Errorf, task.Run(nil, true, 2), nil)
+	diff.Test(t, t.Errorf, task.Setup(), nil)
+	diff.Test(t, t.Errorf, task.Run(nil, true), nil)
 }
 
 func TestConverge_Zero(t *testing.T) {
 	var (
 		g    = &testGeth{}
 		pg   = testpg(t)
-		task = NewTask(0, "main", 1, 1, g, pg, newTestIntegration())
+		task = NewTask(0, 0, "main", 1, 1, g, pg, 0, 0, newTestIntegration())
 	)
-	diff.Test(t, t.Errorf, task.Converge(false, 0), ErrNothingNew)
+	diff.Test(t, t.Errorf, task.Converge(false), ErrNothingNew)
 }
 
 func TestConverge_EmptyIntegration(t *testing.T) {
@@ -175,13 +175,13 @@ func TestConverge_EmptyIntegration(t *testing.T) {
 		pg   = testpg(t)
 		tg   = &testGeth{}
 		ig   = newTestIntegration()
-		task = NewTask(0, "main", 1, 1, tg, pg, ig)
+		task = NewTask(0, 0, "main", 1, 1, tg, pg, 0, 0, ig)
 	)
 	tg.add(0, hash(0), hash(0))
 	tg.add(1, hash(1), hash(0))
 	ig.add(0, hash(0), hash(0))
 	task.Insert(0, hash(0))
-	diff.Test(t, t.Fatalf, task.Converge(true, 0), nil)
+	diff.Test(t, t.Fatalf, task.Converge(true), nil)
 	diff.Test(t, t.Errorf, ig.blocks(), tg.blocks)
 }
 
@@ -190,7 +190,7 @@ func TestConverge_Reorg(t *testing.T) {
 		pg   = testpg(t)
 		tg   = &testGeth{}
 		ig   = newTestIntegration()
-		task = NewTask(0, "main", 1, 1, tg, pg, ig)
+		task = NewTask(0, 0, "main", 1, 1, tg, pg, 0, 0, ig)
 	)
 
 	tg.add(0, hash(0), hash(0))
@@ -203,8 +203,8 @@ func TestConverge_Reorg(t *testing.T) {
 	task.Insert(0, hash(0))
 	task.Insert(1, hash(1))
 
-	diff.Test(t, t.Fatalf, task.Converge(false, 0), nil)
-	diff.Test(t, t.Fatalf, task.Converge(false, 0), nil)
+	diff.Test(t, t.Fatalf, task.Converge(false), nil)
+	diff.Test(t, t.Fatalf, task.Converge(false), nil)
 	diff.Test(t, t.Errorf, ig.blocks(), tg.blocks)
 }
 
@@ -217,7 +217,7 @@ func TestConverge_DeltaBatchSize(t *testing.T) {
 		pg   = testpg(t)
 		tg   = &testGeth{}
 		ig   = newTestIntegration()
-		task = NewTask(0, "main", batchSize, workers, tg, pg, ig)
+		task = NewTask(0, 0, "main", batchSize, workers, tg, pg, 0, 0, ig)
 	)
 
 	tg.add(0, hash(0), hash(0))
@@ -228,10 +228,10 @@ func TestConverge_DeltaBatchSize(t *testing.T) {
 		tg.add(i, hash(byte(i)), hash(byte(i-1)))
 	}
 
-	diff.Test(t, t.Errorf, nil, task.Converge(false, 0))
+	diff.Test(t, t.Errorf, nil, task.Converge(false))
 	diff.Test(t, t.Errorf, ig.blocks(), tg.blocks[:batchSize+1])
 
-	diff.Test(t, t.Errorf, nil, task.Converge(false, 0))
+	diff.Test(t, t.Errorf, nil, task.Converge(false))
 	diff.Test(t, t.Errorf, ig.blocks(), tg.blocks)
 }
 
@@ -241,8 +241,8 @@ func TestConverge_MultipleTasks(t *testing.T) {
 		pg    = testpg(t)
 		ig1   = newTestIntegration()
 		ig2   = newTestIntegration()
-		task1 = NewTask(0, "one", 3, 1, tg, pg, ig1)
-		task2 = NewTask(1, "two", 3, 1, tg, pg, ig2)
+		task1 = NewTask(0, 0, "one", 3, 1, tg, pg, 0, 0, ig1)
+		task2 = NewTask(1, 0, "two", 3, 1, tg, pg, 0, 0, ig2)
 	)
 	tg.add(1, hash(1), hash(0))
 	tg.add(2, hash(2), hash(1))
@@ -250,9 +250,9 @@ func TestConverge_MultipleTasks(t *testing.T) {
 	task1.Insert(0, hash(0))
 	task2.Insert(0, hash(0))
 
-	diff.Test(t, t.Errorf, task1.Converge(true, 0), nil)
+	diff.Test(t, t.Errorf, task1.Converge(true), nil)
 	diff.Test(t, t.Errorf, ig1.blocks(), tg.blocks)
 	diff.Test(t, t.Errorf, len(ig2.blocks()), 0)
-	diff.Test(t, t.Errorf, task2.Converge(true, 0), nil)
+	diff.Test(t, t.Errorf, task2.Converge(true), nil)
 	diff.Test(t, t.Errorf, ig2.blocks(), tg.blocks)
 }

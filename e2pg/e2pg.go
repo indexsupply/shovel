@@ -27,6 +27,30 @@ import (
 	"golang.org/x/text/message"
 )
 
+type ctxkey int
+
+const (
+	taskIDKey  ctxkey = 1
+	chainIDKey ctxkey = 2
+)
+
+func WithChainID(ctx context.Context, id uint64) context.Context {
+	return context.WithValue(ctx, chainIDKey, id)
+}
+
+func ChainID(ctx context.Context) uint64 {
+	id, _ := ctx.Value(chainIDKey).(uint64)
+	return id
+}
+func WithTaskID(ctx context.Context, id uint64) context.Context {
+	return context.WithValue(ctx, taskIDKey, id)
+}
+
+func TaskID(ctx context.Context) uint64 {
+	id, _ := ctx.Value(taskIDKey).(uint64)
+	return id
+}
+
 //go:embed schema.sql
 var Schema string
 
@@ -43,23 +67,29 @@ type PG interface {
 }
 
 type Integration interface {
-	Insert(PG, []Block) (int64, error)
-	Delete(PG, []byte) error
-	Events() [][]byte
+	Insert(context.Context, PG, []Block) (int64, error)
+	Delete(context.Context, PG, []byte) error
+	Events(context.Context) [][]byte
 }
 
 func NewTask(
-	id uint8,
+	id uint64,
+	chainID uint64,
 	name string,
-	batchSize int,
-	workers int,
+	batchSize uint64,
+	workers uint64,
 	node Node,
 	pgp *pgxpool.Pool,
+	begin, end uint64,
 	intgs ...Integration,
 ) *Task {
+	ctx := context.Background()
+	ctx = WithChainID(ctx, chainID)
+	ctx = WithTaskID(ctx, id)
+
 	var filter [][]byte
 	for i := range intgs {
-		e := intgs[i].Events()
+		e := intgs[i].Events(ctx)
 		// if one integration has no filter
 		// then the task must consider all data
 		if len(e) == 0 {
@@ -69,6 +99,7 @@ func NewTask(
 		filter = append(filter, e...)
 	}
 	return &Task{
+		ctx:       ctx,
 		ID:        id,
 		Name:      name,
 		batch:     make([]Block, batchSize),
@@ -79,6 +110,8 @@ func NewTask(
 		pgp:       pgp,
 		intgs:     intgs,
 		filter:    filter,
+		begin:     begin,
+		end:       end,
 		stat: status{
 			tlat:  quantile.NewTargeted(0.50, 0.90, 0.99),
 			glat:  quantile.NewTargeted(0.50, 0.90, 0.99),
@@ -88,18 +121,20 @@ func NewTask(
 }
 
 type Task struct {
-	ID   uint8
+	ctx  context.Context
+	ID   uint64
 	Name string
 
-	node  Node
-	pgp   *pgxpool.Pool
-	intgs []Integration
+	node       Node
+	pgp        *pgxpool.Pool
+	intgs      []Integration
+	begin, end uint64
 
 	filter    [][]byte
 	batch     []Block
 	buffs     []geth.Buffer
-	batchSize int
-	workers   int
+	batchSize uint64
+	workers   uint64
 	stat      status
 }
 
@@ -168,7 +203,7 @@ func (task *Task) Latest() (uint64, []byte, error) {
 	return n, h, err
 }
 
-func (task *Task) Setup(begin uint64) error {
+func (task *Task) Setup() error {
 	_, localHash, err := task.Latest()
 	if err != nil {
 		return err
@@ -177,12 +212,12 @@ func (task *Task) Setup(begin uint64) error {
 		// already setup
 		return nil
 	}
-	if begin > 0 {
-		h, err := task.node.Hash(begin - 1)
+	if task.begin > 0 {
+		h, err := task.node.Hash(task.begin - 1)
 		if err != nil {
 			return err
 		}
-		return task.Insert(begin-1, h)
+		return task.Insert(task.begin-1, h)
 	}
 	gethNum, _, err := task.node.Latest()
 	if err != nil {
@@ -192,13 +227,12 @@ func (task *Task) Setup(begin uint64) error {
 	if err != nil {
 		return fmt.Errorf("getting hash for %d: %w", gethNum-1, err)
 	}
-	fmt.Printf("n: %d h: %x\n", gethNum-1, h)
 	return task.Insert(gethNum-1, h)
 }
 
-func (task *Task) Run(snaps chan<- StatusSnapshot, usetx bool, end uint64) error {
+func (task *Task) Run(snaps chan<- StatusSnapshot, usetx bool) error {
 	for {
-		err := task.Converge(usetx, end)
+		err := task.Converge(usetx)
 		if err == nil {
 			go func() {
 				snap := task.Status()
@@ -233,7 +267,7 @@ var (
 // If pg contains an invalid latest block (ie reorg) then [ErrReorg]
 // is returned and the caller may rollback the transaction resulting
 // in no side-effects.
-func (task *Task) Converge(usetx bool, limit uint64) error {
+func (task *Task) Converge(usetx bool) error {
 	var (
 		err      error
 		start       = time.Now()
@@ -260,21 +294,21 @@ func (task *Task) Converge(usetx bool, limit uint64) error {
 		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 			return fmt.Errorf("getting latest from task: %w", err)
 		}
-		if limit > 0 && localNum >= limit {
+		if task.end > 0 && localNum >= task.end {
 			return ErrDone
 		}
 		gethNum, gethHash, err := task.node.Latest()
 		if err != nil {
 			return fmt.Errorf("getting latest from eth: %w", err)
 		}
-		if limit > 0 && gethNum > limit {
-			gethNum = limit
+		if task.end > 0 && gethNum > task.end {
+			gethNum = task.end
 		}
-		delta := min(int(gethNum-localNum), task.batchSize)
+		delta := uint64(min(int(gethNum-localNum), int(task.batchSize)))
 		if delta <= 0 {
 			return ErrNothingNew
 		}
-		for i := 0; i < delta; i++ {
+		for i := uint64(0); i < delta; i++ {
 			task.buffs[i].Number = localNum + 1 + uint64(i)
 			task.batch[i].Transactions.Reset()
 			task.batch[i].Receipts.Reset()
@@ -282,14 +316,14 @@ func (task *Task) Converge(usetx bool, limit uint64) error {
 		switch err := task.writeIndex(localHash, pg, delta); {
 		case errors.Is(err, ErrReorg):
 			reorgs++
-			fmt.Printf("reorg. deleting %d %x\n", localNum, localHash)
+			fmt.Printf("%s reorg. deleting %d %x\n", task.Name, localNum, localHash)
 			const dq = "delete from task where id = $1 AND hash = $2"
 			_, err := pg.Exec(ctx, dq, task.ID, localHash)
 			if err != nil {
 				return fmt.Errorf("deleting block from task table: %w", err)
 			}
 			for _, ig := range task.intgs {
-				if err := ig.Delete(pg, localHash); err != nil {
+				if err := ig.Delete(task.ctx, pg, localHash); err != nil {
 					return fmt.Errorf("deleting block from integration: %w", err)
 				}
 			}
@@ -330,16 +364,16 @@ func (task *Task) skip(bf bloom.Filter) bool {
 //
 // The reading of block data and indexing of integrations happens concurrently
 // with the number of go routines controlled by c.
-func (task *Task) writeIndex(localHash []byte, pg PG, delta int) error {
+func (task *Task) writeIndex(localHash []byte, pg PG, delta uint64) error {
 	var (
 		eg    = errgroup.Group{}
 		wsize = task.batchSize / task.workers
 	)
-	for i := 0; i < task.workers && i*wsize < delta; i++ {
+	for i := uint64(0); i < task.workers && i*wsize < delta; i++ {
 		n := i * wsize
 		m := n + wsize
-		bfs := task.buffs[n:min(m, delta)]
-		blks := task.batch[n:min(m, delta)]
+		bfs := task.buffs[n:min(int(m), int(delta))]
+		blks := task.batch[n:min(int(m), int(delta))]
 		if len(blks) == 0 {
 			continue
 		}
@@ -352,14 +386,13 @@ func (task *Task) writeIndex(localHash []byte, pg PG, delta int) error {
 		return fmt.Errorf("corrupt parent: %x\n", task.batch[0].Header.Parent)
 	}
 	if !bytes.Equal(localHash, task.batch[0].Header.Parent) {
-		fmt.Printf("local: %x new: %x\n", localHash, task.batch[0].Header.Parent)
 		return ErrReorg
 	}
 	eg = errgroup.Group{}
-	for i := 0; i < task.workers && i*wsize < delta; i++ {
+	for i := uint64(0); i < task.workers && i*wsize < delta; i++ {
 		n := i * wsize
 		m := n + wsize
-		blks := task.batch[n:min(m, delta)]
+		blks := task.batch[n:min(int(m), int(delta))]
 		if len(blks) == 0 {
 			continue
 		}
@@ -368,7 +401,7 @@ func (task *Task) writeIndex(localHash []byte, pg PG, delta int) error {
 			for _, ig := range task.intgs {
 				ig := ig
 				igeg.Go(func() error {
-					count, err := ig.Insert(pg, blks)
+					count, err := ig.Insert(task.ctx, pg, blks)
 					atomic.AddInt64(&task.stat.events, count)
 					return err
 				})

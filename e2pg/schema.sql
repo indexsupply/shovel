@@ -13,6 +13,8 @@ CREATE UNLOGGED TABLE nft_transfers (
 	t bytea,
 	tx_sender bytea,
 	eth numeric,
+	task_id numeric,
+	chain_id numeric,
 	block_hash bytea,
 	block_number numeric,
 	transaction_hash bytea,
