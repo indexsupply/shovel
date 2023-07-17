@@ -15,7 +15,7 @@
 		"chain": 10,
 		"concurrency": 8,
 		"batch": 1024,
-		"eth": "http://juno:8546",
+		"eth": "http://10.rlps.indexsupply.net",
 		"pg": "postgres:///e2pg",
 		"integrations": ["erc721"]
 	}
