@@ -42,14 +42,16 @@ func main() {
 		version bool
 	)
 	flag.StringVar(&cfile, "config", "", "task config file")
+	flag.Uint64Var(&conf.ID, "id", 0, "task id")
+	flag.Uint64Var(&conf.ChainID, "chain", 0, "task id")
 	flag.StringVar(&conf.FreezerPath, "ef", "/storage/geth/geth/chaindata/ancient/chain/", "path to freezer files")
-	flag.StringVar(&conf.PGURL, "pg", "postgres:///e2pg", "postgres url")
-	flag.StringVar(&conf.ETHURL, "e", "http://zeus:8545", "address or socket for rpc server")
+	flag.StringVar(&conf.PGURL, "pg", "", "postgres url")
+	flag.StringVar(&conf.ETHURL, "e", "", "address or socket for rpc server")
 	flag.Uint64Var(&conf.Concurrency, "c", 2, "number of concurrent workers")
-	flag.Uint64Var(&conf.Batch, "b", 32, "batch size")
+	flag.Uint64Var(&conf.Batch, "b", 128, "batch size")
 	flag.StringVar(&intgs, "i", "all", "list of integrations")
 	flag.Uint64Var(&conf.Begin, "begin", 0, "starting block. 0 starts at latest")
-	flag.Uint64Var(&conf.End, "end", 0, "ending block. -1 never ends")
+	flag.Uint64Var(&conf.End, "end", 0, "ending block. 0 never ends")
 
 	flag.StringVar(&listen, "l", ":8546", "dashboard server listen address")
 	flag.BoolVar(&usetx, "t", false, "use pg tx")
@@ -85,7 +87,7 @@ func main() {
 	var tasks []*e2pg.Task
 	switch {
 	case cfile != "" && !conf.Empty():
-		fmt.Printf("unable to use config file and command line args")
+		fmt.Printf("unable to use config file and command line args\n")
 		os.Exit(1)
 	case cfile != "":
 		f, err := os.Open(cfile)

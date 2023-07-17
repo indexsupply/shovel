@@ -34,7 +34,7 @@ type Config struct {
 }
 
 func (conf Config) Empty() bool {
-	return conf.ETHURL != "" || conf.PGURL != ""
+	return conf.ETHURL == "" || conf.PGURL == ""
 }
 
 func NewTasks(confs ...Config) ([]*e2pg.Task, error) {

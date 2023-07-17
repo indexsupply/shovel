@@ -4,7 +4,7 @@
 		"id": 1,
 		"chain": 1,
 		"concurrency": 8,
-		"batch": 32,
+		"batch": 128,
 		"eth": "https://1.rlps.indexsupply.net",
 		"pg": "postgres:///e2pg",
 		"integrations": ["erc721", "erc1155"]
