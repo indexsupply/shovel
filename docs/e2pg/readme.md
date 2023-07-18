@@ -8,9 +8,21 @@ An Ethereum to Postgres indexer. At a high level, E2PG does the following:
     - Combine decoded logs with arbitrary computation
     - Insert combined data into a Postgres database
 
+The rest of this file describes how this process is accomplished.
+
+## Contents
+
+0. [Quickstart](#quickstart)
+1. [Install](#install)
+2. [Ethereum](#ethereum)
+3. [Postgres](#postgres)
+4. [Integrations](#integrations)
+5. [Tasks](#tasks)
+6. [Reorgs](#reorgs)
+
 ## Quickstart
 
-```
+```bash
 # linux/amd64, darwin/arm64, darwin/amd64, windows/amd64
 curl -LO https://indexsupply.net/bin/main/darwin/arm64/e2pg
 chmod +x e2pg
@@ -22,16 +34,6 @@ export RLPS_URL=https://1.rlps.indexsupply.net
 # blocks are now being indexed and you can query your PG DB:
 psql e2pg
 ```
-
-The rest of this file describes how this process is accomplished.
-
-## Contents
-
-1. [Install](#install)
-2. [Ethereum](#ethereum)
-3. [Postgres](#postgres)
-4. [Integrations](#integrations)
-5. [Tasks](#tasks)
 
 ## Install
 
@@ -46,7 +48,7 @@ Currently E2PG is in developer preview. Once we have a stable release these link
 
 ### Download
 
-```
+```bash
 curl -LO https://indexsupply/net/bin/darwin/arm64/main/e2pg
 chmod +x e2pg
 ```
@@ -55,7 +57,7 @@ chmod +x e2pg
 
 If you are using RLPS then Postgres is the only dependency. E2PG connects to a Postgres server via socket or url. For example:
 
-```
+```bash
 e2pg -e https://1.rlps.indexsupply.net -pg postgres:///e2pg
 ```
 
@@ -175,10 +177,13 @@ E2PG runs tasks. A task can be finite, for indexing a speific block range, or in
 | id            | -id           | Unique number of task. Used as PK/FK in Postgres.                                     |
 | chain         | -chain        | Chain ID. (ie 1/mainnet 10/bedrock) used for signer config                            |
 | eth           | -e            | Ethereun node source. Can be Unix Socket if using a local node or an RLPS URL.        |
+| freezer       | -ef           | Location of freezer files. This is only required when using a local node.             |
 | pg            | -pg           | Postgres URL                                                                          |
 | concurrency   | -c            | Number of concurrent "threads" to process a batch of blocks. Usefull for backfilling  |
 | batch         | -b            | Number of blocks to process during each iteration. Usefull for backfilling.           |
 | integrations  | -i            | CSV List of integrations to use for the task.                                         |
+| begin         | -begin        | Begin indexing at this block. 0 starts the task at the network's latest block.        |
+| end           | -end          | Stop task at this block. 0 ensures the task will continue following the chain.        |
 
 Multiple tasks can be run concurrently by definig the tasks in a JSON file or a single task can be run by using command line arguments.
 
@@ -210,33 +215,23 @@ Here is a sample task JSON document:
 
 To start E2PG using with this configuration use the following command:
 
-```
+```bash
 e2pg -config ./path/to/config.json
 ```
 
-## Sync Mode
+It is also possible to not use a JSON config file and instead start a single task entirely from the command line using the previously defined flags:
 
-E2PG can be used to backfill an index. Meaning you can process a set of integrations over historical blocks. E2PG can also continuously process blocks as they are created on the chain. Both modes use the same code path and produce the same result.
-
-It is also possible to have a continuously running E2PG running alongside a backfill E2PG that is backfilling a newly added integration.
-
-### Index a Block Range
-
-The `-begin` and `-end` flags can be used to process a specific range of blocks and then exit once the `-end` block has been processed. If no `-end` flag is provided then E2PG will transition into continuous sync mode.
-
-```
--begin 0 -end 17000000
+```bash
+e2pg \
+    -name mainnet \
+    -id 1 \
+    -chain 1 \
+    -eth https://1.rlps.indexsupply.net \
+    -pg postgres:///e2pg \
+    -i erc721,erc1155
 ```
 
-### Index from Latest
-
-To start with the network's current latest block, use the following flag:
-
-```
--begin 0
-```
-
-### Reorgs
+## Reorgs
 
 If E2PG gets a block from its Ethereum source where the new block's parent doesn't match the local block's hash, then the local block, and all it's integration data are deleted. After the deletion, E2PG attempts to add the new block. This process is repeated up to 10 times or until a hash/parent match is made. If there is a reorg of more than 10 blocks the database transaction is rolled back (meaning no data was deleted) and E2PG will halt progress. This condition requires operator intervention via SQL:
 
@@ -246,17 +241,4 @@ delete from nft_transfers where block_number > XXX;
 --etc...
 ```
 
-This should never happen on Ethereum mainnet.
-
-### Concurrency
-
-There are two concurrency controls: number of workers and batch size. A batch is a set of blocks that are processed concurrently, and depending on your number of CPUs, in parallel. Note that it is possible that blocks are processed out of order. E2PG's integrations are designed accordingly.
-
-The following flags control workers and batch size:
-
-```
--c 32
--b 2048
-```
-
-It's best to use powers of 2.
+This should rarely happen.
