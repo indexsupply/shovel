@@ -49,16 +49,23 @@ func main() {
 	flag.StringVar(&conf.ETHURL, "e", "", "address or socket for rpc server")
 	flag.Uint64Var(&conf.Concurrency, "c", 2, "number of concurrent workers")
 	flag.Uint64Var(&conf.Batch, "b", 128, "batch size")
-	flag.StringVar(&intgs, "i", "all", "list of integrations")
 	flag.Uint64Var(&conf.Begin, "begin", 0, "starting block. 0 starts at latest")
 	flag.Uint64Var(&conf.End, "end", 0, "ending block. 0 never ends")
+	flag.StringVar(&intgs, "i", "", "list of integrations")
 
 	flag.StringVar(&listen, "l", ":8546", "dashboard server listen address")
 	flag.BoolVar(&usetx, "t", false, "use pg tx")
 	flag.BoolVar(&reset, "reset", false, "drop public schame")
 	flag.StringVar(&profile, "profile", "", "run profile after indexing")
 	flag.BoolVar(&version, "version", false, "version")
+
 	flag.Parse()
+
+	if len(intgs) > 0 {
+		for _, s := range strings.Split(intgs, ",") {
+			conf.Integrations = append(conf.Integrations, s)
+		}
+	}
 
 	if version {
 		fmt.Printf("v%s-%s\n", Version, commit())
