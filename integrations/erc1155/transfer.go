@@ -17,18 +17,18 @@ var Integration = integration{
 	name: "ERC1155 Transfer",
 }
 
-func (i integration) Delete(pg e2pg.PG, h []byte) error {
+func (i integration) Delete(ctx context.Context, pg e2pg.PG, h []byte) error {
 	return nil
 }
 
-func (i integration) Events() [][]byte {
+func (i integration) Events(ctx context.Context) [][]byte {
 	return [][]byte{
 		erc1155abi.TransferBatchSignatureHash,
 		erc1155abi.TransferSingleSignatureHash,
 	}
 }
 
-func (i integration) Insert(pg e2pg.PG, blocks []e2pg.Block) (int64, error) {
+func (i integration) Insert(ctx context.Context, pg e2pg.PG, blocks []e2pg.Block) (int64, error) {
 	var rows = make([][]any, 0, 1<<12)
 	for bidx := 0; bidx < len(blocks); bidx++ {
 		for ridx := 0; ridx < blocks[bidx].Receipts.Len(); ridx++ {
@@ -45,6 +45,8 @@ func (i integration) Insert(pg e2pg.PG, blocks []e2pg.Block) (int64, error) {
 					}
 					for i := 0; i < len(xfrb.Ids); i++ {
 						rows = append(rows, []any{
+							e2pg.TaskID(ctx),
+							e2pg.ChainID(ctx),
 							blocks[bidx].Num(),
 							blocks[bidx].Hash(),
 							t.Hash(),
@@ -60,6 +62,8 @@ func (i integration) Insert(pg e2pg.PG, blocks []e2pg.Block) (int64, error) {
 					xfrb.Done()
 				case errs == nil:
 					rows = append(rows, []any{
+						e2pg.TaskID(ctx),
+						e2pg.ChainID(ctx),
 						blocks[bidx].Num(),
 						blocks[bidx].Hash(),
 						t.Hash(),
@@ -82,6 +86,8 @@ func (i integration) Insert(pg e2pg.PG, blocks []e2pg.Block) (int64, error) {
 		context.Background(),
 		pgx.Identifier{"nft_transfers"},
 		[]string{
+			"task_id",
+			"chain_id",
 			"block_number",
 			"block_hash",
 			"transaction_hash",
