@@ -96,7 +96,7 @@ func NewTasks(confs ...Config) ([]*e2pg.Task, error) {
 
 func parseNode(url, fpath string) (e2pg.Node, error) {
 	switch {
-	case strings.Contains(url, "rlps") || strings.Contains(url, "juno"):
+	case strings.Contains(url, "rlps"):
 		return rlps.NewClient(url), nil
 	case strings.HasPrefix(url, "http"):
 		rc, err := jrpc.New(jrpc.WithHTTP(url))
