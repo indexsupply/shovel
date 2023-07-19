@@ -21,3 +21,19 @@ CREATE UNLOGGED TABLE nft_transfers (
 	transaction_index numeric,
 	log_index numeric
 );
+
+CREATE UNLOGGED TABLE erc20_transfers (
+	contract bytea,
+	f bytea,
+	t bytea,
+	value numeric,
+	tx_sender bytea,
+	eth numeric,
+	task_id numeric,
+	chain_id numeric,
+	block_hash bytea,
+	block_number numeric,
+	transaction_hash bytea,
+	transaction_index numeric,
+	log_index numeric
+);

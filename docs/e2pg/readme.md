@@ -145,6 +145,7 @@ Currently there is no migration mechanism. There is an open issue for this: inde
 
 Currently available integrations:
 
+- ERC20 Transfer
 - ERC721 Transfer
 - ERC1155 Transfer/Batch Transfer
 

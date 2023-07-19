@@ -8,6 +8,7 @@ import (
 	"github.com/indexsupply/x/e2pg"
 	"github.com/indexsupply/x/freezer"
 	"github.com/indexsupply/x/integrations/erc1155"
+	"github.com/indexsupply/x/integrations/erc20"
 	"github.com/indexsupply/x/integrations/erc721"
 	"github.com/indexsupply/x/jrpc"
 	"github.com/indexsupply/x/rlps"
@@ -15,6 +16,7 @@ import (
 )
 
 var Integrations = map[string]e2pg.Integration{
+	"erc20":   erc20.Integration,
 	"erc721":  erc721.Integration,
 	"erc1155": erc1155.Integration,
 }
