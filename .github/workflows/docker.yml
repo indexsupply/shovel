@@ -27,7 +27,7 @@ jobs:
         name: Build and push
         uses: docker/build-push-action@v4
         with:
-          platforms: linux/amd64,linux/arm64,linux/arm64/v8
+          platforms: linux/amd64,linux/arm64,linux/arm/v8
           context: .
           file: ./cmd/e2pg/Dockerfile
           push: true
