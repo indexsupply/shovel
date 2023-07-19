@@ -5,9 +5,10 @@ import (
 	"context"
 	"encoding/hex"
 
-	"github.com/holiman/uint256"
 	"github.com/indexsupply/x/e2pg"
 	"github.com/indexsupply/x/isxhash"
+
+	"github.com/holiman/uint256"
 	"github.com/jackc/pgx/v5"
 )
 
