@@ -7,4 +7,4 @@ RUN go build -o /app/e2pg ./cmd/e2pg/
 
 FROM alpine:latest
 COPY --from=builder /app/e2pg /usr/local/bin
-ENTRYPOINT ["e2pg"]
+CMD ["e2pg"]
