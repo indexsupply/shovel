@@ -8,7 +8,7 @@ require (
 	github.com/bmizerany/perks v0.0.0-20230307044200-03f9df79da1e
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.1.0
 	github.com/golang/snappy v0.0.4
-	github.com/holiman/uint256 v1.2.1
+	github.com/holiman/uint256 v1.2.3
 	github.com/jackc/pgx/v5 v5.3.1
 	github.com/kr/pretty v0.3.1
 	golang.org/x/crypto v0.6.0

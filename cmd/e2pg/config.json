@@ -17,6 +17,6 @@
 		"batch": 1024,
 		"eth": "http://10.rlps.indexsupply.net",
 		"pg": "postgres:///e2pg",
-		"integrations": ["erc721"]
+		"integrations": ["erc20"]
 	}
 ]

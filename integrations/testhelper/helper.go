@@ -41,7 +41,7 @@ func New(tb testing.TB) *H {
 		tb:  tb,
 		ctx: ctx,
 		PG:  pg,
-		gt:  gethtest.New(tb, "http://zeus:8545"),
+		gt:  gethtest.New(tb, "http://hera:8545"),
 	}
 }
 
