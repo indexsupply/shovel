@@ -3,6 +3,7 @@ package config
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/indexsupply/x/e2pg"
@@ -39,6 +40,25 @@ func (conf Config) Empty() bool {
 	return conf.ETHURL == "" || conf.PGURL == ""
 }
 
+// If s has a $ prefix then we assume
+// that it is a placeholder url and the actual
+// url is in an env variable.
+//
+// If there is no env var for s then the program will crash with an error
+//
+// if there is no $ prefix then s is returned
+func env(s string) string {
+	if strings.HasPrefix(s, "$") {
+		v := os.Getenv(strings.ToUpper(strings.TrimPrefix(s, "$")))
+		if v == "" {
+			fmt.Printf("expected database url in env: %q\n", s)
+			os.Exit(1)
+		}
+		return v
+	}
+	return s
+}
+
 func NewTasks(confs ...Config) ([]*e2pg.Task, error) {
 	var (
 		err   error
@@ -49,7 +69,7 @@ func NewTasks(confs ...Config) ([]*e2pg.Task, error) {
 	for _, conf := range confs {
 		pgp, ok := dbs[conf.PGURL]
 		if !ok {
-			pgp, err = pgxpool.New(context.Background(), conf.PGURL)
+			pgp, err = pgxpool.New(context.Background(), env(conf.PGURL))
 			if err != nil {
 				return nil, fmt.Errorf("%s dburl invalid: %w", conf.Name, err)
 			}
@@ -57,7 +77,7 @@ func NewTasks(confs ...Config) ([]*e2pg.Task, error) {
 		}
 		node, ok := nodes[conf.ETHURL]
 		if !ok {
-			node, err = parseNode(conf.ETHURL, conf.FreezerPath)
+			node, err = parseNode(env(conf.ETHURL), conf.FreezerPath)
 			if err != nil {
 				return nil, fmt.Errorf("%s ethurl invalid: %w", conf.Name, err)
 			}
