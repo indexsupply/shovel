@@ -15,6 +15,7 @@ import (
 
 	"github.com/indexsupply/x/e2pg"
 	"github.com/indexsupply/x/e2pg/config"
+	"github.com/indexsupply/x/pgmig"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -35,11 +36,11 @@ func main() {
 		conf  config.Config
 		intgs string
 
-		listen  string
-		usetx   bool
-		reset   bool
-		profile string
-		version bool
+		skipMigrate bool
+		listen      string
+		usetx       bool
+		profile     string
+		version     bool
 	)
 	flag.StringVar(&cfile, "config", "", "task config file")
 	flag.Uint64Var(&conf.ID, "id", 0, "task id")
@@ -53,9 +54,9 @@ func main() {
 	flag.Uint64Var(&conf.End, "end", 0, "ending block. 0 never ends")
 	flag.StringVar(&intgs, "i", "", "list of integrations")
 
+	flag.BoolVar(&skipMigrate, "skip-migrate", false, "do not run db migrations on startup")
 	flag.StringVar(&listen, "l", ":8546", "dashboard server listen address")
 	flag.BoolVar(&usetx, "t", false, "use pg tx")
-	flag.BoolVar(&reset, "reset", false, "drop public schame")
 	flag.StringVar(&profile, "profile", "", "run profile after indexing")
 	flag.BoolVar(&version, "version", false, "version")
 
@@ -72,26 +73,7 @@ func main() {
 		os.Exit(0)
 	}
 
-	if reset {
-		pgp, err := pgxpool.New(ctx, conf.PGURL)
-		check(err)
-		h := pgp.Config().ConnConfig.Host
-		if !(h == "localhost" || h == "/private/tmp" || h == "/var/run/postgresql") {
-			fmt.Printf("unable to reset non-local db: %s\n", h)
-			os.Exit(1)
-		}
-		_, err = pgp.Exec(ctx, "drop schema public cascade")
-		check(err)
-		_, err = pgp.Exec(ctx, "create schema public")
-		check(err)
-		for _, q := range strings.Split(e2pg.Schema, ";") {
-			_, err = pgp.Exec(ctx, q)
-			check(err)
-		}
-		pgp.Close()
-	}
-
-	var tasks []*e2pg.Task
+	var confs []config.Config
 	switch {
 	case cfile != "" && !conf.Empty():
 		fmt.Printf("unable to use config file and command line args\n")
@@ -99,15 +81,26 @@ func main() {
 	case cfile != "":
 		f, err := os.Open(cfile)
 		check(err)
-		confs := []config.Config{}
+		confs = []config.Config{}
 		check(json.NewDecoder(f).Decode(&confs))
-		tasks, err = config.NewTasks(confs...)
-		check(err)
 	case !conf.Empty():
-		var err error
-		tasks, err = config.NewTasks(conf)
-		check(err)
+		confs = []config.Config{conf}
 	}
+
+	if len(confs) == 0 {
+		fmt.Println("Must specify at least 1 task configuration")
+		os.Exit(1)
+	}
+
+	if !skipMigrate {
+		migdb, err := pgxpool.New(ctx, config.Env(confs[0].PGURL))
+		check(err)
+		check(pgmig.Migrate(migdb, e2pg.Migrations))
+		migdb.Close()
+	}
+
+	tasks, err := config.NewTasks(confs...)
+	check(err)
 
 	var (
 		pbuf  bytes.Buffer
