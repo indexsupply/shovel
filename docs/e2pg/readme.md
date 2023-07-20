@@ -139,7 +139,11 @@ When configuring E2PG to run in RLPS mode, use the following flag:
 
 The PG in E2PG is a Postgres server that receives the indexed data. E2PG is developed against Postgres version 16. Although older versions may work. You can give E2PG a dedicated Postgres database or you can point E2PG at your existing Postgres database. Currently E2PG operates in Postgres' public schema, but it is possible to change that so that E2PG writes in its own schema within a database. Please file an issue if you need this feature. The schema can be found here: [e2pg/schema.sql](https://github.com/indexsupply/x/blob/main/e2pg/schema.sql)
 
-Currently there is no migration mechanism. There is an open issue for this: indexsupply/x#127
+E2PG will migrate its database on process startup. This can be disabled by using the following flag:
+
+```bash
+./e2pg ... -skip-migrate
+```
 
 ## Integrations
 

@@ -6,7 +6,7 @@
 		"concurrency": 8,
 		"batch": 128,
 		"eth": "https://1.rlps.indexsupply.net",
-		"pg": "$DATABASE_URL",
+		"pg": "postgres:///e2pg",
 		"integrations": ["erc721", "erc1155"]
 	},
 	{
@@ -16,7 +16,7 @@
 		"concurrency": 8,
 		"batch": 1024,
 		"eth": "http://10.rlps.indexsupply.net",
-		"pg": "$DATABASE_URL",
+		"pg": "postgres:///e2pg",
 		"integrations": ["erc20"]
 	}
 ]
