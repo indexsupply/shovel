@@ -32,6 +32,7 @@ func TestTransfer(t *testing.T) {
 				and transaction_hash = '\xdc6bb2a1aff2dbb2613113984b5fbd560e582c0a4369149402d7ea83b0f5983e'
 				and f = '\x0000000000000000000000000000000000000000'
 				and t = '\x55FE002aefF02F77364de339a1292923A15844B8'
+				and tx_signer = '\x5B6122C109B78C6755486966148C1D70a50A47D7'
 				and value = 20000000
 			`,
 		},

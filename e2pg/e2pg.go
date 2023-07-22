@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/btcsuite/btcd/btcec/v2/ecdsa"
 	"github.com/indexsupply/x/bint"
 	"github.com/indexsupply/x/bloom"
 	"github.com/indexsupply/x/freezer"
@@ -672,6 +673,14 @@ type StorageKeys struct {
 	n int
 }
 
+func (sk *StorageKeys) MarshalRLP() []byte {
+	var res [][]byte
+	for i := 0; i < sk.n; i++ {
+		res = append(res, rlp.Encode(sk.d[i][:]))
+	}
+	return rlp.List(res...)
+}
+
 func (sk *StorageKeys) Reset()            { sk.n = 0 }
 func (sk *StorageKeys) Len() int          { return sk.n }
 func (sk *StorageKeys) At(i int) [32]byte { return sk.d[i] }
@@ -694,6 +703,13 @@ type AccessTuple struct {
 	StorageKeys StorageKeys
 }
 
+func (at *AccessTuple) MarshalRLP() []byte {
+	return rlp.List(
+		rlp.Encode(at.Address[:]),
+		at.StorageKeys.MarshalRLP(),
+	)
+}
+
 func (at *AccessTuple) Reset() {
 	at.StorageKeys.Reset()
 }
@@ -711,6 +727,14 @@ func (at *AccessTuple) Unmarshal(b []byte) error {
 type AccessList struct {
 	d []AccessTuple
 	n int
+}
+
+func (al AccessList) MarshalRLP() []byte {
+	var res [][]byte
+	for i := 0; i < al.n; i++ {
+		res = append(res, al.d[i].MarshalRLP())
+	}
+	return rlp.List(res...)
 }
 
 func (al *AccessList) Reset()               { al.n = 0 }
@@ -735,6 +759,7 @@ func (al *AccessList) Insert(i int, b []byte) {
 }
 
 type Transaction struct {
+	Type     byte
 	ChainID  uint256.Int
 	Nonce    uint64
 	GasPrice uint256.Int
@@ -768,6 +793,70 @@ func (t *Transaction) Hash() []byte {
 	return t.hash
 }
 
+func (tx *Transaction) Signer() ([]byte, error) {
+	var sig []byte
+	sig = append(sig, tx.v())
+	sig = append(sig, tx.R.Bytes()...)
+	sig = append(sig, tx.S.Bytes()...)
+	pubk, _, err := ecdsa.RecoverCompact(sig, tx.SigHash())
+	if err != nil {
+		return nil, fmt.Errorf("recovering pubkey: %w", err)
+	}
+	var (
+		cpk  = pubk.SerializeUncompressed()
+		addr = isxhash.Keccak(cpk[1:])
+	)
+	return addr[12:], nil
+}
+
+func (tx *Transaction) v() byte {
+	switch v := tx.V.Uint64(); {
+	case v <= 1:
+		return byte(27 + v)
+	default:
+		return byte(27 + ((v - 35) % 2))
+	}
+}
+
+func (t *Transaction) SigHash() []byte {
+	switch t.Type {
+	case 0x00:
+		return isxhash.Keccak(rlp.List(
+			rlp.Encode(bint.Encode(nil, t.Nonce)),
+			rlp.Encode(t.GasPrice.Bytes()),
+			rlp.Encode(bint.Encode(nil, t.GasLimit)),
+			rlp.Encode(t.To),
+			rlp.Encode(t.Value.Bytes()),
+			rlp.Encode(t.Data),
+		))
+	case 0x01:
+		return isxhash.Keccak(append([]byte{0x01}, rlp.List(
+			rlp.Encode(t.ChainID.Bytes()),
+			rlp.Encode(bint.Encode(nil, t.Nonce)),
+			rlp.Encode(t.GasPrice.Bytes()),
+			rlp.Encode(bint.Encode(nil, t.GasLimit)),
+			rlp.Encode(t.To),
+			rlp.Encode(t.Value.Bytes()),
+			rlp.Encode(t.Data),
+			t.AccessList.MarshalRLP(),
+		)...))
+	case 0x02:
+		return isxhash.Keccak(append([]byte{0x02}, rlp.List(
+			rlp.Encode(t.ChainID.Bytes()),
+			rlp.Encode(bint.Encode(nil, t.Nonce)),
+			rlp.Encode(t.MaxPriorityFeePerGas.Bytes()),
+			rlp.Encode(t.MaxFeePerGas.Bytes()),
+			rlp.Encode(bint.Encode(nil, t.GasLimit)),
+			rlp.Encode(t.To),
+			rlp.Encode(t.Value.Bytes()),
+			rlp.Encode(t.Data),
+			t.AccessList.MarshalRLP(),
+		)...))
+	default:
+		return nil
+	}
+}
+
 type Transactions struct {
 	d []Transaction
 	n int
@@ -782,28 +871,27 @@ func (txs *Transactions) Insert(i int, b []byte) {
 	switch {
 	case i < len(txs.d):
 		txs.d[i].Unmarshal(b)
-		txs.d[i].rbuf = growcopy(txs.d[i].rbuf, b)
 		txs.d[i].hash = nil // reset hash cache on reuse
 	case len(txs.d) < cap(txs.d):
 		t := Transaction{}
-		t.rbuf = growcopy(t.rbuf, b)
 		t.Unmarshal(b)
 		txs.d = append(txs.d, t)
 	default:
 		txs.d = append(txs.d, make([]Transaction, 512)...)
 		t := Transaction{}
-		t.rbuf = growcopy(t.rbuf, b)
 		t.Unmarshal(b)
 		txs.d[i] = t
 	}
 }
 
 func (tx *Transaction) Unmarshal(b []byte) error {
+	tx.rbuf = growcopy(tx.rbuf, b)
 	if len(b) < 1 {
 		return fmt.Errorf("decoding empty transaction bytes")
 	}
 	// Legacy Transaction
 	if iter := rlp.Iter(b); iter.HasNext() {
+		tx.Type = 0x00
 		tx.Nonce = bint.Decode(iter.Bytes())
 		tx.GasPrice.SetBytes(iter.Bytes())
 		tx.GasLimit = bint.Decode(iter.Bytes())
@@ -821,6 +909,7 @@ func (tx *Transaction) Unmarshal(b []byte) error {
 	case 0x01:
 		// EIP-2930: Access List
 		// https://eips.ethereum.org/EIPS/eip-2930
+		tx.Type = 0x01
 		tx.ChainID.SetBytes(iter.Bytes())
 		tx.Nonce = bint.Decode(iter.Bytes())
 		tx.GasPrice.SetBytes(iter.Bytes())
@@ -839,6 +928,7 @@ func (tx *Transaction) Unmarshal(b []byte) error {
 	case 0x02:
 		// EIP-1559: Dynamic Fee
 		// https://eips.ethereum.org/EIPS/eip-1559
+		tx.Type = 0x02
 		tx.ChainID.SetBytes(iter.Bytes())
 		tx.Nonce = bint.Decode(iter.Bytes())
 		tx.MaxPriorityFeePerGas.SetBytes(iter.Bytes())
