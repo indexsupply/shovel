@@ -42,6 +42,28 @@ CREATE TABLE public.erc20_transfers (
 
 
 
+CREATE TABLE public.erc4337_userops (
+    contract bytea,
+    op_hash bytea,
+    op_sender bytea,
+    op_paymaster bytea,
+    op_nonce numeric,
+    op_success boolean,
+    op_actual_gas_cost numeric,
+    op_actual_gas_used numeric,
+    tx_sender bytea,
+    eth numeric,
+    task_id numeric,
+    chain_id numeric,
+    block_hash bytea,
+    block_number numeric,
+    transaction_hash bytea,
+    transaction_index numeric,
+    log_index numeric
+);
+
+
+
 CREATE TABLE public.nft_transfers (
     contract bytea,
     token_id numeric,

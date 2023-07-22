@@ -16,6 +16,7 @@ var sig, sigHash []byte
 
 func init() {
 	var err error
+	// Obtained by inputing Transfer(address,address,uint256) into https://emn178.github.io/online-tools/keccak_256.html
 	sig, err = hex.DecodeString("ddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef")
 	if err != nil {
 		panic("unable to decode erc20 transfer sig")
