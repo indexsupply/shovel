@@ -1,57 +1,35 @@
-package erc20
+package erc4337
 
 import (
-	"bytes"
 	"context"
 
+	"github.com/indexsupply/x/contrib/erc4337"
 	"github.com/indexsupply/x/e2pg"
-	"github.com/indexsupply/x/isxhash"
 
-	"github.com/holiman/uint256"
 	"github.com/jackc/pgx/v5"
 )
-
-var sig, sigHash []byte
-
-func init() {
-	sig = isxhash.Keccak([]byte("Transfer(address,address,uint256)"))
-	sigHash = isxhash.Keccak(sig)
-}
 
 type integration struct {
 	name string
 }
 
 var Integration = integration{
-	name: "ERC20 Transfer",
+	name: "ERC4337 UserOperationEvent",
 }
 
 func (i integration) Events(ctx context.Context) [][]byte {
-	return [][]byte{sigHash}
+	return [][]byte{erc4337.UserOperationEventSignatureHash}
 }
 
 func (i integration) Delete(ctx context.Context, pg e2pg.PG, h []byte) error {
 	const q = `
-		delete from erc20_transfers
+		delete from erc4337_userops
 		where task_id = $1
 		and chain_id = $2
 		and block_hash = $3
 	`
 	_, err := pg.Exec(ctx, q, e2pg.TaskID(ctx), e2pg.ChainID(ctx), h)
 	return err
-}
-
-func addr(b []byte) []byte {
-	if len(b) < 32 {
-		return nil
-	}
-	return b[12:]
-}
-
-func u256(b []byte) string {
-	n := new(uint256.Int)
-	n.SetBytes(b)
-	return n.Dec()
 }
 
 func (i integration) Insert(ctx context.Context, pg e2pg.PG, blocks []e2pg.Block) (int64, error) {
@@ -61,7 +39,8 @@ func (i integration) Insert(ctx context.Context, pg e2pg.PG, blocks []e2pg.Block
 			r := blocks[bidx].Receipts.At(ridx)
 			for lidx := 0; lidx < r.Logs.Len(); lidx++ {
 				l := r.Logs.At(lidx)
-				if !bytes.Equal(l.Topics.At(0), sig) {
+				event, err := erc4337.MatchUserOperationEvent(l)
+				if err != nil {
 					continue
 				}
 				rows = append(rows, []any{
@@ -73,24 +52,40 @@ func (i integration) Insert(ctx context.Context, pg e2pg.PG, blocks []e2pg.Block
 					ridx,
 					lidx,
 					l.Address,
-					addr(l.Topics.At(1)),
-					addr(l.Topics.At(2)),
-					u256(l.Data),
+
+					event.UserOpHash[:],
+					event.Sender[:],
+					event.Paymaster[:],
+					event.Nonce.String(),
+					event.Success,
+					event.ActualGasCost.String(),
+					event.ActualGasUsed.String(),
 				})
+				event.Done()
 			}
 		}
 	}
-	return pg.CopyFrom(ctx, pgx.Identifier{"erc20_transfers"}, []string{
-		"task_id",
-		"chain_id",
-		"block_number",
-		"block_hash",
-		"transaction_hash",
-		"transaction_index",
-		"log_index",
-		"contract",
-		"f",
-		"t",
-		"value",
-	}, pgx.CopyFromRows(rows))
+	return pg.CopyFrom(
+		context.Background(),
+		pgx.Identifier{"erc4337_userops"},
+		[]string{
+			"task_id",
+			"chain_id",
+			"block_number",
+			"block_hash",
+			"transaction_hash",
+			"transaction_index",
+			"log_index",
+			"contract",
+
+			"op_hash",
+			"op_sender",
+			"op_paymaster",
+			"op_nonce",
+			"op_success",
+			"op_actual_gas_cost",
+			"op_actual_gas_used",
+		},
+		pgx.CopyFromRows(rows),
+	)
 }
