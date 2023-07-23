@@ -33,13 +33,13 @@ func (i integration) Delete(ctx context.Context, pg e2pg.PG, h []byte) error {
 }
 
 func (i integration) Insert(ctx context.Context, pg e2pg.PG, blocks []e2pg.Block) (int64, error) {
-	var rows = make([][]any, 0, 1<<12) // 2^12 max batch size?
+	var rows = make([][]any, 0, 1<<12)
 	for bidx := 0; bidx < len(blocks); bidx++ {
 		for ridx := 0; ridx < blocks[bidx].Receipts.Len(); ridx++ {
 			r := blocks[bidx].Receipts.At(ridx)
 			for lidx := 0; lidx < r.Logs.Len(); lidx++ {
 				l := r.Logs.At(lidx)
-				xfr, err := erc4337.MatchUserOperationEvent(l)
+				event, err := erc4337.MatchUserOperationEvent(l)
 				if err != nil {
 					continue
 				}
@@ -53,15 +53,15 @@ func (i integration) Insert(ctx context.Context, pg e2pg.PG, blocks []e2pg.Block
 					lidx,
 					l.Address,
 
-					xfr.UserOpHash[:],
-					xfr.Sender[:],
-					xfr.Paymaster[:],
-					xfr.Nonce.String(),
-					xfr.Success,
-					xfr.ActualGasCost.String(),
-					xfr.ActualGasUsed.String(),
+					event.UserOpHash[:],
+					event.Sender[:],
+					event.Paymaster[:],
+					event.Nonce.String(),
+					event.Success,
+					event.ActualGasCost.String(),
+					event.ActualGasUsed.String(),
 				})
-				xfr.Done()
+				event.Done()
 			}
 		}
 	}
