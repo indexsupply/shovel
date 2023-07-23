@@ -166,9 +166,17 @@ func (task *Task) Status() StatusSnapshot {
 	printer := message.NewPrinter(message.MatchLanguage("en"))
 	snap := StatusSnapshot{}
 	snap.Name = task.Name
-	snap.EthHash = fmt.Sprintf("%x", task.stat.ehash[:4])
+	if len(task.stat.ehash) == 0 {
+		snap.EthHash = "-";
+	} else {
+		snap.EthHash = fmt.Sprintf("%x", task.stat.ehash[:4])
+	}
 	snap.EthNum = fmt.Sprintf("%d", task.stat.enum)
-	snap.Hash = fmt.Sprintf("%x", task.stat.ihash[:4])
+	if len(task.stat.ihash) == 0 {
+		snap.Hash = "-";
+	} else {
+		snap.Hash = fmt.Sprintf("%x", task.stat.ihash[:4])
+	}
 	snap.Num = printer.Sprintf("%d", task.stat.inum)
 	snap.BlockCount = fmt.Sprintf("%d", atomic.SwapInt64(&task.stat.blocks, 0))
 	snap.EventCount = fmt.Sprintf("%d", atomic.SwapInt64(&task.stat.events, 0))
