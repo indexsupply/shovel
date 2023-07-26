@@ -38,7 +38,7 @@ func main() {
 
 		skipMigrate bool
 		listen      string
-		usetx       bool
+		notx        bool
 		profile     string
 		version     bool
 	)
@@ -56,7 +56,7 @@ func main() {
 
 	flag.BoolVar(&skipMigrate, "skip-migrate", false, "do not run db migrations on startup")
 	flag.StringVar(&listen, "l", ":8546", "dashboard server listen address")
-	flag.BoolVar(&usetx, "t", false, "use pg tx")
+	flag.BoolVar(&notx, "notx", false, "disable pg tx")
 	flag.StringVar(&profile, "profile", "", "run profile after indexing")
 	flag.BoolVar(&version, "version", false, "version")
 
@@ -123,7 +123,7 @@ func main() {
 		i := i
 		eg.Go(func() error {
 			check(tasks[i].Setup())
-			check(tasks[i].Run(snaps, usetx))
+			check(tasks[i].Run(snaps, notx))
 			return nil
 		})
 	}
