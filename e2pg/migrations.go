@@ -55,7 +55,7 @@ var Migrations = map[int]pgmig.Migration{
 				op_success boolean,
 				op_actual_gas_cost numeric,
 				op_actual_gas_used numeric,
-		
+
 				tx_sender bytea,
 				eth numeric,
 				task_id numeric,
@@ -66,6 +66,21 @@ var Migrations = map[int]pgmig.Migration{
 				transaction_index numeric,
 				log_index numeric
 		);
+		`,
+	},
+	2: pgmig.Migration{
+		SQL: `
+			alter table nft_transfers
+			add constraint nft_transfers_unique
+			unique (chain_id, transaction_hash, log_index);
+
+			alter table erc20_transfers
+			add constraint erc20_transfers_unique
+			unique (chain_id, transaction_hash, log_index);
+
+			alter table erc4337_userops
+			add constraint erc4337_userops_unique
+			unique (chain_id, transaction_hash, log_index);
 		`,
 	},
 }
