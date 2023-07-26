@@ -230,9 +230,9 @@ func (task *Task) Setup() error {
 	return task.Insert(gethNum-1, h)
 }
 
-func (task *Task) Run(snaps chan<- StatusSnapshot, usetx bool) error {
+func (task *Task) Run(snaps chan<- StatusSnapshot, notx bool) error {
 	for {
-		err := task.Converge(usetx)
+		err := task.Converge(notx)
 		if err == nil {
 			go func() {
 				snap := task.Status()
@@ -267,7 +267,7 @@ var (
 // If pg contains an invalid latest block (ie reorg) then [ErrReorg]
 // is returned and the caller may rollback the transaction resulting
 // in no side-effects.
-func (task *Task) Converge(usetx bool) error {
+func (task *Task) Converge(notx bool) error {
 	var (
 		err      error
 		start       = time.Now()
@@ -277,7 +277,7 @@ func (task *Task) Converge(usetx bool) error {
 		commit   = func() error { return nil }
 		rollback = func() error { return nil }
 	)
-	if usetx {
+	if !notx {
 		pgTx, err = task.pgp.Begin(ctx)
 		if err != nil {
 			return err
