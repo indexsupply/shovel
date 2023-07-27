@@ -83,4 +83,7 @@ var Migrations = map[int]pgmig.Migration{
 			unique (chain_id, transaction_hash, log_index);
 		`,
 	},
+	3: pgmig.Migration{
+		SQL: `alter table nft_transfers drop constraint nft_transfers_unique;`,
+	},
 }
