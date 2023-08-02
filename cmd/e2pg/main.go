@@ -8,6 +8,7 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
+	npprof "net/http/pprof"
 	"os"
 	"runtime/debug"
 	"runtime/pprof"
@@ -16,9 +17,9 @@ import (
 	"github.com/indexsupply/x/e2pg"
 	"github.com/indexsupply/x/e2pg/config"
 	"github.com/indexsupply/x/pgmig"
-	"golang.org/x/sync/errgroup"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"golang.org/x/sync/errgroup"
 )
 
 func check(err error) {
@@ -110,7 +111,12 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", dh.Index)
 	mux.HandleFunc("/updates", dh.Updates)
-	mux.HandleFunc("/debug/pprof/profile", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/debug/pprof/", npprof.Index)
+	mux.HandleFunc("/debug/pprof/cmdline", npprof.Cmdline)
+	mux.HandleFunc("/debug/pprof/profile", npprof.Profile)
+	mux.HandleFunc("/debug/pprof/symbol", npprof.Symbol)
+	mux.HandleFunc("/debug/pprof/trace", npprof.Trace)
+	mux.HandleFunc("/debug/pprof/capture", func(w http.ResponseWriter, r *http.Request) {
 		w.Write(pbuf.Bytes())
 	})
 	go http.ListenAndServe(listen, mux)

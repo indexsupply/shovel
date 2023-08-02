@@ -535,19 +535,32 @@ type Header struct {
 	ExcessData  []byte
 }
 
+func grow(s []byte, n int) []byte {
+	if len(s) < n {
+		s = append(s, make([]byte, n-len(s))...)
+	}
+	return s[:n]
+}
+
+func growcopy(dst, src []byte) []byte {
+	dst = grow(dst, len(src))
+	copy(dst, src)
+	return dst
+}
+
 func (h *Header) Unmarshal(input []byte) {
 	h.Hash = isxhash.Keccak(input)
 	for i, itr := 0, rlp.Iter(input); itr.HasNext(); i++ {
 		d := itr.Bytes()
 		switch i {
 		case 0:
-			h.Parent = d
+			h.Parent = growcopy(h.Parent, d)
 		case 6:
-			h.LogsBloom = d
+			h.LogsBloom = growcopy(h.LogsBloom, d)
 		case 8:
-			h.Number = bint.Decode(d)
+			h.Number = bint.Uint64(d)
 		case 11:
-			h.Time = bint.Decode(d)
+			h.Time = bint.Uint64(d)
 		}
 	}
 }
@@ -560,8 +573,8 @@ type Receipt struct {
 
 func (r *Receipt) Unmarshal(input []byte) {
 	iter := rlp.Iter(input)
-	r.Status = iter.Bytes()
-	r.GasUsed = bint.Decode(iter.Bytes())
+	r.Status = growcopy(r.Status, iter.Bytes())
+	r.GasUsed = bint.Uint64(iter.Bytes())
 	r.Logs.Reset()
 	for i, l := 0, rlp.Iter(iter.Bytes()); l.HasNext(); i++ {
 		r.Logs.Insert(i, l.Bytes())
@@ -605,7 +618,7 @@ func (ts *Topics) At(i int) []byte { return ts.d[i] }
 
 func (ts *Topics) Insert(i int, b []byte) {
 	ts.n++
-	ts.d[i] = b
+	ts.d[i] = growcopy(ts.d[i], b)
 }
 
 type Log struct {
@@ -616,12 +629,12 @@ type Log struct {
 
 func (l *Log) Unmarshal(input []byte) {
 	iter := rlp.Iter(input)
-	l.Address = iter.Bytes()
+	l.Address = growcopy(l.Address, iter.Bytes())
 	l.Topics.Reset()
 	for i, t := 0, rlp.Iter(iter.Bytes()); t.HasNext(); i++ {
 		l.Topics.Insert(i, t.Bytes())
 	}
-	l.Data = iter.Bytes()
+	l.Data = growcopy(l.Data, iter.Bytes())
 }
 
 type Logs struct {
@@ -663,12 +676,12 @@ func (sk *StorageKeys) Insert(i int, b []byte) {
 	sk.n++
 	switch {
 	case i < len(sk.d):
-		sk.d[i] = [32]byte(b)
+		copy(sk.d[i][:], b)
 	case len(sk.d) < cap(sk.d):
 		sk.d = append(sk.d, [32]byte(b))
 	default:
 		sk.d = append(sk.d, make([][32]byte, 8)...)
-		sk.d[i] = [32]byte(b)
+		copy(sk.d[i][:], b)
 	}
 }
 
@@ -683,7 +696,7 @@ func (at *AccessTuple) Reset() {
 
 func (at *AccessTuple) Unmarshal(b []byte) error {
 	iter := rlp.Iter(b)
-	at.Address = [20]byte(iter.Bytes())
+	copy(at.Address[:], iter.Bytes())
 	at.StorageKeys.Reset()
 	for i, it := 0, rlp.Iter(iter.Bytes()); it.HasNext(); i++ {
 		at.StorageKeys.Insert(i, it.Bytes())
@@ -765,17 +778,17 @@ func (txs *Transactions) Insert(i int, b []byte) {
 	switch {
 	case i < len(txs.d):
 		txs.d[i].Unmarshal(b)
-		txs.d[i].rbuf = b
+		txs.d[i].rbuf = growcopy(txs.d[i].rbuf, b)
 		txs.d[i].hash = nil // reset hash cache on reuse
 	case len(txs.d) < cap(txs.d):
 		t := Transaction{}
-		t.rbuf = b
+		t.rbuf = growcopy(t.rbuf, b)
 		t.Unmarshal(b)
 		txs.d = append(txs.d, t)
 	default:
 		txs.d = append(txs.d, make([]Transaction, 512)...)
 		t := Transaction{}
-		t.rbuf = b
+		t.rbuf = growcopy(t.rbuf, b)
 		t.Unmarshal(b)
 		txs.d[i] = t
 	}
@@ -790,9 +803,9 @@ func (tx *Transaction) Unmarshal(b []byte) error {
 		tx.Nonce = bint.Decode(iter.Bytes())
 		tx.GasPrice.SetBytes(iter.Bytes())
 		tx.GasLimit = bint.Decode(iter.Bytes())
-		tx.To = iter.Bytes()
+		tx.To = growcopy(tx.To, iter.Bytes())
 		tx.Value.SetBytes(iter.Bytes())
-		tx.Data = iter.Bytes()
+		tx.Data = growcopy(tx.Data, iter.Bytes())
 		tx.V.SetBytes(iter.Bytes())
 		tx.R.SetBytes(iter.Bytes())
 		tx.S.SetBytes(iter.Bytes())
@@ -808,9 +821,9 @@ func (tx *Transaction) Unmarshal(b []byte) error {
 		tx.Nonce = bint.Decode(iter.Bytes())
 		tx.GasPrice.SetBytes(iter.Bytes())
 		tx.GasLimit = bint.Decode(iter.Bytes())
-		tx.To = iter.Bytes()
+		tx.To = growcopy(tx.To, iter.Bytes())
 		tx.Value.SetBytes(iter.Bytes())
-		tx.Data = iter.Bytes()
+		tx.Data = growcopy(tx.Data, iter.Bytes())
 		tx.AccessList.Reset()
 		for i, it := 0, rlp.Iter(iter.Bytes()); it.HasNext(); i++ {
 			tx.AccessList.Insert(i, it.Bytes())
@@ -827,9 +840,9 @@ func (tx *Transaction) Unmarshal(b []byte) error {
 		tx.MaxPriorityFeePerGas.SetBytes(iter.Bytes())
 		tx.MaxFeePerGas.SetBytes(iter.Bytes())
 		tx.GasLimit = bint.Decode(iter.Bytes())
-		tx.To = iter.Bytes()
+		tx.To = growcopy(tx.To, iter.Bytes())
 		tx.Value.SetBytes(iter.Bytes())
-		tx.Data = iter.Bytes()
+		tx.Data = growcopy(tx.Data, iter.Bytes())
 		tx.AccessList.Reset()
 		for i, it := 0, rlp.Iter(iter.Bytes()); it.HasNext(); i++ {
 			tx.AccessList.Insert(i, it.Bytes())
