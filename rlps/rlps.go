@@ -1,6 +1,7 @@
 package rlps
 
 import (
+	"bytes"
 	"encoding/hex"
 	"fmt"
 	"io"
@@ -8,6 +9,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/indexsupply/x/bint"
 	"github.com/indexsupply/x/bloom"
@@ -30,6 +32,8 @@ type Client struct {
 	hc   *http.Client
 }
 
+var bufferPool = sync.Pool{New: func() any { return new(bytes.Buffer) }}
+
 func (c *Client) LoadBlocks(filter [][]byte, bfs []geth.Buffer, blocks []e2pg.Block) error {
 	u, err := url.Parse(c.surl + "/blocks")
 	if err != nil {
@@ -50,14 +54,18 @@ func (c *Client) LoadBlocks(filter [][]byte, bfs []geth.Buffer, blocks []e2pg.Bl
 		return fmt.Errorf("unable to execute rlps request: %w", err)
 	}
 	defer resp.Body.Close()
-	enc, err := io.ReadAll(resp.Body)
+	enc := bufferPool.Get().(*bytes.Buffer)
+	enc.Reset()
+	defer bufferPool.Put(enc)
+
+	_, err = io.Copy(enc, resp.Body)
 	if err != nil {
 		return fmt.Errorf("unable to read rlps response")
 	}
 	if (resp.StatusCode / 100) != 2 {
-		return fmt.Errorf("rlps error: %s", string(enc))
+		return fmt.Errorf("rlps error: %s", enc.String())
 	}
-	for i, bitr := 0, rlp.Iter(enc); bitr.HasNext(); i++ {
+	for i, bitr := 0, rlp.Iter(enc.Bytes()); bitr.HasNext(); i++ {
 		var (
 			blockRLP    = rlp.Iter(bitr.Bytes())
 			headerRLP   = blockRLP.Bytes()
