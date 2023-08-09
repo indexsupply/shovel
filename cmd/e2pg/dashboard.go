@@ -108,6 +108,7 @@ func (dh *dashHandler) Index(w http.ResponseWriter, r *http.Request) {
 						<thead>
 							<tr>
 								<td>Task</td>
+								<td>Chain</td>
 								<td>Block</td>
 								<td>Hash</td>
 								<td>Blocks</td>
@@ -117,9 +118,11 @@ func (dh *dashHandler) Index(w http.ResponseWriter, r *http.Request) {
 							</tr>
 						</thead>
 						<tbody>
-							{{ range $name, $status := . -}}
+							{{ range $id, $status := . -}}
+							{{ $name := $status.Name -}}
 							<tr>
 								<td id="{{ printf "%s-name" $name}}">{{ $name }}</td>
+								<td id="{{ printf "%s-id" $name}}">{{ $id }}</td>
 								<td id="{{ printf "%s-num" $name}}">{{ $status.Num }}</td>
 								<td id="{{ printf "%s-hash" $name}}">{{ $status.Hash }}</td>
 								<td id="{{ printf "%s-block_count" $name}}">{{ $status.BlockCount }}</td>
@@ -158,9 +161,9 @@ func (dh *dashHandler) Index(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	snaps := make(map[string]e2pg.StatusSnapshot)
+	snaps := make(map[uint64]e2pg.StatusSnapshot)
 	for _, task := range dh.tasks {
-		snaps[task.Name] = task.Status()
+		snaps[task.ChainID] = task.Status()
 	}
 	err = tmpl.Execute(w, snaps)
 	if err != nil {

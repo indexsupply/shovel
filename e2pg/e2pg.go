@@ -102,6 +102,7 @@ func NewTask(
 		ctx:       ctx,
 		ID:        id,
 		Name:      name,
+		ChainID:   chainID,
 		batch:     make([]Block, batchSize),
 		buffs:     make([]geth.Buffer, batchSize),
 		batchSize: batchSize,
@@ -121,9 +122,10 @@ func NewTask(
 }
 
 type Task struct {
-	ctx  context.Context
-	ID   uint64
-	Name string
+	ctx     context.Context
+	ID      uint64
+	Name    string
+	ChainID uint64
 
 	node       Node
 	pgp        *pgxpool.Pool
@@ -150,6 +152,7 @@ type status struct {
 
 type StatusSnapshot struct {
 	Name            string `json:"name"`
+	ChainID         string `json:"chainID"`
 	EthHash         string `json:"eth_hash"`
 	EthNum          string `json:"eth_num"`
 	Hash            string `json:"hash"`
@@ -166,6 +169,7 @@ func (task *Task) Status() StatusSnapshot {
 	printer := message.NewPrinter(message.MatchLanguage("en"))
 	snap := StatusSnapshot{}
 	snap.Name = task.Name
+	snap.ChainID = fmt.Sprintf("%d", task.ChainID)
 	snap.EthHash = fmt.Sprintf("%x", task.stat.ehash[:4])
 	snap.EthNum = fmt.Sprintf("%d", task.stat.enum)
 	snap.Hash = fmt.Sprintf("%x", task.stat.ihash[:4])
