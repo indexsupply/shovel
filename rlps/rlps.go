@@ -35,12 +35,19 @@ type Client struct {
 var bufferPool = sync.Pool{New: func() any { return new(bytes.Buffer) }}
 
 func (c *Client) LoadBlocks(filter [][]byte, bfs []geth.Buffer, blocks []e2pg.Block) error {
+	// Use hash in the request url to avoid having the
+	// rlps cdn serve a reorganized block.
+	h, err := c.Hash(bfs[0].Number)
+	if err != nil {
+		return fmt.Errorf("unable to get hash for %d: %w", bfs[0].Number, err)
+	}
 	u, err := url.Parse(c.surl + "/blocks")
 	if err != nil {
 		return fmt.Errorf("unable to parse rpls server url")
 	}
 	q := u.Query()
 	q.Add("n", strconv.FormatUint(bfs[0].Number, 10))
+	q.Add("h", hex.EncodeToString(h))
 	q.Add("limit", strconv.Itoa(len(blocks)))
 	q.Add("filter", unparseFilter(filter))
 	u.RawQuery = q.Encode()
