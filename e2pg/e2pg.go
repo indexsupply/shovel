@@ -240,7 +240,7 @@ func (task *Task) Run(snaps chan<- StatusSnapshot, notx bool) error {
 		if err == nil {
 			go func() {
 				snap := task.Status()
-				fmt.Printf("%s\t%s\t%s\n", snap.Name, snap.Num, snap.Hash)
+				fmt.Printf("%-20s %-20s %s\n", snap.Name, snap.Num, snap.Hash)
 				select {
 				case snaps <- snap:
 				default:
