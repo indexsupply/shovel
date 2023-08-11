@@ -13,6 +13,7 @@ import (
 	"runtime/debug"
 	"runtime/pprof"
 	"strings"
+	"time"
 
 	"github.com/indexsupply/x/e2pg"
 	"github.com/indexsupply/x/e2pg/config"
@@ -119,7 +120,7 @@ func main() {
 	mux.HandleFunc("/debug/pprof/capture", func(w http.ResponseWriter, r *http.Request) {
 		w.Write(pbuf.Bytes())
 	})
-	go http.ListenAndServe(listen, mux)
+	go http.ListenAndServe(listen, log(true, mux))
 
 	if profile == "cpu" {
 		check(pprof.StartCPUProfile(&pbuf))
@@ -144,7 +145,17 @@ func main() {
 	}
 }
 
-//Set using: go build -ldflags="-X main.Version=XXX"
+func log(v bool, h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t0 := time.Now()
+		h.ServeHTTP(w, r) // serve the original request
+		if v {
+			fmt.Printf("%-20s %-20s %-20s\n", "serve req", r.URL.Path, time.Since(t0))
+		}
+	})
+}
+
+// Set using: go build -ldflags="-X main.Version=XXX"
 var Version string
 
 func commit() string {

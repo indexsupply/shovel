@@ -37,7 +37,7 @@ func (dh *dashHandler) Updates(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 
-	fmt.Printf("(%d) opening %s\n", len(dh.clients), r.RemoteAddr)
+	fmt.Printf("%-20s %-20s %-20d\n", "start sse updates", r.RemoteAddr, len(dh.clients))
 	c := make(chan e2pg.StatusSnapshot)
 	dh.clientsMutex.Lock()
 	dh.clients[r.RemoteAddr] = c
@@ -47,7 +47,7 @@ func (dh *dashHandler) Updates(w http.ResponseWriter, r *http.Request) {
 		delete(dh.clients, r.RemoteAddr)
 		dh.clientsMutex.Unlock()
 		close(c)
-		fmt.Printf("(%d) closing %s\n", len(dh.clients), r.RemoteAddr)
+		fmt.Printf("%-20s %-20s %-20d\n", "stop sse updates", r.RemoteAddr, len(dh.clients))
 	}()
 
 	for {
