@@ -170,9 +170,9 @@ func (task *Task) Status() StatusSnapshot {
 	snap := StatusSnapshot{}
 	snap.Name = task.Name
 	snap.ChainID = fmt.Sprintf("%d", task.ChainID)
-	snap.EthHash = fmt.Sprintf("%x", task.stat.ehash[:4])
+	snap.EthHash = fmt.Sprintf("%.4x", task.stat.ehash)
 	snap.EthNum = fmt.Sprintf("%d", task.stat.enum)
-	snap.Hash = fmt.Sprintf("%x", task.stat.ihash[:4])
+	snap.Hash = fmt.Sprintf("%.4x", task.stat.ihash)
 	snap.Num = printer.Sprintf("%d", task.stat.inum)
 	snap.BlockCount = fmt.Sprintf("%d", atomic.SwapInt64(&task.stat.blocks, 0))
 	snap.EventCount = fmt.Sprintf("%d", atomic.SwapInt64(&task.stat.events, 0))
