@@ -24,12 +24,12 @@ func TestMain(m *testing.M) {
 
 type testIntegration struct {
 	sync.Mutex
-	chain map[string]Block
+	chain map[uint64]Block
 }
 
 func newTestIntegration() *testIntegration {
 	return &testIntegration{
-		chain: make(map[string]Block),
+		chain: make(map[uint64]Block),
 	}
 }
 
@@ -48,7 +48,7 @@ func (ti *testIntegration) Insert(_ context.Context, _ PG, blocks []Block) (int6
 	ti.Lock()
 	defer ti.Unlock()
 	for _, b := range blocks {
-		ti.chain[fmt.Sprintf("%x", b.Hash())] = b
+		ti.chain[b.Header.Number] = b
 	}
 	return int64(len(blocks)), nil
 }
@@ -65,10 +65,10 @@ func (ti *testIntegration) add(n uint64, hash, parent []byte) {
 	})
 }
 
-func (ti *testIntegration) Delete(_ context.Context, pg PG, h []byte) error {
+func (ti *testIntegration) Delete(_ context.Context, pg PG, n uint64) error {
 	ti.Lock()
 	defer ti.Unlock()
-	delete(ti.chain, fmt.Sprintf("%x", h))
+	delete(ti.chain, n)
 	return nil
 }
 

@@ -17,8 +17,15 @@ var Integration = integration{
 	name: "ERC721 Transfer",
 }
 
-func (i integration) Delete(ctx context.Context, pg e2pg.PG, h []byte) error {
-	return nil
+func (i integration) Delete(ctx context.Context, pg e2pg.PG, n uint64) error {
+	const q = `
+		delete from nft_transfers
+		where task_id = $1
+		and chain_id = $2
+		and block_number >= $3
+	`
+	_, err := pg.Exec(ctx, q, e2pg.TaskID(ctx), e2pg.ChainID(ctx), n)
+	return err
 }
 
 func (i integration) Events(ctx context.Context) [][]byte {

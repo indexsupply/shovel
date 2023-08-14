@@ -68,7 +68,7 @@ type PG interface {
 
 type Integration interface {
 	Insert(context.Context, PG, []Block) (int64, error)
-	Delete(context.Context, PG, []byte) error
+	Delete(context.Context, PG, uint64) error
 	Events(context.Context) [][]byte
 }
 
@@ -321,13 +321,13 @@ func (task *Task) Converge(notx bool) error {
 		case errors.Is(err, ErrReorg):
 			reorgs++
 			fmt.Printf("%s reorg. deleting %d %x\n", task.Name, localNum, localHash)
-			const dq = "delete from task where id = $1 AND hash = $2"
-			_, err := pg.Exec(ctx, dq, task.ID, localHash)
+			const dq = "delete from task where id = $1 AND number >= $2"
+			_, err := pg.Exec(ctx, dq, task.ID, localNum)
 			if err != nil {
 				return fmt.Errorf("deleting block from task table: %w", err)
 			}
 			for _, ig := range task.intgs {
-				if err := ig.Delete(task.ctx, pg, localHash); err != nil {
+				if err := ig.Delete(task.ctx, pg, localNum); err != nil {
 					return fmt.Errorf("deleting block from integration: %w", err)
 				}
 			}

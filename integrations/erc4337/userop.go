@@ -21,14 +21,14 @@ func (i integration) Events(ctx context.Context) [][]byte {
 	return [][]byte{erc4337.UserOperationEventSignatureHash}
 }
 
-func (i integration) Delete(ctx context.Context, pg e2pg.PG, h []byte) error {
+func (i integration) Delete(ctx context.Context, pg e2pg.PG, n uint64) error {
 	const q = `
 		delete from erc4337_userops
 		where task_id = $1
 		and chain_id = $2
-		and block_hash = $3
+		and block_number >= $3
 	`
-	_, err := pg.Exec(ctx, q, e2pg.TaskID(ctx), e2pg.ChainID(ctx), h)
+	_, err := pg.Exec(ctx, q, e2pg.TaskID(ctx), e2pg.ChainID(ctx), n)
 	return err
 }
 
