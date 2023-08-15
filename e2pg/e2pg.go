@@ -208,6 +208,16 @@ func (task *Task) Latest() (uint64, []byte, error) {
 	return n, h, err
 }
 
+func (task *Task) Ready() error {
+	//crc32(task) == 1384045349
+	const q = `select pg_advisory_lock(1384045349, $1)`
+	_, err := task.pgp.Exec(context.Background(), q, task.ID)
+	if err != nil {
+		return fmt.Errorf("waiting for task lock %d: %w", task.ID, err)
+	}
+	return nil
+}
+
 func (task *Task) Setup() error {
 	_, localHash, err := task.Latest()
 	if err != nil {
