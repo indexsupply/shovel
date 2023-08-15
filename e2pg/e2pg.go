@@ -794,11 +794,11 @@ func (t *Transaction) Hash() []byte {
 }
 
 func (tx *Transaction) Signer() ([]byte, error) {
-	var sig []byte
-	sig = append(sig, tx.v())
-	sig = append(sig, tx.R.Bytes()...)
-	sig = append(sig, tx.S.Bytes()...)
-	pubk, _, err := ecdsa.RecoverCompact(sig, tx.SigHash())
+	var sig [65]byte
+	sig[0] = tx.v()
+	copy(sig[33-len(tx.R.Bytes()):33], tx.R.Bytes())
+	copy(sig[65-len(tx.S.Bytes()):65], tx.S.Bytes())
+	pubk, _, err := ecdsa.RecoverCompact(sig[:], tx.SigHash())
 	if err != nil {
 		return nil, fmt.Errorf("recovering pubkey: %w", err)
 	}
@@ -811,10 +811,14 @@ func (tx *Transaction) Signer() ([]byte, error) {
 
 func (tx *Transaction) v() byte {
 	switch v := tx.V.Uint64(); {
-	case v <= 1:
+	case v >= 35:
+		return byte(27 + ((v - 35) % 2))
+	case v == 27 || v == 28:
+		return byte(v)
+	case v == 0 || v == 1:
 		return byte(27 + v)
 	default:
-		return byte(27 + ((v - 35) % 2))
+		panic(fmt.Sprintf("unkown v: %d", v))
 	}
 }
 
