@@ -6,6 +6,7 @@ require (
 	blake.io/pqx v0.2.1
 	github.com/aws/aws-sdk-go v1.44.285
 	github.com/bmizerany/perks v0.0.0-20230307044200-03f9df79da1e
+	github.com/btcsuite/btcd/btcec/v2 v2.3.2
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.1.0
 	github.com/golang/snappy v0.0.4
 	github.com/holiman/uint256 v1.2.3
