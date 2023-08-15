@@ -86,4 +86,11 @@ var Migrations = map[int]pgmig.Migration{
 	3: pgmig.Migration{
 		SQL: `alter table nft_transfers drop constraint nft_transfers_unique;`,
 	},
+	4: pgmig.Migration{
+		SQL: `
+			alter table nft_transfers rename column tx_sender to tx_signer;
+			alter table erc4337_userops rename column tx_sender to tx_signer;
+			alter table erc20_transfers rename column tx_sender to tx_signer;
+		`,
+	},
 }

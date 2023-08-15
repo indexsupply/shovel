@@ -30,6 +30,7 @@ func TestTransfer(t *testing.T) {
 				select true from erc4337_userops
 				where block_hash = '\xa380903891ed01a0778d95c38a1b09cc130fe612d3ed7e071add32aaf00fd2b7'
 				and transaction_hash = '\x552e073f0a639c052e550dcbf2f48507f6190371e045f6c7ab5e0aeef83f8440'
+				and tx_signer = '\x01a44A584ef4d0fF6B882098a4135BDDCc96a28a'
 				and op_hash = '\xB5DD2735A1BCDC273B063CB57B0460C93D8A2192C0681FA1F484D06F416835F3'
 				and op_sender = '\x659fe7D0E5f63cA0af5bcBE593F33cDf8411eDEd'
 				and op_paymaster = '\x0000000000000000000000000000000000000000'

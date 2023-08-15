@@ -29,7 +29,7 @@ CREATE TABLE public.erc20_transfers (
     f bytea,
     t bytea,
     value numeric,
-    tx_sender bytea,
+    tx_signer bytea,
     eth numeric,
     task_id numeric,
     chain_id numeric,
@@ -51,7 +51,7 @@ CREATE TABLE public.erc4337_userops (
     op_success boolean,
     op_actual_gas_cost numeric,
     op_actual_gas_used numeric,
-    tx_sender bytea,
+    tx_signer bytea,
     eth numeric,
     task_id numeric,
     chain_id numeric,
@@ -70,7 +70,7 @@ CREATE TABLE public.nft_transfers (
     quantity numeric,
     f bytea,
     t bytea,
-    tx_sender bytea,
+    tx_signer bytea,
     eth numeric,
     task_id numeric,
     chain_id numeric,
@@ -94,6 +94,16 @@ CREATE TABLE public.task (
 
 ALTER TABLE ONLY public.e2pg_migrations
     ADD CONSTRAINT e2pg_migrations_pkey PRIMARY KEY (idx, hash);
+
+
+
+ALTER TABLE ONLY public.erc20_transfers
+    ADD CONSTRAINT erc20_transfers_unique UNIQUE (chain_id, transaction_hash, log_index);
+
+
+
+ALTER TABLE ONLY public.erc4337_userops
+    ADD CONSTRAINT erc4337_userops_unique UNIQUE (chain_id, transaction_hash, log_index);
 
 
 
