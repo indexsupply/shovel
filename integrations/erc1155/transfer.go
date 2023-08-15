@@ -2,6 +2,7 @@ package erc1155
 
 import (
 	"context"
+	"fmt"
 
 	erc1155abi "github.com/indexsupply/x/contrib/erc1155"
 	"github.com/indexsupply/x/e2pg"
@@ -43,6 +44,10 @@ func (i integration) Insert(ctx context.Context, pg e2pg.PG, blocks []e2pg.Block
 			t := blocks[bidx].Transactions.At(ridx)
 			for lidx := 0; lidx < r.Logs.Len(); lidx++ {
 				l := r.Logs.At(lidx)
+				signer, err := blocks[bidx].Transactions.At(ridx).Signer()
+				if err != nil {
+					fmt.Printf("unable to derive signer\n")
+				}
 				xfrb, errb := erc1155abi.MatchTransferBatch(l)
 				xfrs, errs := erc1155abi.MatchTransferSingle(l)
 				switch {
@@ -59,6 +64,7 @@ func (i integration) Insert(ctx context.Context, pg e2pg.PG, blocks []e2pg.Block
 							t.Hash(),
 							ridx,
 							lidx,
+							signer,
 							l.Address,
 							xfrb.Ids[i].String(),
 							xfrb.Values[i].String(),
@@ -76,6 +82,7 @@ func (i integration) Insert(ctx context.Context, pg e2pg.PG, blocks []e2pg.Block
 						t.Hash(),
 						ridx,
 						lidx,
+						signer,
 						l.Address,
 						xfrs.Id.String(),
 						xfrs.Value.String(),
@@ -100,6 +107,7 @@ func (i integration) Insert(ctx context.Context, pg e2pg.PG, blocks []e2pg.Block
 			"transaction_hash",
 			"transaction_index",
 			"log_index",
+			"tx_signer",
 			"contract",
 			"token_id",
 			"quantity",

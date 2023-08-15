@@ -2,6 +2,7 @@ package erc721
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/indexsupply/x/contrib/erc721"
 	"github.com/indexsupply/x/e2pg"
@@ -43,6 +44,10 @@ func (i integration) Insert(ctx context.Context, pg e2pg.PG, blocks []e2pg.Block
 				if err != nil {
 					continue
 				}
+				signer, err := blocks[bidx].Transactions.At(ridx).Signer()
+				if err != nil {
+					fmt.Printf("unable to derive signer\n")
+				}
 				rows = append(rows, []any{
 					e2pg.TaskID(ctx),
 					e2pg.ChainID(ctx),
@@ -51,6 +56,7 @@ func (i integration) Insert(ctx context.Context, pg e2pg.PG, blocks []e2pg.Block
 					blocks[bidx].Transactions.At(ridx).Hash(),
 					ridx,
 					lidx,
+					signer,
 					l.Address,
 					xfr.TokenId.String(),
 					xfr.From[:],
@@ -71,6 +77,7 @@ func (i integration) Insert(ctx context.Context, pg e2pg.PG, blocks []e2pg.Block
 			"transaction_hash",
 			"transaction_index",
 			"log_index",
+			"tx_signer",
 			"contract",
 			"token_id",
 			"f",

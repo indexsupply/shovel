@@ -818,17 +818,50 @@ func (tx *Transaction) v() byte {
 	}
 }
 
+func (tx *Transaction) eip155() bool {
+	switch v := tx.V.Uint64(); {
+	case v == 27 || v == 28:
+		return false
+	default:
+		return true
+	}
+}
+
+func (tx *Transaction) chainid() uint64 {
+	switch v := tx.V.Uint64(); {
+	case v >= 35:
+		return (v - 35) >> 1
+	default:
+		return 0
+	}
+}
+
 func (t *Transaction) SigHash() []byte {
 	switch t.Type {
 	case 0x00:
-		return isxhash.Keccak(rlp.List(
-			rlp.Encode(bint.Encode(nil, t.Nonce)),
-			rlp.Encode(t.GasPrice.Bytes()),
-			rlp.Encode(bint.Encode(nil, t.GasLimit)),
-			rlp.Encode(t.To),
-			rlp.Encode(t.Value.Bytes()),
-			rlp.Encode(t.Data),
-		))
+		switch {
+		case t.eip155():
+			return isxhash.Keccak(rlp.List(
+				rlp.Encode(bint.Encode(nil, t.Nonce)),
+				rlp.Encode(t.GasPrice.Bytes()),
+				rlp.Encode(bint.Encode(nil, t.GasLimit)),
+				rlp.Encode(t.To),
+				rlp.Encode(t.Value.Bytes()),
+				rlp.Encode(t.Data),
+				rlp.Encode(bint.Encode(nil, t.chainid())),
+				rlp.Encode([]byte{0}),
+				rlp.Encode([]byte{0}),
+			))
+		default:
+			return isxhash.Keccak(rlp.List(
+				rlp.Encode(bint.Encode(nil, t.Nonce)),
+				rlp.Encode(t.GasPrice.Bytes()),
+				rlp.Encode(bint.Encode(nil, t.GasLimit)),
+				rlp.Encode(t.To),
+				rlp.Encode(t.Value.Bytes()),
+				rlp.Encode(t.Data),
+			))
+		}
 	case 0x01:
 		return isxhash.Keccak(append([]byte{0x01}, rlp.List(
 			rlp.Encode(t.ChainID.Bytes()),
