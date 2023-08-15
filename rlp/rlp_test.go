@@ -92,7 +92,7 @@ func TestDecode(t *testing.T) {
 	}{
 		{
 			"empty bytes",
-			[]byte{},
+			[]byte{0x00},
 		},
 		{
 			"short string",
@@ -173,7 +173,7 @@ func TestDecode_List_Nested(t *testing.T) {
 	// Set-theoretic definition of 3
 	// [ [], [[]], [ [], [[]] ] ]
 	var (
-		zero  = List(Encode([]byte{}))
+		zero  = List()
 		one   = List(zero)
 		two   = List(zero, one)
 		input = List(zero, one, two)
@@ -182,18 +182,18 @@ func TestDecode_List_Nested(t *testing.T) {
 		switch i {
 		case 0:
 			s0 := Iter(s.Bytes())
-			diff.Test(t, t.Errorf, []byte{}, s0.Bytes())
+			diff.Test(t, t.Errorf, []byte(nil), s0.Bytes())
 		case 1:
 			s1 := Iter(s.Bytes())
 			s2 := Iter(s1.Bytes())
-			diff.Test(t, t.Errorf, []byte{}, s2.Bytes())
+			diff.Test(t, t.Errorf, []byte(nil), s2.Bytes())
 		case 2:
 			s1 := Iter(s.Bytes())
 			s2 := Iter(s1.Bytes())
-			diff.Test(t, t.Errorf, []byte{}, s2.Bytes())
+			diff.Test(t, t.Errorf, []byte(nil), s2.Bytes())
 			s3 := Iter(s1.Bytes())
 			s4 := Iter(s3.Bytes())
-			diff.Test(t, t.Errorf, []byte{}, s4.Bytes())
+			diff.Test(t, t.Errorf, []byte(nil), s4.Bytes())
 		}
 	}
 }

@@ -119,6 +119,9 @@ func (it *Iterator) Bytes() []byte {
 	case b <= str1H:
 		it.i++
 		return data[0:1]
+	case b == 0x80:
+		it.i++
+		return []byte{0}
 	case b <= str55H:
 		m, n := 1, int(b-str55L)
 		it.i += m + n
