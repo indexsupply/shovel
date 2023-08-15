@@ -208,16 +208,6 @@ func (task *Task) Latest() (uint64, []byte, error) {
 	return n, h, err
 }
 
-func (task *Task) Ready() error {
-	//crc32(task) == 1384045349
-	const q = `select pg_advisory_lock(1384045349, $1)`
-	_, err := task.pgp.Exec(context.Background(), q, task.ID)
-	if err != nil {
-		return fmt.Errorf("waiting for task lock %d: %w", task.ID, err)
-	}
-	return nil
-}
-
 func (task *Task) Setup() error {
 	_, localHash, err := task.Latest()
 	if err != nil {
@@ -301,6 +291,12 @@ func (task *Task) Converge(notx bool) error {
 		commit = func() error { return pgTx.Commit(ctx) }
 		rollback = func() error { return pgTx.Rollback(ctx) }
 		defer rollback()
+		//crc32(task) == 1384045349
+		const lockq = `select pg_advisory_xact_lock(1384045349, $1)`
+		_, err = pg.Exec(ctx, lockq, task.ID)
+		if err != nil {
+			return fmt.Errorf("task lock %d: %w", task.ID, err)
+		}
 	}
 	for reorgs := 0; reorgs <= 10; {
 		localNum, localHash := uint64(0), []byte{}

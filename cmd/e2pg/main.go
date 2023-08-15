@@ -129,7 +129,6 @@ func main() {
 	for i := range tasks {
 		i := i
 		eg.Go(func() error {
-			check(tasks[i].Ready())
 			check(tasks[i].Setup())
 			check(tasks[i].Run(snaps, notx))
 			return nil
