@@ -794,6 +794,13 @@ type Transaction struct {
 	hash, rbuf, signer []byte
 }
 
+func (tx *Transaction) Reset() {
+	tx.cacheMut.Lock()
+	tx.hash = nil
+	tx.signer = nil
+	tx.cacheMut.Unlock()
+}
+
 func (tx *Transaction) Hash() []byte {
 	tx.cacheMut.Lock()
 	defer tx.cacheMut.Unlock()
@@ -924,7 +931,6 @@ func (txs *Transactions) Insert(i int, b []byte) {
 	switch {
 	case i < len(txs.d):
 		txs.d[i].Unmarshal(b)
-		txs.d[i].hash = nil // reset hash cache on reuse
 	case len(txs.d) < cap(txs.d):
 		t := Transaction{}
 		t.Unmarshal(b)
@@ -938,6 +944,7 @@ func (txs *Transactions) Insert(i int, b []byte) {
 }
 
 func (tx *Transaction) Unmarshal(b []byte) error {
+	tx.Reset()
 	tx.rbuf = growcopy(tx.rbuf, b)
 	if len(b) < 1 {
 		return fmt.Errorf("decoding empty transaction bytes")
