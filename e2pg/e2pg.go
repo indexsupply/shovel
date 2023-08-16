@@ -6,6 +6,7 @@ import (
 	_ "embed"
 	"errors"
 	"fmt"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -789,17 +790,25 @@ type Transaction struct {
 	// For now this is only used to calculate
 	// the [Transaction.Hash] on demand.
 	// The hash is cached since it can be expensive.
-	hash, rbuf []byte
+	cacheMut           sync.Mutex
+	hash, rbuf, signer []byte
 }
 
-func (t *Transaction) Hash() []byte {
-	if t.hash == nil {
-		t.hash = isxhash.Keccak(t.rbuf)
+func (tx *Transaction) Hash() []byte {
+	tx.cacheMut.Lock()
+	defer tx.cacheMut.Unlock()
+	if tx.hash == nil {
+		tx.hash = isxhash.Keccak(tx.rbuf)
 	}
-	return t.hash
+	return tx.hash
 }
 
 func (tx *Transaction) Signer() ([]byte, error) {
+	tx.cacheMut.Lock()
+	defer tx.cacheMut.Unlock()
+	if len(tx.signer) > 0 {
+		return tx.signer, nil
+	}
 	var sig [65]byte
 	sig[0] = tx.v()
 	copy(sig[33-len(tx.R.Bytes()):33], tx.R.Bytes())
@@ -812,7 +821,8 @@ func (tx *Transaction) Signer() ([]byte, error) {
 		cpk  = pubk.SerializeUncompressed()
 		addr = isxhash.Keccak(cpk[1:])
 	)
-	return addr[12:], nil
+	tx.signer = addr[12:]
+	return tx.signer, nil
 }
 
 func (tx *Transaction) v() byte {
