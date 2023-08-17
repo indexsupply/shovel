@@ -186,13 +186,6 @@ func (task *Task) Status() StatusSnapshot {
 	return snap
 }
 
-func min(x, y int) int {
-	if x < y {
-		return x
-	}
-	return y
-}
-
 func (task *Task) Insert(n uint64, h []byte) error {
 	const q = `insert into task (id, number, hash) values ($1, $2, $3)`
 	_, err := task.pgp.Exec(context.Background(), q, task.ID, n, h)
