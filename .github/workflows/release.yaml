@@ -2,8 +2,6 @@ name: go
 on:
   push:
     branches: [main]
-  pull_request:
-    branches: [main]
 jobs:
   release:
     name: go run ./cmd/release
