@@ -1,6 +1,6 @@
 module github.com/indexsupply/x
 
-go 1.20
+go 1.21
 
 require (
 	blake.io/pqx v0.2.1
