@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"sync"
 	"text/template"
@@ -37,7 +38,7 @@ func (dh *dashHandler) Updates(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 
-	fmt.Printf("%-20s %-20s %-20d\n", "start sse updates", r.RemoteAddr, len(dh.clients))
+	slog.InfoContext(r.Context(), "start sse", "c", r.RemoteAddr, "n", len(dh.clients))
 	c := make(chan e2pg.StatusSnapshot)
 	dh.clientsMutex.Lock()
 	dh.clients[r.RemoteAddr] = c
@@ -47,7 +48,7 @@ func (dh *dashHandler) Updates(w http.ResponseWriter, r *http.Request) {
 		delete(dh.clients, r.RemoteAddr)
 		dh.clientsMutex.Unlock()
 		close(c)
-		fmt.Printf("%-20s %-20s %-20d\n", "stop sse updates", r.RemoteAddr, len(dh.clients))
+		slog.InfoContext(r.Context(), "stop sse", "c", r.RemoteAddr, "n", len(dh.clients))
 	}()
 
 	for {
@@ -59,7 +60,7 @@ func (dh *dashHandler) Updates(w http.ResponseWriter, r *http.Request) {
 		}
 		sjson, err := json.Marshal(snap)
 		if err != nil {
-			fmt.Printf("error: %v\n", err)
+			slog.ErrorContext(r.Context(), "json error", "e", err)
 		}
 		fmt.Fprintf(w, "data: %s\n\n", sjson)
 		flusher, ok := w.(http.Flusher)

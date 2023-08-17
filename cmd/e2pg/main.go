@@ -72,16 +72,17 @@ func main() {
 		if id < 1 {
 			return "", nil
 		}
-		return "chain", id
+		return "chain", fmt.Sprintf("%.5d", id)
 	})
 	lh.RegisterContext(func(ctx context.Context) (string, any) {
 		id := e2pg.TaskID(ctx)
 		if id < 1 {
 			return "", nil
 		}
-		return "task", id
+		return "task", fmt.Sprintf("%.2d", id)
 	})
 	slog.SetDefault(slog.New(lh.WithAttrs([]slog.Attr{
+		slog.Int("p", os.Getpid()),
 		slog.String("v", Commit),
 	})))
 

@@ -176,7 +176,7 @@ func (task *Task) Status() StatusSnapshot {
 	snap.EthHash = fmt.Sprintf("%.4x", task.stat.ehash)
 	snap.EthNum = fmt.Sprintf("%d", task.stat.enum)
 	snap.Hash = fmt.Sprintf("%.4x", task.stat.ihash)
-	snap.Num = printer.Sprintf("%d", task.stat.inum)
+	snap.Num = printer.Sprintf("%.9d", task.stat.inum)
 	snap.BlockCount = fmt.Sprintf("%d", atomic.SwapInt64(&task.stat.blocks, 0))
 	snap.EventCount = fmt.Sprintf("%d", atomic.SwapInt64(&task.stat.events, 0))
 	snap.TotalLatencyP50 = fmt.Sprintf("%s", time.Duration(task.stat.tlat.Query(0.50)).Round(time.Millisecond))
@@ -322,7 +322,7 @@ func (task *Task) Converge(notx bool) error {
 		switch err := task.writeIndex(localHash, pg, delta); {
 		case errors.Is(err, ErrReorg):
 			reorgs++
-			slog.ErrorContext(ctx, "reorg", "n", localNum, "h", localHash)
+			slog.ErrorContext(ctx, "reorg", "n", localNum, "h", fmt.Sprintf("%.4x", localHash))
 			const dq = "delete from task where id = $1 AND number >= $2"
 			_, err := pg.Exec(ctx, dq, task.ID, localNum)
 			if err != nil {

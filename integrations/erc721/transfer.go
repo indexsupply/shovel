@@ -2,7 +2,7 @@ package erc721
 
 import (
 	"context"
-	"fmt"
+	"log/slog"
 
 	"github.com/indexsupply/x/contrib/erc721"
 	"github.com/indexsupply/x/e2pg"
@@ -46,7 +46,7 @@ func (i integration) Insert(ctx context.Context, pg e2pg.PG, blocks []e2pg.Block
 				}
 				signer, err := blocks[bidx].Transactions.At(ridx).Signer()
 				if err != nil {
-					fmt.Printf("unable to derive signer\n")
+					slog.ErrorContext(ctx, "unable to derive signer")
 				}
 				rows = append(rows, []any{
 					e2pg.TaskID(ctx),

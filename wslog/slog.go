@@ -106,6 +106,7 @@ func (h *Handler) Handle(ctx context.Context, r slog.Record) error {
 		*bufp = buf
 		freebuf(bufp)
 	}()
+	buf = append(buf, h.preformat...)
 	for _, f := range h.ctxs {
 		k, v := f(ctx)
 		if k == "" {
@@ -121,7 +122,6 @@ func (h *Handler) Handle(ctx context.Context, r slog.Record) error {
 		buf = strconv.AppendInt(buf, int64(f.Line), 10)
 		buf = append(buf, ' ')
 	}
-	buf = append(buf, h.preformat...)
 	r.Attrs(func(a slog.Attr) bool {
 		buf = h.appendAttr(buf, h.prefix, a)
 		return true
@@ -148,12 +148,7 @@ func (h *Handler) appendAttr(buf []byte, prefix string, a slog.Attr) []byte {
 		buf = append(buf, prefix...)
 		buf = append(buf, a.Key...)
 		buf = append(buf, '=')
-		switch v := a.Value.Any().(type) {
-		case []byte:
-			return fmt.Appendf(buf, "%.4x ", v)
-		default:
-			return fmt.Appendf(buf, "%v ", v)
-		}
+		return fmt.Appendf(buf, "%v ", a.Value.Any())
 	}
 	// Group
 	if a.Key != "" {

@@ -2,7 +2,7 @@ package erc1155
 
 import (
 	"context"
-	"fmt"
+	"log/slog"
 
 	erc1155abi "github.com/indexsupply/x/contrib/erc1155"
 	"github.com/indexsupply/x/e2pg"
@@ -46,7 +46,7 @@ func (i integration) Insert(ctx context.Context, pg e2pg.PG, blocks []e2pg.Block
 				l := r.Logs.At(lidx)
 				signer, err := blocks[bidx].Transactions.At(ridx).Signer()
 				if err != nil {
-					fmt.Printf("unable to derive signer\n")
+					slog.ErrorContext(ctx, "unable to derive signer")
 				}
 				xfrb, errb := erc1155abi.MatchTransferBatch(l)
 				xfrs, errs := erc1155abi.MatchTransferSingle(l)
