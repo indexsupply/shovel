@@ -6,6 +6,7 @@ import (
 	_ "embed"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -235,7 +236,7 @@ func (task *Task) Run(snaps chan<- StatusSnapshot, notx bool) error {
 		if err == nil {
 			go func() {
 				snap := task.Status()
-				fmt.Printf("%-20s %-20s %s\n", snap.Name, snap.Num, snap.Hash)
+				slog.InfoContext(task.ctx, "", "n", snap.Num, "h", snap.Hash)
 				select {
 				case snaps <- snap:
 				default:
@@ -270,7 +271,7 @@ func (task *Task) Converge(notx bool) error {
 	var (
 		err      error
 		start       = time.Now()
-		ctx         = context.Background()
+		ctx         = task.ctx
 		pg       PG = task.pgp
 		pgTx     pgx.Tx
 		commit   = func() error { return nil }
@@ -321,14 +322,14 @@ func (task *Task) Converge(notx bool) error {
 		switch err := task.writeIndex(localHash, pg, delta); {
 		case errors.Is(err, ErrReorg):
 			reorgs++
-			fmt.Printf("%s reorg. deleting %d %x\n", task.Name, localNum, localHash)
+			slog.ErrorContext(ctx, "reorg", "n", localNum, "h", localHash)
 			const dq = "delete from task where id = $1 AND number >= $2"
 			_, err := pg.Exec(ctx, dq, task.ID, localNum)
 			if err != nil {
 				return fmt.Errorf("deleting block from task table: %w", err)
 			}
 			for _, ig := range task.intgs {
-				if err := ig.Delete(task.ctx, pg, localNum); err != nil {
+				if err := ig.Delete(ctx, pg, localNum); err != nil {
 					return fmt.Errorf("deleting block from integration: %w", err)
 				}
 			}
