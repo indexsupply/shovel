@@ -43,7 +43,7 @@ Currently E2PG is in developer preview. Once we have a stable release these link
 
 ### Build
 
-1. Install go version 1.20 [go.dev/doc/install](https://go.dev/doc/install)
+1. Install go version 1.21 [go.dev/doc/install](https://go.dev/doc/install)
 2. `go install github.com/indexsupply/x/cmd/e2pg@main`
 
 ### Download
