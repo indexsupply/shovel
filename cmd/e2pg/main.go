@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"log/slog"
 	"net/http"
 	npprof "net/http/pprof"
 	"os"
@@ -18,6 +19,7 @@ import (
 	"github.com/indexsupply/x/e2pg"
 	"github.com/indexsupply/x/e2pg/config"
 	"github.com/indexsupply/x/pgmig"
+	"github.com/indexsupply/x/wslog"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/sync/errgroup"
@@ -64,6 +66,25 @@ func main() {
 
 	flag.Parse()
 
+	lh := wslog.New(os.Stdout, nil)
+	lh.RegisterContext(func(ctx context.Context) (string, any) {
+		id := e2pg.ChainID(ctx)
+		if id < 1 {
+			return "", nil
+		}
+		return "chain", id
+	})
+	lh.RegisterContext(func(ctx context.Context) (string, any) {
+		id := e2pg.TaskID(ctx)
+		if id < 1 {
+			return "", nil
+		}
+		return "task", id
+	})
+	slog.SetDefault(slog.New(lh.WithAttrs([]slog.Attr{
+		slog.String("v", Commit),
+	})))
+
 	if len(intgs) > 0 {
 		for _, s := range strings.Split(intgs, ",") {
 			conf.Integrations = append(conf.Integrations, s)
@@ -71,7 +92,7 @@ func main() {
 	}
 
 	if version {
-		fmt.Printf("v%s-%s\n", Version, commit())
+		fmt.Printf("v%s-%s\n", Version, Commit)
 		os.Exit(0)
 	}
 
@@ -150,33 +171,34 @@ func log(v bool, h http.Handler) http.Handler {
 		t0 := time.Now()
 		h.ServeHTTP(w, r) // serve the original request
 		if v {
-			fmt.Printf("%-20s %-20s %-20s\n", "serve req", r.URL.Path, time.Since(t0))
+			slog.Info("", "e", time.Since(t0), "u", r.URL.Path)
 		}
 	})
 }
 
 // Set using: go build -ldflags="-X main.Version=XXX"
-var Version string
-
-func commit() string {
-	bi, ok := debug.ReadBuildInfo()
-	if !ok {
-		return "ernobuildinfo"
-	}
-	var (
-		revision = "missing"
-		modified bool
-	)
-	for _, s := range bi.Settings {
-		switch s.Key {
-		case "vcs.revision":
-			revision = s.Value[:8]
-		case "vcs.modified":
-			modified = s.Value == "true"
+var (
+	Version string
+	Commit  = func() string {
+		bi, ok := debug.ReadBuildInfo()
+		if !ok {
+			return "ernobuildinfo"
 		}
-	}
-	if !modified {
-		return revision
-	}
-	return revision + "-modified"
-}
+		var (
+			revision = ""
+			modified bool
+		)
+		for _, s := range bi.Settings {
+			switch s.Key {
+			case "vcs.revision":
+				revision = s.Value[:4]
+			case "vcs.modified":
+				modified = s.Value == "true"
+			}
+		}
+		if !modified {
+			return revision
+		}
+		return revision + "-"
+	}()
+)
