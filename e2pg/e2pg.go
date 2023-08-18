@@ -512,15 +512,11 @@ func (b Block) Num() uint64  { return b.Header.Number }
 func (b Block) Hash() []byte { return b.Header.Hash }
 
 func (b Block) String() string {
-	sp := b.Header.Parent
-	if len(sp) > 4 {
-		sp = sp[:4]
-	}
-	sh := b.Header.Hash
-	if len(sh) > 4 {
-		sh = sh[:4]
-	}
-	return fmt.Sprintf("{%d %x %x}", b.Header.Number, sp, sh)
+	return fmt.Sprintf("{%d %.4x %.4x}",
+		b.Header.Number,
+		b.Header.Parent,
+		b.Header.Hash,
+	)
 }
 
 type Header struct {
