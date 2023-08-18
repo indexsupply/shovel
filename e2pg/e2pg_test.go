@@ -148,19 +148,6 @@ func TestSetup(t *testing.T) {
 	diff.Test(t, t.Errorf, h, hash(1))
 }
 
-func TestRun(t *testing.T) {
-	var (
-		tg   = &testGeth{}
-		pg   = testpg(t)
-		task = NewTask(0, 0, "main", 1, 1, tg, pg, 0, 2, newTestIntegration())
-	)
-	tg.add(0, hash(0), hash(0))
-	tg.add(1, hash(1), hash(0))
-	tg.add(2, hash(2), hash(1))
-	diff.Test(t, t.Errorf, task.Setup(), nil)
-	diff.Test(t, t.Errorf, task.Run(nil, true), nil)
-}
-
 func TestConverge_Zero(t *testing.T) {
 	var (
 		g    = &testGeth{}

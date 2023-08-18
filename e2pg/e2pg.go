@@ -230,10 +230,10 @@ func (task *Task) Setup() error {
 	return task.Insert(gethNum-1, h)
 }
 
-func (task *Task) Run(snaps chan<- StatusSnapshot, notx bool) error {
+func (task *Task) Run(snaps chan<- StatusSnapshot, notx bool) {
 	for {
-		err := task.Converge(notx)
-		if err == nil {
+		switch err := task.Converge(notx); {
+		case err == nil:
 			go func() {
 				snap := task.Status()
 				slog.InfoContext(task.ctx, "", "n", snap.Num, "h", snap.Hash)
@@ -242,17 +242,13 @@ func (task *Task) Run(snaps chan<- StatusSnapshot, notx bool) error {
 				default:
 				}
 			}()
-			continue
-		}
-		if errors.Is(err, ErrNothingNew) {
+		case errors.Is(err, ErrDone):
+			return
+		case errors.Is(err, ErrNothingNew):
 			time.Sleep(time.Second)
-			continue
-		}
-		if errors.Is(err, ErrDone) {
-			return nil
-		}
-		if err != nil {
-			return err
+		default:
+			time.Sleep(time.Second)
+			slog.ErrorContext(task.ctx, "error", err)
 		}
 	}
 }

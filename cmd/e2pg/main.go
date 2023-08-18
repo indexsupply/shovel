@@ -150,11 +150,8 @@ func main() {
 	var eg errgroup.Group
 	for i := range tasks {
 		i := i
-		eg.Go(func() error {
-			check(tasks[i].Setup())
-			check(tasks[i].Run(snaps, notx))
-			return nil
-		})
+		check(tasks[i].Setup())
+		eg.Go(func() error { tasks[i].Run(snaps, notx); return nil })
 	}
 	eg.Wait()
 	switch profile {
