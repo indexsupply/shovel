@@ -312,7 +312,7 @@ func (task *Task) Converge(notx bool) error {
 			return ErrNothingNew
 		}
 		for i := uint64(0); i < delta; i++ {
-			task.buffs[i].Number = localNum + 1 + uint64(i)
+			task.buffs[i].Number = localNum + i + 1
 			task.batch[i].Transactions.Reset()
 			task.batch[i].Receipts.Reset()
 		}
