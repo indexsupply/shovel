@@ -269,26 +269,23 @@ var (
 // in no side-effects.
 func (task *Task) Converge(notx bool) error {
 	var (
-		err      error
 		start       = time.Now()
-		ctx         = task.ctx
 		pg       PG = task.pgp
-		pgTx     pgx.Tx
-		commit   = func() error { return nil }
-		rollback = func() error { return nil }
+		commit      = func() error { return nil }
+		rollback    = func() error { return nil }
 	)
 	if !notx {
-		pgTx, err = task.pgp.Begin(ctx)
+		pgTx, err := task.pgp.Begin(task.ctx)
 		if err != nil {
 			return err
 		}
-		pg = txlocker.NewTx(pgTx)
-		commit = func() error { return pgTx.Commit(ctx) }
-		rollback = func() error { return pgTx.Rollback(ctx) }
+		commit = func() error { return pgTx.Commit(task.ctx) }
+		rollback = func() error { return pgTx.Rollback(task.ctx) }
 		defer rollback()
+		pg = txlocker.NewTx(pgTx)
 		//crc32(task) == 1384045349
 		const lockq = `select pg_advisory_xact_lock(1384045349, $1)`
-		_, err = pg.Exec(ctx, lockq, task.ID)
+		_, err = pg.Exec(task.ctx, lockq, task.ID)
 		if err != nil {
 			return fmt.Errorf("task lock %d: %w", task.ID, err)
 		}
@@ -296,7 +293,7 @@ func (task *Task) Converge(notx bool) error {
 	for reorgs := 0; reorgs <= 10; {
 		localNum, localHash := uint64(0), []byte{}
 		const q = `SELECT number, hash FROM task WHERE id = $1 ORDER BY number DESC LIMIT 1`
-		err = pg.QueryRow(ctx, q, task.ID).Scan(&localNum, &localHash)
+		err := pg.QueryRow(task.ctx, q, task.ID).Scan(&localNum, &localHash)
 		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 			return fmt.Errorf("getting latest from task: %w", err)
 		}
@@ -322,14 +319,14 @@ func (task *Task) Converge(notx bool) error {
 		switch err := task.writeIndex(localHash, pg, delta); {
 		case errors.Is(err, ErrReorg):
 			reorgs++
-			slog.ErrorContext(ctx, "reorg", "n", localNum, "h", fmt.Sprintf("%.4x", localHash))
+			slog.ErrorContext(task.ctx, "reorg", "n", localNum, "h", fmt.Sprintf("%.4x", localHash))
 			const dq = "delete from task where id = $1 AND number >= $2"
-			_, err := pg.Exec(ctx, dq, task.ID, localNum)
+			_, err := pg.Exec(task.ctx, dq, task.ID, localNum)
 			if err != nil {
 				return fmt.Errorf("deleting block from task table: %w", err)
 			}
 			for _, ig := range task.intgs {
-				if err := ig.Delete(ctx, pg, localNum); err != nil {
+				if err := ig.Delete(task.ctx, pg, localNum); err != nil {
 					return fmt.Errorf("deleting block from integration: %w", err)
 				}
 			}
