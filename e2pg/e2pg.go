@@ -261,6 +261,7 @@ var (
 	ErrNothingNew = errors.New("no new blocks")
 	ErrReorg      = errors.New("reorg")
 	ErrDone       = errors.New("this is the end")
+	ErrAhead      = errors.New("ahead")
 )
 
 // Indexes at most task.batchSize of the delta between min(g, limit) and pg.
@@ -297,7 +298,7 @@ func (task *Task) Converge(notx bool) error {
 		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 			return fmt.Errorf("getting latest from task: %w", err)
 		}
-		if task.end > 0 && localNum >= task.end {
+		if task.end > 0 && localNum >= task.end { //don't sync past task.end
 			return ErrDone
 		}
 		gethNum, gethHash, err := task.node.Latest()
@@ -307,8 +308,14 @@ func (task *Task) Converge(notx bool) error {
 		if task.end > 0 && gethNum > task.end {
 			gethNum = task.end
 		}
-		delta := uint64(min(int(gethNum-localNum), int(task.batchSize)))
-		if delta <= 0 {
+		if localNum > gethNum {
+			return ErrAhead
+		}
+		if localNum == gethNum {
+			return ErrNothingNew
+		}
+		delta := min(gethNum-localNum, task.batchSize)
+		if delta == 0 {
 			return ErrNothingNew
 		}
 		for i := uint64(0); i < delta; i++ {

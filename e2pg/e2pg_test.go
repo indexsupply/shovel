@@ -256,3 +256,19 @@ func TestConverge_MultipleTasks(t *testing.T) {
 	diff.Test(t, t.Errorf, task2.Converge(true), nil)
 	diff.Test(t, t.Errorf, ig2.blocks(), tg.blocks)
 }
+
+func TestConverge_LocalAhead(t *testing.T) {
+	var (
+		tg   = &testGeth{}
+		pg   = testpg(t)
+		ig   = newTestIntegration()
+		task = NewTask(0, 0, "one", 3, 1, tg, pg, 0, 0, ig)
+	)
+	tg.add(1, hash(1), hash(0))
+
+	task.Insert(0, hash(0))
+	task.Insert(1, hash(1))
+	task.Insert(2, hash(2))
+
+	diff.Test(t, t.Errorf, task.Converge(true), ErrAhead)
+}
