@@ -110,6 +110,9 @@ func (c *Client) Latest() (uint64, []byte, error) {
 	if err != nil {
 		return 0, nil, fmt.Errorf("unable to read rlps response")
 	}
+	if (resp.StatusCode / 100) != 2 {
+		return 0, nil, fmt.Errorf("rlps error: %s", string(enc))
+	}
 	itr := rlp.Iter(enc)
 	return bint.Uint64(itr.Bytes()), itr.Bytes(), nil
 }
@@ -134,6 +137,9 @@ func (c *Client) Hash(n uint64) ([]byte, error) {
 	enc, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("unable to read rlps response")
+	}
+	if (resp.StatusCode / 100) != 2 {
+		return nil, fmt.Errorf("rlps error: %s", string(enc))
 	}
 	return enc, nil
 }
@@ -228,6 +234,10 @@ func (s *Server) Blocks(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) Latest(w http.ResponseWriter, r *http.Request) {
 	num, hash, err := geth.Latest(s.rc)
+	if err != nil {
+		fmt.Printf("latest: %s\n", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
 	_, err = w.Write(rlp.List(rlp.Encode(num, hash)))
 	if err != nil {
 		fmt.Printf("write error: %s\n", err)

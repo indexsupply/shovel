@@ -2,6 +2,7 @@ package rlps
 
 import (
 	"encoding/hex"
+	"net/http"
 	"net/http/httptest"
 	"testing"
 
@@ -20,6 +21,34 @@ func check(tb testing.TB, err error) {
 func h2b(s string) []byte {
 	b, _ := hex.DecodeString(s)
 	return b
+}
+
+func TestServerErrors(t *testing.T) {
+	var (
+		ts = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			http.Error(w, "an error", http.StatusInternalServerError)
+		}))
+		cli = NewClient(ts.URL)
+	)
+	defer ts.Close()
+	h, err := cli.Hash(16000000)
+	diff.Test(t, t.Fatalf, err.Error(), "rlps error: an error\n")
+	diff.Test(t, t.Fatalf, len(h), 0)
+
+	n, h, err := cli.Latest()
+	diff.Test(t, t.Fatalf, err.Error(), "rlps error: an error\n")
+	diff.Test(t, t.Fatalf, n, uint64(0))
+	diff.Test(t, t.Fatalf, len(h), 0)
+
+	var (
+		buffers = []geth.Buffer{geth.Buffer{Number: 16000000}}
+		blocks  = make([]e2pg.Block, 1)
+	)
+	err = cli.LoadBlocks(nil, buffers, blocks)
+	diff.Test(t, t.Fatalf, err.Error(), "unable to get hash for 16000000: rlps error: an error\n")
+	diff.Test(t, t.Fatalf, blocks[0].Num(), uint64(0))
+	diff.Test(t, t.Fatalf, len(blocks[0].Hash()), 0)
+	diff.Test(t, t.Fatalf, blocks[0].Transactions.Len(), 0)
 }
 
 func TestHash(t *testing.T) {
