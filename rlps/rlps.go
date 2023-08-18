@@ -285,13 +285,6 @@ func parseFilter(filter string) ([][]byte, error) {
 	return events, nil
 }
 
-func short(h []byte) []byte {
-	if len(h) >= 4 {
-		return h[:4]
-	}
-	return h
-}
-
 const doc = `
 
 Latest
