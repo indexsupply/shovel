@@ -44,16 +44,16 @@ func (i integration) Insert(ctx context.Context, pg e2pg.PG, blocks []e2pg.Block
 			t := blocks[bidx].Transactions.At(ridx)
 			for lidx := 0; lidx < r.Logs.Len(); lidx++ {
 				l := r.Logs.At(lidx)
-				signer, err := blocks[bidx].Transactions.At(ridx).Signer()
-				if err != nil {
-					slog.ErrorContext(ctx, "unable to derive signer")
-				}
 				xfrb, errb := erc1155abi.MatchTransferBatch(l)
 				xfrs, errs := erc1155abi.MatchTransferSingle(l)
 				switch {
 				case errb == nil:
 					if len(xfrb.Ids) != len(xfrb.Values) {
 						continue
+					}
+					signer, err := blocks[bidx].Transactions.At(ridx).Signer()
+					if err != nil {
+						slog.ErrorContext(ctx, "unable to derive signer")
 					}
 					for i := 0; i < len(xfrb.Ids); i++ {
 						rows = append(rows, []any{
@@ -74,6 +74,10 @@ func (i integration) Insert(ctx context.Context, pg e2pg.PG, blocks []e2pg.Block
 					}
 					xfrb.Done()
 				case errs == nil:
+					signer, err := blocks[bidx].Transactions.At(ridx).Signer()
+					if err != nil {
+						slog.ErrorContext(ctx, "unable to derive signer")
+					}
 					rows = append(rows, []any{
 						e2pg.TaskID(ctx),
 						e2pg.ChainID(ctx),
