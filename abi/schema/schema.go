@@ -1,6 +1,7 @@
 package schema
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 )
@@ -16,6 +17,35 @@ type Type struct {
 	// array
 	Length int
 	Elem   *Type
+}
+
+func (t Type) String() string {
+	switch t.Kind {
+	case 'a':
+		switch t.Length {
+		case 0:
+			return fmt.Sprintf("[]%s", t.Elem.String())
+		default:
+			return fmt.Sprintf("[%d]%s", t.Length, t.Elem.String())
+		}
+	case 't':
+		var s strings.Builder
+		s.WriteString("tuple(")
+		for i := range t.Fields {
+			s.WriteString(t.Fields[i].String())
+			if i+1 != len(t.Fields) {
+				s.WriteString(",")
+			}
+		}
+		s.WriteString(")")
+		return s.String()
+	case 's':
+		return "static"
+	case 'd':
+		return "dynamic"
+	default:
+		return fmt.Sprintf("unkown-type=%d", t.Kind)
+	}
 }
 
 func Static() Type {
@@ -93,6 +123,22 @@ func (t Type) size() int {
 		return n
 	default:
 		return 32
+	}
+}
+
+func (t Type) Contains(kind byte) bool {
+	switch {
+	case t.Kind == 'a':
+		return t.Elem.Contains(kind)
+	case t.Kind == 't':
+		for i := range t.Fields {
+			if t.Fields[i].Kind == kind || t.Fields[i].Contains(kind) {
+				return true
+			}
+		}
+		return false
+	default:
+		return false
 	}
 }
 

@@ -6,6 +6,96 @@ import (
 	"kr.dev/diff"
 )
 
+func TestString(t *testing.T) {
+	cases := []struct {
+		input Type
+		want  string
+	}{
+		{
+			Static(),
+			"static",
+		},
+		{
+			Dynamic(),
+			"dynamic",
+		},
+		{
+			Array(Static()),
+			"[]static",
+		},
+		{
+			Tuple(),
+			"tuple()",
+		},
+		{
+			Tuple(Static(), Dynamic()),
+			"tuple(static,dynamic)",
+		},
+		{
+			Tuple(Array(Tuple(Array(Static())))),
+			"tuple([]tuple([]static))",
+		},
+		{
+			Tuple(Array(Tuple(ArrayK(42, Static())))),
+			"tuple([]tuple([42]static))",
+		},
+	}
+	for _, tc := range cases {
+		diff.Test(t, t.Errorf, tc.input.String(), tc.want)
+	}
+}
+
+func TestContains(t *testing.T) {
+	cases := []struct {
+		desc  string
+		t     Type
+		input byte
+		want  bool
+	}{
+		{
+			"tuple no tuples",
+			Tuple(),
+			't',
+			false,
+		},
+		{
+			"tuple with tuples",
+			Tuple(Tuple()),
+			't',
+			true,
+		},
+		{
+			"tuple no arrays",
+			Tuple(),
+			'a',
+			false,
+		},
+		{
+			"tuple array",
+			Tuple(Array(Static())),
+			'a',
+			true,
+		},
+		{
+			"tuple tuple array",
+			Tuple(Static(), Tuple(Array(Static()))),
+			'a',
+			true,
+		},
+		{
+			"tuple tuple array",
+			Tuple(Static(), Tuple(Array(Static()))),
+			'd',
+			false,
+		},
+	}
+	for _, tc := range cases {
+		if tc.t.Contains(tc.input) != tc.want {
+			t.Errorf("expected %s.Contains(%s) to be: %v", tc.t, string(tc.input), tc.want)
+		}
+	}
+}
+
 func TestParse(t *testing.T) {
 	cases := []struct {
 		desc  string
