@@ -93,4 +93,7 @@ var Migrations = map[int]pgmig.Migration{
 			alter table erc20_transfers rename column tx_sender to tx_signer;
 		`,
 	},
+	5: pgmig.Migration{
+		SQL: "create index on task(id, number desc);",
+	},
 }
