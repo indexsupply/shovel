@@ -107,4 +107,8 @@ ALTER TABLE ONLY public.erc4337_userops
 
 
 
+CREATE INDEX task_id_number_idx ON public.task USING btree (id, number DESC);
+
+
+
 
