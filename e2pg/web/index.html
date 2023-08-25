@@ -95,7 +95,10 @@
 	<body>
 		<div class="header">
 			<h1>E2PG</h1>
-			<a href="/add-source">Add Source</a>
+			<div>
+				<a href="/add-source">Add Source</a>,
+				<a href="/add-integration">Add Integration</a>
+			</div>
 		</div>
 		<div class="taskHeader">
 			{{ if (gt (len .SourceConfigs) 0) -}}

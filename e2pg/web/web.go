@@ -22,11 +22,15 @@ var (
 
 	//go:embed add-source.html
 	addSourceHTML string
+
+	//go:embed add-integration.html
+	addIntegrationHTML string
 )
 
 var htmlpages = map[string]string{
-	"index":      indexHTML,
-	"add-source": addSourceHTML,
+	"index":           indexHTML,
+	"add-source":      addSourceHTML,
+	"add-integration": addIntegrationHTML,
 }
 
 type Handler struct {
@@ -82,6 +86,68 @@ func (h *Handler) template(name string) (*template.Template, error) {
 	}
 	h.templates[name] = t
 	return t, nil
+}
+
+func (h *Handler) SaveIntegration(w http.ResponseWriter, r *http.Request) {
+	var (
+		err  error
+		ctx  = r.Context()
+		intg = e2pg.Integration{}
+	)
+	defer r.Body.Close()
+	err = json.NewDecoder(r.Body).Decode(&intg)
+	if err != nil {
+		slog.ErrorContext(ctx, "decoding integration", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	cj, err := json.Marshal(intg)
+	if err != nil {
+		slog.ErrorContext(ctx, "encoding integration", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	const q = `insert into e2pg.integrations(name, conf) values ($1, $2)`
+	_, err = h.pgp.Exec(ctx, q, intg.Name, cj)
+	if err != nil {
+		slog.ErrorContext(ctx, "inserting integration", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	h.mgr.Restart()
+	json.NewEncoder(w).Encode("ok")
+}
+
+type AddIntegrationView struct {
+	Sources json.RawMessage
+}
+
+func (h *Handler) AddIntegration(w http.ResponseWriter, r *http.Request) {
+	var (
+		err  error
+		ctx  = r.Context()
+		view = AddIntegrationView{}
+	)
+	srcs, err := h.conf.AllSourceConfigs(ctx, h.pgp)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	view.Sources, err = json.Marshal(srcs)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	tmpl, err := h.template("add-integration")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if err := tmpl.Execute(w, view); err != nil {
+		slog.ErrorContext(ctx, "error", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 }
 
 type IndexView struct {
