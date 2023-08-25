@@ -168,6 +168,12 @@ func TestParse(t *testing.T) {
 			want:  Tuple(Static(), Tuple(Array(Static()))),
 		},
 		{
+			desc:  "array of tuples between statics",
+			input: "(bytes32,(bytes32[]),bytes32)",
+			want:  Tuple(Static(), Tuple(Array(Static())), Static()),
+		},
+
+		{
 			desc:  "complex",
 			input: "((address,bytes32,bytes,(uint8,uint8))[][])",
 			want: Tuple(
