@@ -188,13 +188,13 @@ func (task *Task) Status() StatusSnapshot {
 }
 
 func (task *Task) Insert(n uint64, h []byte) error {
-	const q = `insert into task (id, number, hash) values ($1, $2, $3)`
+	const q = `insert into e2pg.task (id, number, hash) values ($1, $2, $3)`
 	_, err := task.pgp.Exec(context.Background(), q, task.ID, n, h)
 	return err
 }
 
 func (task *Task) Latest() (uint64, []byte, error) {
-	const q = `SELECT number, hash FROM task WHERE id = $1 ORDER BY number DESC LIMIT 1`
+	const q = `SELECT number, hash FROM e2pg.task WHERE id = $1 ORDER BY number DESC LIMIT 1`
 	var n, h = uint64(0), []byte{}
 	err := task.pgp.QueryRow(context.Background(), q, task.ID).Scan(&n, &h)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -289,7 +289,7 @@ func (task *Task) Converge(notx bool) error {
 	}
 	for reorgs := 0; reorgs <= 10; {
 		localNum, localHash := uint64(0), []byte{}
-		const q = `SELECT number, hash FROM task WHERE id = $1 ORDER BY number DESC LIMIT 1`
+		const q = `SELECT number, hash FROM e2pg.task WHERE id = $1 ORDER BY number DESC LIMIT 1`
 		err := pg.QueryRow(task.ctx, q, task.ID).Scan(&localNum, &localHash)
 		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 			return fmt.Errorf("getting latest from task: %w", err)
@@ -323,7 +323,7 @@ func (task *Task) Converge(notx bool) error {
 		case errors.Is(err, ErrReorg):
 			reorgs++
 			slog.ErrorContext(task.ctx, "reorg", "n", localNum, "h", fmt.Sprintf("%.4x", localHash))
-			const dq = "delete from task where id = $1 AND number >= $2"
+			const dq = "delete from e2pg.task where id = $1 AND number >= $2"
 			_, err := pg.Exec(task.ctx, dq, task.ID, localNum)
 			if err != nil {
 				return fmt.Errorf("deleting block from task table: %w", err)
@@ -419,7 +419,7 @@ func (task *Task) writeIndex(localHash []byte, pg PG, delta uint64) error {
 		return fmt.Errorf("writing indexed data: %w", err)
 	}
 	var last = task.batch[delta-1]
-	const uq = "insert into task (id, number, hash) values ($1, $2, $3)"
+	const uq = "insert into e2pg.task (id, number, hash) values ($1, $2, $3)"
 	_, err := pg.Exec(context.Background(), uq, task.ID, last.Num(), last.Hash())
 	if err != nil {
 		return fmt.Errorf("updating task table: %w", err)

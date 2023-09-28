@@ -11,15 +11,28 @@ SET xmloption = content;
 SET client_min_messages = warning;
 SET row_security = off;
 
+
+CREATE SCHEMA e2pg;
+
+
 SET default_tablespace = '';
 
 SET default_table_access_method = heap;
 
 
-CREATE TABLE public.e2pg_migrations (
+CREATE TABLE e2pg.migrations (
     idx integer NOT NULL,
     hash bytea NOT NULL,
     inserted_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+
+CREATE TABLE e2pg.task (
+    id smallint NOT NULL,
+    number bigint,
+    hash bytea,
+    insert_at timestamp with time zone DEFAULT now()
 );
 
 
@@ -83,17 +96,8 @@ CREATE TABLE public.nft_transfers (
 
 
 
-CREATE TABLE public.task (
-    id smallint NOT NULL,
-    number bigint,
-    hash bytea,
-    insert_at timestamp with time zone DEFAULT now()
-);
-
-
-
-ALTER TABLE ONLY public.e2pg_migrations
-    ADD CONSTRAINT e2pg_migrations_pkey PRIMARY KEY (idx, hash);
+ALTER TABLE ONLY e2pg.migrations
+    ADD CONSTRAINT migrations_pkey PRIMARY KEY (idx, hash);
 
 
 
@@ -107,7 +111,7 @@ ALTER TABLE ONLY public.erc4337_userops
 
 
 
-CREATE INDEX task_id_number_idx ON public.task USING btree (id, number DESC);
+CREATE INDEX task_id_number_idx ON e2pg.task USING btree (id, number DESC);
 
 
 
