@@ -52,7 +52,7 @@ func TestServerErrors(t *testing.T) {
 }
 
 func TestHash(t *testing.T) {
-	gtest := gethtest.New(t, "http://zeus:8545")
+	gtest := gethtest.New(t, "http://hera:8545")
 	defer gtest.Done()
 
 	var (
@@ -68,7 +68,7 @@ func TestHash(t *testing.T) {
 }
 
 func TestLatest(t *testing.T) {
-	gtest := gethtest.New(t, "http://zeus:8545")
+	gtest := gethtest.New(t, "http://hera:8545")
 	gtest.SetLatest(16000000, h2b("3dc4ef568ae2635db1419c5fec55c4a9322c05302ae527cd40bff380c1d465dd"))
 	defer gtest.Done()
 
@@ -86,7 +86,7 @@ func TestLatest(t *testing.T) {
 }
 
 func TestLoadBlocks(t *testing.T) {
-	gtest := gethtest.New(t, "http://zeus:8545")
+	gtest := gethtest.New(t, "http://hera:8545")
 	gtest.SetLatest(16000000, h2b("3dc4ef568ae2635db1419c5fec55c4a9322c05302ae527cd40bff380c1d465dd"))
 	defer gtest.Done()
 
@@ -117,7 +117,7 @@ func repeat(b byte, n int) []byte {
 }
 
 func TestLoadBlocks_Filter(t *testing.T) {
-	gtest := gethtest.New(t, "http://zeus:8545")
+	gtest := gethtest.New(t, "http://hera:8545")
 	gtest.SetLatest(16000000, h2b("3dc4ef568ae2635db1419c5fec55c4a9322c05302ae527cd40bff380c1d465dd"))
 	defer gtest.Done()
 
@@ -141,7 +141,7 @@ func TestLoadBlocks_Filter(t *testing.T) {
 }
 
 func TestLoadBlocks_Filter_Error(t *testing.T) {
-	gtest := gethtest.New(t, "http://zeus:8545")
+	gtest := gethtest.New(t, "http://hera:8545")
 	gtest.SetLatest(16000000, h2b("3dc4ef568ae2635db1419c5fec55c4a9322c05302ae527cd40bff380c1d465dd"))
 	defer gtest.Done()
 
