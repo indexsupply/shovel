@@ -96,4 +96,7 @@ var Migrations = map[int]pgmig.Migration{
 	5: pgmig.Migration{
 		SQL: "create index on task(id, number desc);",
 	},
+	6: pgmig.Migration{
+		SQL: `alter table task set schema e2pg`,
+	},
 }

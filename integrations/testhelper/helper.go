@@ -1,5 +1,4 @@
 // Easily test e2pg integrations
-//
 package testhelper
 
 import (
@@ -47,7 +46,7 @@ func New(tb testing.TB) *H {
 
 // Reset the task table. Call this in-between test cases
 func (th *H) Reset() {
-	_, err := th.PG.Exec(context.Background(), "truncate table task")
+	_, err := th.PG.Exec(context.Background(), "truncate table e2pg.task")
 	check(th.tb, err)
 }
 
