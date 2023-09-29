@@ -7,7 +7,7 @@ import (
 	"bytes"
 	"github.com/indexsupply/x/abi"
 	"github.com/indexsupply/x/abi/schema"
-	"github.com/indexsupply/x/e2pg"
+	"github.com/indexsupply/x/eth"
 	"github.com/indexsupply/x/jrpc"
 	"math/big"
 )
@@ -60,14 +60,14 @@ var (
 // Uses the the following abi schema to decode the un-indexed
 // event inputs from the log's data field into [AccountDeployed]:
 //	(address,address)
-func MatchAccountDeployed(l *e2pg.Log) (AccountDeployedEvent, error) {
-	if l.Topics.Len() <= 0 {
+func MatchAccountDeployed(l *eth.Log) (AccountDeployedEvent, error) {
+	if len(l.Topics) <= 0 {
 		return AccountDeployedEvent{}, abi.NoTopics
 	}
-	if !bytes.Equal(AccountDeployedSignature, l.Topics.At(0)) {
+	if !bytes.Equal(AccountDeployedSignature, l.Topics[0]) {
 		return AccountDeployedEvent{}, abi.SigMismatch
 	}
-	if l.Topics.Len()-1 != AccountDeployedNumIndexed {
+	if len(l.Topics)-1 != AccountDeployedNumIndexed {
 		return AccountDeployedEvent{}, abi.IndexMismatch
 	}
 	item, _, err := abi.Decode(l.Data, AccountDeployedSchema)
@@ -75,8 +75,8 @@ func MatchAccountDeployed(l *e2pg.Log) (AccountDeployedEvent, error) {
 		return AccountDeployedEvent{}, err
 	}
 	res := DecodeAccountDeployedEvent(item)
-	res.UserOpHash = abi.Bytes(l.Topics.At(1)).Bytes32()
-	res.Sender = abi.Bytes(l.Topics.At(2)).Address()
+	res.UserOpHash = abi.Bytes(l.Topics[1]).Bytes32()
+	res.Sender = abi.Bytes(l.Topics[2]).Address()
 	return res, nil
 }
 
@@ -112,14 +112,14 @@ var (
 // Uses the the following abi schema to decode the un-indexed
 // event inputs from the log's data field into [BeforeExecution]:
 //	()
-func MatchBeforeExecution(l *e2pg.Log) (BeforeExecutionEvent, error) {
-	if l.Topics.Len() <= 0 {
+func MatchBeforeExecution(l *eth.Log) (BeforeExecutionEvent, error) {
+	if len(l.Topics) <= 0 {
 		return BeforeExecutionEvent{}, abi.NoTopics
 	}
-	if !bytes.Equal(BeforeExecutionSignature, l.Topics.At(0)) {
+	if !bytes.Equal(BeforeExecutionSignature, l.Topics[0]) {
 		return BeforeExecutionEvent{}, abi.SigMismatch
 	}
-	if l.Topics.Len()-1 != BeforeExecutionNumIndexed {
+	if len(l.Topics)-1 != BeforeExecutionNumIndexed {
 		return BeforeExecutionEvent{}, abi.IndexMismatch
 	}
 	res := BeforeExecutionEvent{}
@@ -169,14 +169,14 @@ var (
 // Uses the the following abi schema to decode the un-indexed
 // event inputs from the log's data field into [Deposited]:
 //	(uint256)
-func MatchDeposited(l *e2pg.Log) (DepositedEvent, error) {
-	if l.Topics.Len() <= 0 {
+func MatchDeposited(l *eth.Log) (DepositedEvent, error) {
+	if len(l.Topics) <= 0 {
 		return DepositedEvent{}, abi.NoTopics
 	}
-	if !bytes.Equal(DepositedSignature, l.Topics.At(0)) {
+	if !bytes.Equal(DepositedSignature, l.Topics[0]) {
 		return DepositedEvent{}, abi.SigMismatch
 	}
-	if l.Topics.Len()-1 != DepositedNumIndexed {
+	if len(l.Topics)-1 != DepositedNumIndexed {
 		return DepositedEvent{}, abi.IndexMismatch
 	}
 	item, _, err := abi.Decode(l.Data, DepositedSchema)
@@ -184,7 +184,7 @@ func MatchDeposited(l *e2pg.Log) (DepositedEvent, error) {
 		return DepositedEvent{}, err
 	}
 	res := DecodeDepositedEvent(item)
-	res.Account = abi.Bytes(l.Topics.At(1)).Address()
+	res.Account = abi.Bytes(l.Topics[1]).Address()
 	return res, nil
 }
 
@@ -222,18 +222,18 @@ var (
 // Uses the the following abi schema to decode the un-indexed
 // event inputs from the log's data field into [SignatureAggregatorChanged]:
 //	()
-func MatchSignatureAggregatorChanged(l *e2pg.Log) (SignatureAggregatorChangedEvent, error) {
-	if l.Topics.Len() <= 0 {
+func MatchSignatureAggregatorChanged(l *eth.Log) (SignatureAggregatorChangedEvent, error) {
+	if len(l.Topics) <= 0 {
 		return SignatureAggregatorChangedEvent{}, abi.NoTopics
 	}
-	if !bytes.Equal(SignatureAggregatorChangedSignature, l.Topics.At(0)) {
+	if !bytes.Equal(SignatureAggregatorChangedSignature, l.Topics[0]) {
 		return SignatureAggregatorChangedEvent{}, abi.SigMismatch
 	}
-	if l.Topics.Len()-1 != SignatureAggregatorChangedNumIndexed {
+	if len(l.Topics)-1 != SignatureAggregatorChangedNumIndexed {
 		return SignatureAggregatorChangedEvent{}, abi.IndexMismatch
 	}
 	res := SignatureAggregatorChangedEvent{}
-	res.Aggregator = abi.Bytes(l.Topics.At(1)).Address()
+	res.Aggregator = abi.Bytes(l.Topics[1]).Address()
 	return res, nil
 }
 
@@ -283,14 +283,14 @@ var (
 // Uses the the following abi schema to decode the un-indexed
 // event inputs from the log's data field into [StakeLocked]:
 //	(uint256,uint256)
-func MatchStakeLocked(l *e2pg.Log) (StakeLockedEvent, error) {
-	if l.Topics.Len() <= 0 {
+func MatchStakeLocked(l *eth.Log) (StakeLockedEvent, error) {
+	if len(l.Topics) <= 0 {
 		return StakeLockedEvent{}, abi.NoTopics
 	}
-	if !bytes.Equal(StakeLockedSignature, l.Topics.At(0)) {
+	if !bytes.Equal(StakeLockedSignature, l.Topics[0]) {
 		return StakeLockedEvent{}, abi.SigMismatch
 	}
-	if l.Topics.Len()-1 != StakeLockedNumIndexed {
+	if len(l.Topics)-1 != StakeLockedNumIndexed {
 		return StakeLockedEvent{}, abi.IndexMismatch
 	}
 	item, _, err := abi.Decode(l.Data, StakeLockedSchema)
@@ -298,7 +298,7 @@ func MatchStakeLocked(l *e2pg.Log) (StakeLockedEvent, error) {
 		return StakeLockedEvent{}, err
 	}
 	res := DecodeStakeLockedEvent(item)
-	res.Account = abi.Bytes(l.Topics.At(1)).Address()
+	res.Account = abi.Bytes(l.Topics[1]).Address()
 	return res, nil
 }
 
@@ -345,14 +345,14 @@ var (
 // Uses the the following abi schema to decode the un-indexed
 // event inputs from the log's data field into [StakeUnlocked]:
 //	(uint256)
-func MatchStakeUnlocked(l *e2pg.Log) (StakeUnlockedEvent, error) {
-	if l.Topics.Len() <= 0 {
+func MatchStakeUnlocked(l *eth.Log) (StakeUnlockedEvent, error) {
+	if len(l.Topics) <= 0 {
 		return StakeUnlockedEvent{}, abi.NoTopics
 	}
-	if !bytes.Equal(StakeUnlockedSignature, l.Topics.At(0)) {
+	if !bytes.Equal(StakeUnlockedSignature, l.Topics[0]) {
 		return StakeUnlockedEvent{}, abi.SigMismatch
 	}
-	if l.Topics.Len()-1 != StakeUnlockedNumIndexed {
+	if len(l.Topics)-1 != StakeUnlockedNumIndexed {
 		return StakeUnlockedEvent{}, abi.IndexMismatch
 	}
 	item, _, err := abi.Decode(l.Data, StakeUnlockedSchema)
@@ -360,7 +360,7 @@ func MatchStakeUnlocked(l *e2pg.Log) (StakeUnlockedEvent, error) {
 		return StakeUnlockedEvent{}, err
 	}
 	res := DecodeStakeUnlockedEvent(item)
-	res.Account = abi.Bytes(l.Topics.At(1)).Address()
+	res.Account = abi.Bytes(l.Topics[1]).Address()
 	return res, nil
 }
 
@@ -410,14 +410,14 @@ var (
 // Uses the the following abi schema to decode the un-indexed
 // event inputs from the log's data field into [StakeWithdrawn]:
 //	(address,uint256)
-func MatchStakeWithdrawn(l *e2pg.Log) (StakeWithdrawnEvent, error) {
-	if l.Topics.Len() <= 0 {
+func MatchStakeWithdrawn(l *eth.Log) (StakeWithdrawnEvent, error) {
+	if len(l.Topics) <= 0 {
 		return StakeWithdrawnEvent{}, abi.NoTopics
 	}
-	if !bytes.Equal(StakeWithdrawnSignature, l.Topics.At(0)) {
+	if !bytes.Equal(StakeWithdrawnSignature, l.Topics[0]) {
 		return StakeWithdrawnEvent{}, abi.SigMismatch
 	}
-	if l.Topics.Len()-1 != StakeWithdrawnNumIndexed {
+	if len(l.Topics)-1 != StakeWithdrawnNumIndexed {
 		return StakeWithdrawnEvent{}, abi.IndexMismatch
 	}
 	item, _, err := abi.Decode(l.Data, StakeWithdrawnSchema)
@@ -425,7 +425,7 @@ func MatchStakeWithdrawn(l *e2pg.Log) (StakeWithdrawnEvent, error) {
 		return StakeWithdrawnEvent{}, err
 	}
 	res := DecodeStakeWithdrawnEvent(item)
-	res.Account = abi.Bytes(l.Topics.At(1)).Address()
+	res.Account = abi.Bytes(l.Topics[1]).Address()
 	return res, nil
 }
 
@@ -485,14 +485,14 @@ var (
 // Uses the the following abi schema to decode the un-indexed
 // event inputs from the log's data field into [UserOperationEvent]:
 //	(uint256,bool,uint256,uint256)
-func MatchUserOperationEvent(l *e2pg.Log) (UserOperationEventEvent, error) {
-	if l.Topics.Len() <= 0 {
+func MatchUserOperationEvent(l *eth.Log) (UserOperationEventEvent, error) {
+	if len(l.Topics) <= 0 {
 		return UserOperationEventEvent{}, abi.NoTopics
 	}
-	if !bytes.Equal(UserOperationEventSignature, l.Topics.At(0)) {
+	if !bytes.Equal(UserOperationEventSignature, l.Topics[0]) {
 		return UserOperationEventEvent{}, abi.SigMismatch
 	}
-	if l.Topics.Len()-1 != UserOperationEventNumIndexed {
+	if len(l.Topics)-1 != UserOperationEventNumIndexed {
 		return UserOperationEventEvent{}, abi.IndexMismatch
 	}
 	item, _, err := abi.Decode(l.Data, UserOperationEventSchema)
@@ -500,9 +500,9 @@ func MatchUserOperationEvent(l *e2pg.Log) (UserOperationEventEvent, error) {
 		return UserOperationEventEvent{}, err
 	}
 	res := DecodeUserOperationEventEvent(item)
-	res.UserOpHash = abi.Bytes(l.Topics.At(1)).Bytes32()
-	res.Sender = abi.Bytes(l.Topics.At(2)).Address()
-	res.Paymaster = abi.Bytes(l.Topics.At(3)).Address()
+	res.UserOpHash = abi.Bytes(l.Topics[1]).Bytes32()
+	res.Sender = abi.Bytes(l.Topics[2]).Address()
+	res.Paymaster = abi.Bytes(l.Topics[3]).Address()
 	return res, nil
 }
 
@@ -554,14 +554,14 @@ var (
 // Uses the the following abi schema to decode the un-indexed
 // event inputs from the log's data field into [UserOperationRevertReason]:
 //	(uint256,bytes)
-func MatchUserOperationRevertReason(l *e2pg.Log) (UserOperationRevertReasonEvent, error) {
-	if l.Topics.Len() <= 0 {
+func MatchUserOperationRevertReason(l *eth.Log) (UserOperationRevertReasonEvent, error) {
+	if len(l.Topics) <= 0 {
 		return UserOperationRevertReasonEvent{}, abi.NoTopics
 	}
-	if !bytes.Equal(UserOperationRevertReasonSignature, l.Topics.At(0)) {
+	if !bytes.Equal(UserOperationRevertReasonSignature, l.Topics[0]) {
 		return UserOperationRevertReasonEvent{}, abi.SigMismatch
 	}
-	if l.Topics.Len()-1 != UserOperationRevertReasonNumIndexed {
+	if len(l.Topics)-1 != UserOperationRevertReasonNumIndexed {
 		return UserOperationRevertReasonEvent{}, abi.IndexMismatch
 	}
 	item, _, err := abi.Decode(l.Data, UserOperationRevertReasonSchema)
@@ -569,8 +569,8 @@ func MatchUserOperationRevertReason(l *e2pg.Log) (UserOperationRevertReasonEvent
 		return UserOperationRevertReasonEvent{}, err
 	}
 	res := DecodeUserOperationRevertReasonEvent(item)
-	res.UserOpHash = abi.Bytes(l.Topics.At(1)).Bytes32()
-	res.Sender = abi.Bytes(l.Topics.At(2)).Address()
+	res.UserOpHash = abi.Bytes(l.Topics[1]).Bytes32()
+	res.Sender = abi.Bytes(l.Topics[2]).Address()
 	return res, nil
 }
 
@@ -620,14 +620,14 @@ var (
 // Uses the the following abi schema to decode the un-indexed
 // event inputs from the log's data field into [Withdrawn]:
 //	(address,uint256)
-func MatchWithdrawn(l *e2pg.Log) (WithdrawnEvent, error) {
-	if l.Topics.Len() <= 0 {
+func MatchWithdrawn(l *eth.Log) (WithdrawnEvent, error) {
+	if len(l.Topics) <= 0 {
 		return WithdrawnEvent{}, abi.NoTopics
 	}
-	if !bytes.Equal(WithdrawnSignature, l.Topics.At(0)) {
+	if !bytes.Equal(WithdrawnSignature, l.Topics[0]) {
 		return WithdrawnEvent{}, abi.SigMismatch
 	}
-	if l.Topics.Len()-1 != WithdrawnNumIndexed {
+	if len(l.Topics)-1 != WithdrawnNumIndexed {
 		return WithdrawnEvent{}, abi.IndexMismatch
 	}
 	item, _, err := abi.Decode(l.Data, WithdrawnSchema)
@@ -635,7 +635,7 @@ func MatchWithdrawn(l *e2pg.Log) (WithdrawnEvent, error) {
 		return WithdrawnEvent{}, err
 	}
 	res := DecodeWithdrawnEvent(item)
-	res.Account = abi.Bytes(l.Topics.At(1)).Address()
+	res.Account = abi.Bytes(l.Topics[1]).Address()
 	return res, nil
 }
 

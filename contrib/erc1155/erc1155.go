@@ -7,7 +7,7 @@ import (
 	"bytes"
 	"github.com/indexsupply/x/abi"
 	"github.com/indexsupply/x/abi/schema"
-	"github.com/indexsupply/x/e2pg"
+	"github.com/indexsupply/x/eth"
 	"github.com/indexsupply/x/jrpc"
 	"math/big"
 )
@@ -57,14 +57,14 @@ var (
 // Uses the the following abi schema to decode the un-indexed
 // event inputs from the log's data field into [ApprovalForAll]:
 //	(bool)
-func MatchApprovalForAll(l *e2pg.Log) (ApprovalForAllEvent, error) {
-	if l.Topics.Len() <= 0 {
+func MatchApprovalForAll(l *eth.Log) (ApprovalForAllEvent, error) {
+	if len(l.Topics) <= 0 {
 		return ApprovalForAllEvent{}, abi.NoTopics
 	}
-	if !bytes.Equal(ApprovalForAllSignature, l.Topics.At(0)) {
+	if !bytes.Equal(ApprovalForAllSignature, l.Topics[0]) {
 		return ApprovalForAllEvent{}, abi.SigMismatch
 	}
-	if l.Topics.Len()-1 != ApprovalForAllNumIndexed {
+	if len(l.Topics)-1 != ApprovalForAllNumIndexed {
 		return ApprovalForAllEvent{}, abi.IndexMismatch
 	}
 	item, _, err := abi.Decode(l.Data, ApprovalForAllSchema)
@@ -72,8 +72,8 @@ func MatchApprovalForAll(l *e2pg.Log) (ApprovalForAllEvent, error) {
 		return ApprovalForAllEvent{}, err
 	}
 	res := DecodeApprovalForAllEvent(item)
-	res.Account = abi.Bytes(l.Topics.At(1)).Address()
-	res.Operator = abi.Bytes(l.Topics.At(2)).Address()
+	res.Account = abi.Bytes(l.Topics[1]).Address()
+	res.Operator = abi.Bytes(l.Topics[2]).Address()
 	return res, nil
 }
 
@@ -155,14 +155,14 @@ var (
 // Uses the the following abi schema to decode the un-indexed
 // event inputs from the log's data field into [TransferBatch]:
 //	(uint256[],uint256[])
-func MatchTransferBatch(l *e2pg.Log) (TransferBatchEvent, error) {
-	if l.Topics.Len() <= 0 {
+func MatchTransferBatch(l *eth.Log) (TransferBatchEvent, error) {
+	if len(l.Topics) <= 0 {
 		return TransferBatchEvent{}, abi.NoTopics
 	}
-	if !bytes.Equal(TransferBatchSignature, l.Topics.At(0)) {
+	if !bytes.Equal(TransferBatchSignature, l.Topics[0]) {
 		return TransferBatchEvent{}, abi.SigMismatch
 	}
-	if l.Topics.Len()-1 != TransferBatchNumIndexed {
+	if len(l.Topics)-1 != TransferBatchNumIndexed {
 		return TransferBatchEvent{}, abi.IndexMismatch
 	}
 	item, _, err := abi.Decode(l.Data, TransferBatchSchema)
@@ -170,9 +170,9 @@ func MatchTransferBatch(l *e2pg.Log) (TransferBatchEvent, error) {
 		return TransferBatchEvent{}, err
 	}
 	res := DecodeTransferBatchEvent(item)
-	res.Operator = abi.Bytes(l.Topics.At(1)).Address()
-	res.From = abi.Bytes(l.Topics.At(2)).Address()
-	res.To = abi.Bytes(l.Topics.At(3)).Address()
+	res.Operator = abi.Bytes(l.Topics[1]).Address()
+	res.From = abi.Bytes(l.Topics[2]).Address()
+	res.To = abi.Bytes(l.Topics[3]).Address()
 	return res, nil
 }
 
@@ -226,14 +226,14 @@ var (
 // Uses the the following abi schema to decode the un-indexed
 // event inputs from the log's data field into [TransferSingle]:
 //	(uint256,uint256)
-func MatchTransferSingle(l *e2pg.Log) (TransferSingleEvent, error) {
-	if l.Topics.Len() <= 0 {
+func MatchTransferSingle(l *eth.Log) (TransferSingleEvent, error) {
+	if len(l.Topics) <= 0 {
 		return TransferSingleEvent{}, abi.NoTopics
 	}
-	if !bytes.Equal(TransferSingleSignature, l.Topics.At(0)) {
+	if !bytes.Equal(TransferSingleSignature, l.Topics[0]) {
 		return TransferSingleEvent{}, abi.SigMismatch
 	}
-	if l.Topics.Len()-1 != TransferSingleNumIndexed {
+	if len(l.Topics)-1 != TransferSingleNumIndexed {
 		return TransferSingleEvent{}, abi.IndexMismatch
 	}
 	item, _, err := abi.Decode(l.Data, TransferSingleSchema)
@@ -241,9 +241,9 @@ func MatchTransferSingle(l *e2pg.Log) (TransferSingleEvent, error) {
 		return TransferSingleEvent{}, err
 	}
 	res := DecodeTransferSingleEvent(item)
-	res.Operator = abi.Bytes(l.Topics.At(1)).Address()
-	res.From = abi.Bytes(l.Topics.At(2)).Address()
-	res.To = abi.Bytes(l.Topics.At(3)).Address()
+	res.Operator = abi.Bytes(l.Topics[1]).Address()
+	res.From = abi.Bytes(l.Topics[2]).Address()
+	res.To = abi.Bytes(l.Topics[3]).Address()
 	return res, nil
 }
 
@@ -290,14 +290,14 @@ var (
 // Uses the the following abi schema to decode the un-indexed
 // event inputs from the log's data field into [URI]:
 //	(string)
-func MatchURI(l *e2pg.Log) (URIEvent, error) {
-	if l.Topics.Len() <= 0 {
+func MatchURI(l *eth.Log) (URIEvent, error) {
+	if len(l.Topics) <= 0 {
 		return URIEvent{}, abi.NoTopics
 	}
-	if !bytes.Equal(URISignature, l.Topics.At(0)) {
+	if !bytes.Equal(URISignature, l.Topics[0]) {
 		return URIEvent{}, abi.SigMismatch
 	}
-	if l.Topics.Len()-1 != URINumIndexed {
+	if len(l.Topics)-1 != URINumIndexed {
 		return URIEvent{}, abi.IndexMismatch
 	}
 	item, _, err := abi.Decode(l.Data, URISchema)
@@ -305,7 +305,7 @@ func MatchURI(l *e2pg.Log) (URIEvent, error) {
 		return URIEvent{}, err
 	}
 	res := DecodeURIEvent(item)
-	res.Id = abi.Bytes(l.Topics.At(1)).BigInt()
+	res.Id = abi.Bytes(l.Topics[1]).BigInt()
 	return res, nil
 }
 

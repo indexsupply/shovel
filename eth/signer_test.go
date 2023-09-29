@@ -1,4 +1,4 @@
-package e2pg
+package eth
 
 import (
 	"bytes"
@@ -53,8 +53,8 @@ func TestSigHash(t *testing.T) {
 		},
 	}
 	for _, tc := range cases {
-		tx := Transaction{}
-		tx.Unmarshal(h2b(tc.txrlp))
+		tx := Tx{}
+		tx.UnmarshalRLP(h2b(tc.txrlp))
 		signer, err := tx.Signer()
 		check(t, err)
 		if !bytes.Equal(signer, h2b(tc.signer)) {

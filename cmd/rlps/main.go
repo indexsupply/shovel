@@ -72,7 +72,7 @@ func log(v bool, h http.Handler) http.Handler {
 	})
 }
 
-//Set using: go build -ldflags="-X main.Version=XXX"
+// Set using: go build -ldflags="-X main.Version=XXX"
 var Version string
 
 func commit() string {

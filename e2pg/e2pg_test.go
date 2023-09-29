@@ -8,6 +8,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/indexsupply/x/eth"
 	"github.com/indexsupply/x/geth"
 	"github.com/indexsupply/x/tc"
 
@@ -24,17 +25,17 @@ func TestMain(m *testing.M) {
 
 type testIntegration struct {
 	sync.Mutex
-	chain map[uint64]Block
+	chain map[uint64]eth.Block
 }
 
 func newTestIntegration() *testIntegration {
 	return &testIntegration{
-		chain: make(map[uint64]Block),
+		chain: make(map[uint64]eth.Block),
 	}
 }
 
-func (ti *testIntegration) blocks() []Block {
-	var blks []Block
+func (ti *testIntegration) blocks() []eth.Block {
+	var blks []eth.Block
 	for _, b := range ti.chain {
 		blks = append(blks, b)
 	}
@@ -44,20 +45,20 @@ func (ti *testIntegration) blocks() []Block {
 	return blks
 }
 
-func (ti *testIntegration) Insert(_ context.Context, _ PG, blocks []Block) (int64, error) {
+func (ti *testIntegration) Insert(_ context.Context, _ PG, blocks []eth.Block) (int64, error) {
 	ti.Lock()
 	defer ti.Unlock()
 	for _, b := range blocks {
-		ti.chain[b.Header.Number] = b
+		ti.chain[uint64(b.Header.Number)] = b
 	}
 	return int64(len(blocks)), nil
 }
 
 func (ti *testIntegration) add(n uint64, hash, parent []byte) {
-	ti.Insert(context.Background(), nil, []Block{
-		Block{
-			Header: Header{
-				Number: n,
+	ti.Insert(context.Background(), nil, []eth.Block{
+		eth.Block{
+			Header: eth.Header{
+				Number: eth.Uint64(n),
 				Hash:   hash,
 				Parent: parent,
 			},
@@ -77,12 +78,12 @@ func (ti *testIntegration) Events(_ context.Context) [][]byte {
 }
 
 type testGeth struct {
-	blocks []Block
+	blocks []eth.Block
 }
 
 func (tg *testGeth) Hash(n uint64) ([]byte, error) {
 	for j := range tg.blocks {
-		if tg.blocks[j].Header.Number == n {
+		if uint64(tg.blocks[j].Header.Number) == n {
 			return tg.blocks[j].Header.Hash, nil
 		}
 	}
@@ -97,7 +98,7 @@ func (tg *testGeth) Latest() (uint64, []byte, error) {
 	return b.Num(), b.Hash(), nil
 }
 
-func (tg *testGeth) LoadBlocks(filter [][]byte, bufs []geth.Buffer, blks []Block) error {
+func (tg *testGeth) LoadBlocks(filter [][]byte, bufs []geth.Buffer, blks []eth.Block) error {
 	for i := range bufs {
 		for j := range tg.blocks {
 			if bufs[i].Number == tg.blocks[j].Num() {
@@ -109,9 +110,9 @@ func (tg *testGeth) LoadBlocks(filter [][]byte, bufs []geth.Buffer, blks []Block
 }
 
 func (tg *testGeth) add(n uint64, h, p []byte) {
-	tg.blocks = append(tg.blocks, Block{
-		Header: Header{
-			Number: n,
+	tg.blocks = append(tg.blocks, eth.Block{
+		Header: eth.Header{
+			Number: eth.Uint64(n),
 			Hash:   h,
 			Parent: p,
 		},

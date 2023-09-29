@@ -6,6 +6,7 @@ import (
 
 	erc1155abi "github.com/indexsupply/x/contrib/erc1155"
 	"github.com/indexsupply/x/e2pg"
+	"github.com/indexsupply/x/eth"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -36,22 +37,20 @@ func (i integration) Events(ctx context.Context) [][]byte {
 	}
 }
 
-func (i integration) Insert(ctx context.Context, pg e2pg.PG, blocks []e2pg.Block) (int64, error) {
+func (i integration) Insert(ctx context.Context, pg e2pg.PG, blocks []eth.Block) (int64, error) {
 	var rows = make([][]any, 0, 1<<12)
-	for bidx := 0; bidx < len(blocks); bidx++ {
-		for ridx := 0; ridx < blocks[bidx].Receipts.Len(); ridx++ {
-			r := blocks[bidx].Receipts.At(ridx)
-			t := blocks[bidx].Transactions.At(ridx)
-			for lidx := 0; lidx < r.Logs.Len(); lidx++ {
-				l := r.Logs.At(lidx)
-				xfrb, errb := erc1155abi.MatchTransferBatch(l)
-				xfrs, errs := erc1155abi.MatchTransferSingle(l)
+	for bidx := range blocks {
+		for ridx := range blocks[bidx].Receipts {
+			for lidx := range blocks[bidx].Receipts[ridx].Logs {
+				l := blocks[bidx].Receipts[ridx].Logs[lidx]
+				xfrb, errb := erc1155abi.MatchTransferBatch(&l)
+				xfrs, errs := erc1155abi.MatchTransferSingle(&l)
 				switch {
 				case errb == nil:
 					if len(xfrb.Ids) != len(xfrb.Values) {
 						continue
 					}
-					signer, err := blocks[bidx].Transactions.At(ridx).Signer()
+					signer, err := blocks[bidx].Txs[ridx].Signer()
 					if err != nil {
 						slog.ErrorContext(ctx, "unable to derive signer")
 					}
@@ -61,11 +60,11 @@ func (i integration) Insert(ctx context.Context, pg e2pg.PG, blocks []e2pg.Block
 							e2pg.ChainID(ctx),
 							blocks[bidx].Num(),
 							blocks[bidx].Hash(),
-							t.Hash(),
+							blocks[bidx].Txs[ridx].Hash(),
 							ridx,
 							lidx,
 							signer,
-							l.Address,
+							l.Address.Bytes(),
 							xfrb.Ids[i].String(),
 							xfrb.Values[i].String(),
 							xfrb.From[:],
@@ -74,7 +73,7 @@ func (i integration) Insert(ctx context.Context, pg e2pg.PG, blocks []e2pg.Block
 					}
 					xfrb.Done()
 				case errs == nil:
-					signer, err := blocks[bidx].Transactions.At(ridx).Signer()
+					signer, err := blocks[bidx].Txs[ridx].Signer()
 					if err != nil {
 						slog.ErrorContext(ctx, "unable to derive signer")
 					}
@@ -83,11 +82,11 @@ func (i integration) Insert(ctx context.Context, pg e2pg.PG, blocks []e2pg.Block
 						e2pg.ChainID(ctx),
 						blocks[bidx].Num(),
 						blocks[bidx].Hash(),
-						t.Hash(),
+						blocks[bidx].Txs[ridx].Hash(),
 						ridx,
 						lidx,
 						signer,
-						l.Address,
+						l.Address.Bytes(),
 						xfrs.Id.String(),
 						xfrs.Value.String(),
 						xfrs.From[:],

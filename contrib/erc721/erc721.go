@@ -7,7 +7,7 @@ import (
 	"bytes"
 	"github.com/indexsupply/x/abi"
 	"github.com/indexsupply/x/abi/schema"
-	"github.com/indexsupply/x/e2pg"
+	"github.com/indexsupply/x/eth"
 	"github.com/indexsupply/x/jrpc"
 	"math/big"
 )
@@ -50,20 +50,20 @@ var (
 // Uses the the following abi schema to decode the un-indexed
 // event inputs from the log's data field into [Approval]:
 //	()
-func MatchApproval(l *e2pg.Log) (ApprovalEvent, error) {
-	if l.Topics.Len() <= 0 {
+func MatchApproval(l *eth.Log) (ApprovalEvent, error) {
+	if len(l.Topics) <= 0 {
 		return ApprovalEvent{}, abi.NoTopics
 	}
-	if !bytes.Equal(ApprovalSignature, l.Topics.At(0)) {
+	if !bytes.Equal(ApprovalSignature, l.Topics[0]) {
 		return ApprovalEvent{}, abi.SigMismatch
 	}
-	if l.Topics.Len()-1 != ApprovalNumIndexed {
+	if len(l.Topics)-1 != ApprovalNumIndexed {
 		return ApprovalEvent{}, abi.IndexMismatch
 	}
 	res := ApprovalEvent{}
-	res.Owner = abi.Bytes(l.Topics.At(1)).Address()
-	res.Approved = abi.Bytes(l.Topics.At(2)).Address()
-	res.TokenId = abi.Bytes(l.Topics.At(3)).BigInt()
+	res.Owner = abi.Bytes(l.Topics[1]).Address()
+	res.Approved = abi.Bytes(l.Topics[2]).Address()
+	res.TokenId = abi.Bytes(l.Topics[3]).BigInt()
 	return res, nil
 }
 
@@ -112,14 +112,14 @@ var (
 // Uses the the following abi schema to decode the un-indexed
 // event inputs from the log's data field into [ApprovalForAll]:
 //	(bool)
-func MatchApprovalForAll(l *e2pg.Log) (ApprovalForAllEvent, error) {
-	if l.Topics.Len() <= 0 {
+func MatchApprovalForAll(l *eth.Log) (ApprovalForAllEvent, error) {
+	if len(l.Topics) <= 0 {
 		return ApprovalForAllEvent{}, abi.NoTopics
 	}
-	if !bytes.Equal(ApprovalForAllSignature, l.Topics.At(0)) {
+	if !bytes.Equal(ApprovalForAllSignature, l.Topics[0]) {
 		return ApprovalForAllEvent{}, abi.SigMismatch
 	}
-	if l.Topics.Len()-1 != ApprovalForAllNumIndexed {
+	if len(l.Topics)-1 != ApprovalForAllNumIndexed {
 		return ApprovalForAllEvent{}, abi.IndexMismatch
 	}
 	item, _, err := abi.Decode(l.Data, ApprovalForAllSchema)
@@ -127,8 +127,8 @@ func MatchApprovalForAll(l *e2pg.Log) (ApprovalForAllEvent, error) {
 		return ApprovalForAllEvent{}, err
 	}
 	res := DecodeApprovalForAllEvent(item)
-	res.Owner = abi.Bytes(l.Topics.At(1)).Address()
-	res.Operator = abi.Bytes(l.Topics.At(2)).Address()
+	res.Owner = abi.Bytes(l.Topics[1]).Address()
+	res.Operator = abi.Bytes(l.Topics[2]).Address()
 	return res, nil
 }
 
@@ -170,20 +170,20 @@ var (
 // Uses the the following abi schema to decode the un-indexed
 // event inputs from the log's data field into [Transfer]:
 //	()
-func MatchTransfer(l *e2pg.Log) (TransferEvent, error) {
-	if l.Topics.Len() <= 0 {
+func MatchTransfer(l *eth.Log) (TransferEvent, error) {
+	if len(l.Topics) <= 0 {
 		return TransferEvent{}, abi.NoTopics
 	}
-	if !bytes.Equal(TransferSignature, l.Topics.At(0)) {
+	if !bytes.Equal(TransferSignature, l.Topics[0]) {
 		return TransferEvent{}, abi.SigMismatch
 	}
-	if l.Topics.Len()-1 != TransferNumIndexed {
+	if len(l.Topics)-1 != TransferNumIndexed {
 		return TransferEvent{}, abi.IndexMismatch
 	}
 	res := TransferEvent{}
-	res.From = abi.Bytes(l.Topics.At(1)).Address()
-	res.To = abi.Bytes(l.Topics.At(2)).Address()
-	res.TokenId = abi.Bytes(l.Topics.At(3)).BigInt()
+	res.From = abi.Bytes(l.Topics[1]).Address()
+	res.To = abi.Bytes(l.Topics[2]).Address()
+	res.TokenId = abi.Bytes(l.Topics[3]).BigInt()
 	return res, nil
 }
 

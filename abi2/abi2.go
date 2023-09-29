@@ -15,6 +15,7 @@ import (
 
 	"github.com/indexsupply/x/bint"
 	"github.com/indexsupply/x/e2pg"
+	"github.com/indexsupply/x/eth"
 	"github.com/indexsupply/x/isxhash"
 
 	"github.com/holiman/uint256"
@@ -618,22 +619,22 @@ func (ig Integration) Events(context.Context) [][]byte { return [][]byte{} }
 
 func (ig Integration) Delete(context.Context, e2pg.PG, uint64) error { return nil }
 
-func (ig Integration) Insert(ctx context.Context, pg e2pg.PG, blocks []e2pg.Block) (int64, error) {
+func (ig Integration) Insert(ctx context.Context, pg e2pg.PG, blocks []eth.Block) (int64, error) {
 	var (
 		err  error
 		rows [][]any
 		lwc  = &logWithCtx{ctx: ctx}
 	)
-	for bidx := 0; bidx < len(blocks); bidx++ {
+	for bidx := range blocks {
 		lwc.b = &blocks[bidx]
-		for ridx := 0; ridx < blocks[bidx].Receipts.Len(); ridx++ {
-			lwc.r = lwc.b.Receipts.At(ridx)
-			lwc.t = lwc.b.Transactions.At(ridx)
+		for ridx := range blocks[bidx].Receipts {
+			lwc.r = &lwc.b.Receipts[ridx]
+			lwc.t = &lwc.b.Txs[ridx]
 			lwc.ridx = ridx
-			for lidx := 0; lidx < lwc.r.Logs.Len(); lidx++ {
-				lwc.l = lwc.r.Logs.At(lidx)
+			for lidx := range blocks[bidx].Receipts[ridx].Logs {
+				lwc.l = &lwc.r.Logs[lidx]
 				lwc.lidx = lidx
-				if !bytes.Equal(ig.sighash, lwc.l.Topics.At(0)) {
+				if !bytes.Equal(ig.sighash, lwc.l.Topics[0]) {
 					continue
 				}
 				rows, err = ig.process(rows, lwc)
@@ -653,10 +654,10 @@ func (ig Integration) Insert(ctx context.Context, pg e2pg.PG, blocks []e2pg.Bloc
 
 type logWithCtx struct {
 	ctx        context.Context
-	b          *e2pg.Block
-	t          *e2pg.Transaction
-	r          *e2pg.Receipt
-	l          *e2pg.Log
+	b          *eth.Block
+	t          *eth.Tx
+	r          *eth.Receipt
+	l          *eth.Log
 	ridx, lidx int
 }
 
@@ -699,7 +700,7 @@ func (ig Integration) process(rows [][]any, lwc *logWithCtx) ([][]any, error) {
 		for i, def := range ig.coldefs {
 			switch {
 			case def.Input.Indexed:
-				d := dbtype(def.Input.Type, lwc.l.Topics.At(1+i))
+				d := dbtype(def.Input.Type, lwc.l.Topics[1+i])
 				if b, ok := d.([]byte); ok && !def.Column.Accept(b) {
 					return nil, nil
 				}
@@ -726,7 +727,7 @@ func (ig Integration) process(rows [][]any, lwc *logWithCtx) ([][]any, error) {
 			for j, def := range ig.coldefs {
 				switch {
 				case def.Input.Indexed:
-					d := lwc.l.Topics.At(ictr)
+					d := lwc.l.Topics[ictr]
 					row[j] = dbtype(def.Input.Type, d)
 					ictr++
 				case def.Metadata:
