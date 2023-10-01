@@ -14,6 +14,7 @@ import (
 	"github.com/indexsupply/x/bint"
 	"github.com/indexsupply/x/bloom"
 	"github.com/indexsupply/x/e2pg"
+	"github.com/indexsupply/x/eth"
 	"github.com/indexsupply/x/freezer"
 	"github.com/indexsupply/x/geth"
 	"github.com/indexsupply/x/jrpc"
@@ -34,7 +35,7 @@ type Client struct {
 
 var bufferPool = sync.Pool{New: func() any { return new(bytes.Buffer) }}
 
-func (c *Client) LoadBlocks(filter [][]byte, bfs []geth.Buffer, blocks []e2pg.Block) error {
+func (c *Client) LoadBlocks(filter [][]byte, bfs []geth.Buffer, blocks []eth.Block) error {
 	// Use hash in the request url to avoid having the
 	// rlps cdn serve a reorganized block.
 	h, err := c.Hash(bfs[0].Number)
@@ -79,15 +80,9 @@ func (c *Client) LoadBlocks(filter [][]byte, bfs []geth.Buffer, blocks []e2pg.Bl
 			bodiesRLP   = blockRLP.Bytes()
 			receiptsRLP = blockRLP.Bytes()
 		)
-		blocks[i].Header.Unmarshal(headerRLP)
-		blocks[i].Transactions.Reset()
-		for j, it := 0, rlp.Iter(rlp.Bytes(bodiesRLP)); it.HasNext(); j++ {
-			blocks[i].Transactions.Insert(j, it.Bytes())
-		}
-		blocks[i].Receipts.Reset()
-		for j, it := 0, rlp.Iter(receiptsRLP); it.HasNext(); j++ {
-			blocks[i].Receipts.Insert(j, it.Bytes())
-		}
+		blocks[i].UnmarshalRLP(headerRLP)
+		blocks[i].Txs.UnmarshalRLP(rlp.Bytes(bodiesRLP))
+		blocks[i].Receipts.UnmarshalRLP(receiptsRLP)
 	}
 	return nil
 }
@@ -179,10 +174,10 @@ func (s *Server) get(filter [][]byte, n, limit uint64) ([]byte, error) {
 	}
 	for i := 0; i < len(bufs); i++ {
 		hrlp := bufs[i].Header()
-		header := e2pg.Header{}
-		header.Unmarshal(hrlp)
+		block := eth.Block{}
+		block.UnmarshalRLP(hrlp)
 		switch {
-		case e2pg.Skip(filter, bloom.Filter(header.LogsBloom)):
+		case e2pg.Skip(filter, bloom.Filter(block.LogsBloom)):
 			res[i] = rlp.List(rlp.Encode(hrlp, zero, zero))
 		default:
 			res[i] = rlp.List(rlp.Encode(

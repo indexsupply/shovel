@@ -6,7 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/indexsupply/x/e2pg"
+	"github.com/indexsupply/x/eth"
 	"github.com/indexsupply/x/geth"
 	"github.com/indexsupply/x/geth/gethtest"
 	"kr.dev/diff"
@@ -42,13 +42,13 @@ func TestServerErrors(t *testing.T) {
 
 	var (
 		buffers = []geth.Buffer{geth.Buffer{Number: 16000000}}
-		blocks  = make([]e2pg.Block, 1)
+		blocks  = make([]eth.Block, 1)
 	)
 	err = cli.LoadBlocks(nil, buffers, blocks)
 	diff.Test(t, t.Fatalf, err.Error(), "unable to get hash for 16000000: rlps error: an error\n")
 	diff.Test(t, t.Fatalf, blocks[0].Num(), uint64(0))
 	diff.Test(t, t.Fatalf, len(blocks[0].Hash()), 0)
-	diff.Test(t, t.Fatalf, blocks[0].Transactions.Len(), 0)
+	diff.Test(t, t.Fatalf, len(blocks[0].Txs), 0)
 }
 
 func TestHash(t *testing.T) {
@@ -99,13 +99,13 @@ func TestLoadBlocks(t *testing.T) {
 
 	var (
 		buffers = []geth.Buffer{geth.Buffer{Number: 16000000}}
-		blocks  = make([]e2pg.Block, 1)
+		blocks  = make([]eth.Block, 1)
 	)
 	err := cli.LoadBlocks(nil, buffers, blocks)
 	diff.Test(t, t.Fatalf, err, nil)
 	diff.Test(t, t.Fatalf, blocks[0].Num(), uint64(16000000))
 	diff.Test(t, t.Fatalf, blocks[0].Hash(), h2b("3dc4ef568ae2635db1419c5fec55c4a9322c05302ae527cd40bff380c1d465dd"))
-	diff.Test(t, t.Fatalf, blocks[0].Transactions.Len(), 211)
+	diff.Test(t, t.Fatalf, len(blocks[0].Txs), 211)
 }
 
 func repeat(b byte, n int) []byte {
@@ -130,14 +130,14 @@ func TestLoadBlocks_Filter(t *testing.T) {
 
 	var (
 		buffers = []geth.Buffer{geth.Buffer{Number: 16000000}}
-		blocks  = make([]e2pg.Block, 1)
+		blocks  = make([]eth.Block, 1)
 		filter  = [][]byte{repeat('2', 32)}
 	)
 	err := cli.LoadBlocks(filter, buffers, blocks)
 	diff.Test(t, t.Fatalf, err, nil)
 	diff.Test(t, t.Fatalf, blocks[0].Num(), uint64(16000000))
 	diff.Test(t, t.Fatalf, blocks[0].Hash(), h2b("3dc4ef568ae2635db1419c5fec55c4a9322c05302ae527cd40bff380c1d465dd"))
-	diff.Test(t, t.Fatalf, blocks[0].Transactions.Len(), 0)
+	diff.Test(t, t.Fatalf, len(blocks[0].Txs), 0)
 }
 
 func TestLoadBlocks_Filter_Error(t *testing.T) {
@@ -154,7 +154,7 @@ func TestLoadBlocks_Filter_Error(t *testing.T) {
 
 	var (
 		buffers = []geth.Buffer{geth.Buffer{Number: 16000000}}
-		blocks  = make([]e2pg.Block, 1)
+		blocks  = make([]eth.Block, 1)
 		filter  = [][]byte{repeat('2', 33)}
 	)
 	err := cli.LoadBlocks(filter, buffers, blocks)

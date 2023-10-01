@@ -7,12 +7,11 @@ import (
 	"strings"
 
 	"github.com/indexsupply/x/e2pg"
-	"github.com/indexsupply/x/freezer"
 	"github.com/indexsupply/x/integrations/erc1155"
 	"github.com/indexsupply/x/integrations/erc20"
 	"github.com/indexsupply/x/integrations/erc4337"
 	"github.com/indexsupply/x/integrations/erc721"
-	"github.com/indexsupply/x/jrpc"
+	"github.com/indexsupply/x/jrpc2"
 	"github.com/indexsupply/x/rlps"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -46,7 +45,7 @@ func (conf Config) Empty() bool {
 // that it is a placeholder url and the actual
 // url is in an env variable.
 //
-// If there is no env var for s then the program will crash with an error
+// # If there is no env var for s then the program will crash with an error
 //
 // if there is no $ prefix then s is returned
 func Env(s string) string {
@@ -123,16 +122,9 @@ func parseNode(url, fpath string) (e2pg.Node, error) {
 	case strings.Contains(url, "rlps"):
 		return rlps.NewClient(url), nil
 	case strings.HasPrefix(url, "http"):
-		rc, err := jrpc.New(jrpc.WithHTTP(url))
-		if err != nil {
-			return nil, fmt.Errorf("new http rpc client: %w", err)
-		}
-		return e2pg.NewGeth(freezer.New(fpath), rc), nil
+		return jrpc2.New(url), nil
 	default:
-		rc, err := jrpc.New(jrpc.WithSocket(url))
-		if err != nil {
-			return nil, fmt.Errorf("new unix rpc client: %w", err)
-		}
-		return e2pg.NewGeth(freezer.New(fpath), rc), nil
+		// TODO add back support for local node
+		return nil, fmt.Errorf("unable to create node for %s", url)
 	}
 }

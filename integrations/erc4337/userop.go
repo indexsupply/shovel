@@ -6,6 +6,7 @@ import (
 
 	"github.com/indexsupply/x/contrib/erc4337"
 	"github.com/indexsupply/x/e2pg"
+	"github.com/indexsupply/x/eth"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -33,18 +34,17 @@ func (i integration) Delete(ctx context.Context, pg e2pg.PG, n uint64) error {
 	return err
 }
 
-func (i integration) Insert(ctx context.Context, pg e2pg.PG, blocks []e2pg.Block) (int64, error) {
+func (i integration) Insert(ctx context.Context, pg e2pg.PG, blocks []eth.Block) (int64, error) {
 	var rows = make([][]any, 0, 1<<12)
-	for bidx := 0; bidx < len(blocks); bidx++ {
-		for ridx := 0; ridx < blocks[bidx].Receipts.Len(); ridx++ {
-			r := blocks[bidx].Receipts.At(ridx)
-			for lidx := 0; lidx < r.Logs.Len(); lidx++ {
-				l := r.Logs.At(lidx)
-				event, err := erc4337.MatchUserOperationEvent(l)
+	for bidx := range blocks {
+		for ridx := range blocks[bidx].Receipts {
+			for lidx := range blocks[bidx].Receipts[ridx].Logs {
+				l := blocks[bidx].Receipts[ridx].Logs[lidx]
+				event, err := erc4337.MatchUserOperationEvent(&l)
 				if err != nil {
 					continue
 				}
-				signer, err := blocks[bidx].Transactions.At(ridx).Signer()
+				signer, err := blocks[bidx].Txs[ridx].Signer()
 				if err != nil {
 					fmt.Printf("unable to derive signer\n")
 				}
@@ -53,11 +53,11 @@ func (i integration) Insert(ctx context.Context, pg e2pg.PG, blocks []e2pg.Block
 					e2pg.ChainID(ctx),
 					blocks[bidx].Num(),
 					blocks[bidx].Hash(),
-					blocks[bidx].Transactions.At(ridx).Hash(),
+					blocks[bidx].Txs[ridx].Hash(),
 					ridx,
 					lidx,
 					signer,
-					l.Address,
+					l.Address.Bytes(),
 
 					event.UserOpHash[:],
 					event.Sender[:],

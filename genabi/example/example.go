@@ -172,8 +172,11 @@ var (
 )
 
 // Event Signature:
+//
 //	nestedSlices(string[])
+//
 // Checks the first log topic against the signature hash:
+//
 //	ee413f81e139c0faeafaebcd24551f44041a8169d66c588ce7712499daf49613
 //
 // Copies indexed event inputs from the remaining topics
@@ -181,6 +184,7 @@ var (
 //
 // Uses the the following abi schema to decode the un-indexed
 // event inputs from the log's data field into [NestedSlices]:
+//
 //	(string[])
 func MatchNestedSlices(l abi.Log) (NestedSlicesEvent, error) {
 	if len(l.Topics) == 0 {
@@ -352,8 +356,11 @@ var (
 )
 
 // Event Signature:
+//
 //	transfer(address,address,uint256,uint8[2][3],(address,bytes32,bytes,(uint8,uint8))[][])
+//
 // Checks the first log topic against the signature hash:
+//
 //	70711f9efd2d568665592c1d6245e892eab7d9e56c76714682526066ca69d65e
 //
 // Copies indexed event inputs from the remaining topics
@@ -361,6 +368,7 @@ var (
 //
 // Uses the the following abi schema to decode the un-indexed
 // event inputs from the log's data field into [Transfer]:
+//
 //	(uint8[2][3],(address,bytes32,bytes,(uint8,uint8))[][])
 func MatchTransfer(l abi.Log) (TransferEvent, error) {
 	if len(l.Topics) == 0 {

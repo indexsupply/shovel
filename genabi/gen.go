@@ -44,7 +44,7 @@ func imports(descriptors []Descriptor) []string {
 		}
 	}
 	imports = append(imports, "bytes")
-	imports = append(imports, "github.com/indexsupply/x/e2pg")
+	imports = append(imports, "github.com/indexsupply/x/eth")
 	imports = append(imports, "github.com/indexsupply/x/abi")
 	imports = append(imports, "github.com/indexsupply/x/abi/schema")
 	return imports
