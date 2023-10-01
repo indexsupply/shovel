@@ -62,7 +62,7 @@ func (i integration) Insert(ctx context.Context, pg e2pg.PG, blocks []eth.Block)
 		for ridx := range blocks[bidx].Receipts {
 			for lidx := range blocks[bidx].Receipts[ridx].Logs {
 				l := blocks[bidx].Receipts[ridx].Logs[lidx]
-				if !bytes.Equal(l.Topics[0], sig) {
+				if !bytes.Equal(l.Topics[0], sig) || len(l.Topics) < 3 {
 					continue
 				}
 				signer, err := blocks[bidx].Txs[ridx].Signer()

@@ -131,16 +131,18 @@ func (b Block) String() string {
 }
 
 type Log struct {
-	Address Bytes    `json:"address"`
-	Topics  [4]Bytes `json:"topics"`
-	Data    Bytes    `json:"data"`
+	Address Bytes   `json:"address"`
+	Topics  []Bytes `json:"topics"`
+	Data    Bytes   `json:"data"`
 }
 
 func (l *Log) UnmarshalRLP(b []byte) {
 	iter := rlp.Iter(b)
 	l.Address.Write(iter.Bytes())
 	for i, t := 0, rlp.Iter(iter.Bytes()); t.HasNext(); i++ {
-		l.Topics[i].Write(t.Bytes())
+		topic := make([]byte, 32)
+		copy(topic, t.Bytes())
+		l.Topics = append(l.Topics, topic)
 	}
 	l.Data.Write(iter.Bytes())
 }
