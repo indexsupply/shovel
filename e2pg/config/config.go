@@ -11,16 +11,18 @@ import (
 	"github.com/indexsupply/x/integrations/erc20"
 	"github.com/indexsupply/x/integrations/erc4337"
 	"github.com/indexsupply/x/integrations/erc721"
+	"github.com/indexsupply/x/integrations/txinputs"
 	"github.com/indexsupply/x/jrpc2"
 	"github.com/indexsupply/x/rlps"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 var Integrations = map[string]e2pg.Integration{
-	"erc20":   erc20.Integration,
-	"erc721":  erc721.Integration,
-	"erc1155": erc1155.Integration,
-	"erc4337": erc4337.Integration,
+	"erc20":    erc20.Integration,
+	"erc721":   erc721.Integration,
+	"erc1155":  erc1155.Integration,
+	"erc4337":  erc4337.Integration,
+	"txinputs": txinputs.Integration,
 }
 
 type Config struct {

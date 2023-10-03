@@ -99,4 +99,19 @@ var Migrations = map[int]pgmig.Migration{
 	6: pgmig.Migration{
 		SQL: `alter table task set schema e2pg`,
 	},
+	7: pgmig.Migration{
+		SQL: `
+			create table tx_inputs (
+				task_id numeric,
+				chain_id numeric,
+				block_hash bytea,
+				block_number numeric,
+				tx_hash bytea,
+				tx_index numeric,
+				tx_signer bytea,
+				tx_to bytea,
+				tx_input bytea
+			)
+		`,
+	},
 }
