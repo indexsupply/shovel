@@ -512,13 +512,14 @@ func (e Event) Selected() []Input {
 	return res
 }
 
-func (e Event) onlyTopics() bool {
+func (e Event) numIndexed() int {
+	var res int
 	for _, inp := range e.Selected() {
-		if !inp.Indexed {
-			return false
+		if inp.Indexed {
+			res++
 		}
 	}
-	return true
+	return res
 }
 
 type coldef struct {
@@ -533,7 +534,9 @@ type Integration struct {
 	Columns []string
 	coldefs []coldef
 
-	onlyTopics  bool
+	numIndexed  int
+	numSelected int
+
 	resultCache *Result
 	sighash     []byte
 }
@@ -581,7 +584,6 @@ func New(js []byte) (Integration, error) {
 	if err := json.Unmarshal(js, &ig.Event); err != nil {
 		return ig, fmt.Errorf("parsing event json: %w", err)
 	}
-	ig.onlyTopics = ig.Event.onlyTopics()
 	ig.resultCache = NewResult(ig.Event.ABIType())
 	ig.sighash = ig.Event.SignatureHash()
 
@@ -593,6 +595,10 @@ func New(js []byte) (Integration, error) {
 	if len(cols) != len(selected)+len(md) {
 		return ig, fmt.Errorf("number of columns in table definitino must equal number of selected columns + metadata columns")
 	}
+
+	ig.numIndexed = ig.Event.numIndexed()
+	ig.numSelected = len(selected)
+
 	var colCount int
 	for _, input := range selected {
 		ig.Columns = append(ig.Columns, cols[colCount].Name)
@@ -634,6 +640,9 @@ func (ig Integration) Insert(ctx context.Context, pg e2pg.PG, blocks []eth.Block
 			for lidx := range blocks[bidx].Receipts[ridx].Logs {
 				lwc.l = &lwc.r.Logs[lidx]
 				lwc.lidx = lidx
+				if len(lwc.l.Topics)-1 != ig.numIndexed {
+					continue
+				}
 				if !bytes.Equal(ig.sighash, lwc.l.Topics[0]) {
 					continue
 				}
@@ -681,13 +690,13 @@ func (lwc *logWithCtx) get(name string) any {
 		}
 		return d
 	case "tx_to":
-		return lwc.t.To
+		return lwc.t.To.Bytes()
 	case "tx_value":
 		return lwc.t.Value.Dec()
 	case "log_idx":
 		return lwc.lidx
 	case "log_addr":
-		return lwc.l.Address
+		return lwc.l.Address.Bytes()
 	default:
 		return nil
 	}
@@ -695,7 +704,7 @@ func (lwc *logWithCtx) get(name string) any {
 
 func (ig Integration) process(rows [][]any, lwc *logWithCtx) ([][]any, error) {
 	switch {
-	case ig.onlyTopics:
+	case ig.numIndexed == ig.numSelected:
 		row := make([]any, len(ig.coldefs))
 		for i, def := range ig.coldefs {
 			switch {
