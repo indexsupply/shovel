@@ -1,22 +1,85 @@
-[
-	{
-		"name": "mainnet",
-		"id": 1,
-		"chain": 1,
-		"concurrency": 8,
-		"batch": 128,
-		"eth": "https://1.rlps.indexsupply.net",
-		"pg": "postgres:///e2pg",
-		"integrations": ["erc721", "erc1155"]
-	},
-	{
-		"name": "bedrock",
-		"id": 2,
-		"chain": 10,
-		"concurrency": 8,
-		"batch": 1024,
-		"eth": "http://10.rlps.indexsupply.net",
-		"pg": "postgres:///e2pg",
-		"integrations": ["erc20"]
-	}
-]
+{
+	"pg_url": "postgres:///e2pg",
+	"eth_sources": [
+		{"name": "mainnet", "chain_id": 1, "url": "http://hera:8545"},
+		{"name": "optimism", "chain_id": 10, "url": "https://10.rlps.indexsupply.net"}
+	],
+	"integrations": [
+		{
+			"name": "txinputs",
+			"enabled": true,
+			"sources": ["mainnet"],
+			"table": {
+				"name": "tx_inputs",
+				"columns": [
+					{"name": "block_hash", "type": "bytea"},
+					{"name": "block_num", "type": "numeric"},
+					{"name": "tx_hash", "type": "bytea"},
+					{"name": "tx_num", "type": "numeric"},
+					{"name": "tx_from", "type": "bytea"},
+					{"name": "tx_inputs", "type": "bytea"}
+				]
+			},
+			"compiled": {
+				"name": "txinputs",
+				"config": {
+					"filter_from": [],
+					"filter_to": []
+				}
+			}
+		},
+		{
+			"name": "erc721 mints",
+			"enabled": true,
+			"sources": ["mainnet", "optimism"],
+			"table": {
+				"name": "transfers",
+				"columns": [
+					{"name": "chain_id", "type": "numeric"},
+					{"name": "contract", "type": "bytea"},
+					{"name": "f", "type": "bytea"},
+					{"name": "minter", "type": "bytea"},
+					{"name": "token", "type": "numeric"},
+					{"name": "block_hash", "type": "bytea"},
+					{"name": "block_num", "type": "numeric"},
+					{"name": "tx_hash", "type": "bytea"}
+				]
+			},
+			"block": [
+				{"name": "chain_id", "column": "chain_id"},
+				{"name": "block_hash", "column": "block_hash"},
+				{"name": "block_num", "column": "block_num"},
+				{"name": "tx_hash", "column": "tx_hash"},
+				{"name": "log_addr", "column": "contract"}
+
+			],
+			"event": {
+				"name": "Transfer",
+				"type": "event",
+				"anonymous": false,
+				"inputs": [
+					{
+						"indexed": true,
+						"name": "from",
+						"type": "address",
+						"column": "f",
+						"filter_op": "contains",
+						"filter_arg": ["0000000000000000000000000000000000000000"]
+					},
+					{
+						"indexed": true,
+						"name": "to",
+						"type": "address",
+						"column": "minter"
+					},
+					{
+						"indexed": true,
+						"name": "tokenId",
+						"type": "uint256",
+						"column": "token"
+					}
+				]
+ 			}
+		}
+	]
+}

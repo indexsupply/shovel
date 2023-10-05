@@ -5,11 +5,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
-	"slices"
 	"strconv"
 	"strings"
 
@@ -195,12 +193,6 @@ func sel(pos int, t atype) atype {
 
 type row [][]byte
 
-func (r *row) write(i int, d []byte) {
-	(*r)[i] = slices.Grow((*r)[i], len(d))
-	(*r)[i] = (*r)[i][:len(d)]
-	copy((*r)[i], d)
-}
-
 func (r *Result) Len() int {
 	return r.n
 }
@@ -258,7 +250,7 @@ func (r *Result) Scan(input []byte) error {
 	for i := 0; i < r.Len(); i++ {
 		for j := 0; j < len(r.singleton); j++ {
 			if len(r.singleton[j]) > 0 {
-				r.collection[i].write(j, r.singleton[j])
+				r.collection[i][j] = r.singleton[j]
 			}
 		}
 	}
@@ -372,6 +364,32 @@ type Input struct {
 
 	Column string `json:"column"`
 	Pos    int    `json:"column_pos"`
+	Filter
+}
+
+type Filter struct {
+	Op  string   `json:"filter_op"`
+	Arg []string `json:"filter_arg"`
+}
+
+func (f Filter) Accept(d []byte) bool {
+	switch {
+	case strings.HasSuffix(f.Op, "contains"):
+		var res bool
+		for i := range f.Arg {
+			hb, _ := hex.DecodeString(f.Arg[i])
+			if bytes.Equal(hb, d) {
+				res = true
+				break
+			}
+		}
+		if strings.HasPrefix(f.Op, "!") {
+			return !res
+		}
+		return res
+	default:
+		return true
+	}
 }
 
 func parseArray(elm atype, s string) atype {
@@ -459,9 +477,15 @@ func (inp Input) Selected() []Input {
 	return res
 }
 
-type Extra struct {
-	Table    Table    `json:"table"`
-	Metadata []string `json:"metadata"`
+type BlockData struct {
+	Name   string `json:"name"`
+	Column string `json:"column"`
+	Pos    int    `json:"column_pos"`
+	Filter
+}
+
+func (bd BlockData) Empty() bool {
+	return len(bd.Name) == 0
 }
 
 type Event struct {
@@ -469,7 +493,6 @@ type Event struct {
 	Name   string  `json:"name"`
 	Type   string  `json:"type"`
 	Inputs []Input `json:"inputs"`
-	Extra  Extra   `json:"extra"`
 }
 
 func (e Event) ABIType() atype {
@@ -523,14 +546,15 @@ func (e Event) numIndexed() int {
 }
 
 type coldef struct {
-	Input    Input
-	Column   Column
-	Metadata bool
+	Input     Input
+	BlockData BlockData
+	Column    Column
 }
 
 // Implements the [e2pg.Integration] interface
 type Integration struct {
 	Event   Event
+	Table   Table
 	Columns []string
 	coldefs []coldef
 
@@ -546,18 +570,6 @@ type Conn interface {
 	Exec(context.Context, string, ...any) (pgconn.CommandTag, error)
 	QueryRow(context.Context, string, ...any) pgx.Row
 	Query(context.Context, string, ...any) (pgx.Rows, error)
-}
-
-// Queries the e2pg.events table using the event id.
-// Same as calling [New] except the js is loaded from the database.
-func Load(ctx context.Context, pgp *pgxpool.Pool, id uint64) (Integration, error) {
-	const q = `select abi from e2pg.events where id = $1`
-	var js []byte
-	err := pgp.QueryRow(ctx, q, id).Scan(&js)
-	if err != nil {
-		return Integration{}, fmt.Errorf("loading integration %d: %w", id, err)
-	}
-	return New(js)
 }
 
 // js must be a json encoded abi event.
@@ -579,20 +591,16 @@ func Load(ctx context.Context, pgp *pgxpool.Pool, id uint64) (Integration, error
 // For example:
 //
 //	{"name": "my_column", "type": "db_type", "filter_op": "contains", "filter_arg": ["0x000"]}
-func New(js []byte) (Integration, error) {
-	ig := Integration{}
-	if err := json.Unmarshal(js, &ig.Event); err != nil {
-		return ig, fmt.Errorf("parsing event json: %w", err)
+func New(ev Event, bd []BlockData, table Table) (Integration, error) {
+	ig := Integration{
+		Event: ev,
+		Table: table,
 	}
-	ig.resultCache = NewResult(ig.Event.ABIType())
-	ig.sighash = ig.Event.SignatureHash()
+	ig.resultCache = NewResult(ev.ABIType())
+	ig.sighash = ev.SignatureHash()
 
-	var (
-		selected = ig.Event.Selected()
-		md       = ig.Event.Extra.Metadata
-		cols     = ig.Event.Extra.Table.Cols
-	)
-	if len(cols) != len(selected)+len(md) {
+	selected := ev.Selected()
+	if len(table.Cols) != len(selected)+len(bd) {
 		return ig, fmt.Errorf("number of columns in table definitino must equal number of selected columns + metadata columns")
 	}
 
@@ -601,25 +609,40 @@ func New(js []byte) (Integration, error) {
 
 	var colCount int
 	for _, input := range selected {
-		ig.Columns = append(ig.Columns, cols[colCount].Name)
+		c, err := col(table, input.Column)
+		if err != nil {
+			return ig, err
+		}
+		ig.Columns = append(ig.Columns, c.Name)
 		ig.coldefs = append(ig.coldefs, coldef{
 			Input:  input,
-			Column: cols[colCount],
+			Column: c,
 		})
 		colCount++
 	}
-	for range md {
-		ig.Columns = append(ig.Columns, cols[colCount].Name)
+	for _, data := range bd {
+		c, err := col(table, data.Column)
+		if err != nil {
+			return ig, err
+		}
+		ig.Columns = append(ig.Columns, c.Name)
 		ig.coldefs = append(ig.coldefs, coldef{
-			Metadata: true,
-			Column:   cols[colCount],
+			BlockData: data,
+			Column:    c,
 		})
 		colCount++
 	}
 	return ig, nil
 }
 
-func (ig Integration) Table() Table { return ig.Event.Extra.Table }
+func col(t Table, name string) (Column, error) {
+	for i := range t.Cols {
+		if t.Cols[i].Name == name {
+			return t.Cols[i], nil
+		}
+	}
+	return Column{}, fmt.Errorf("table %q doesn't contain column %q", t.Name, name)
+}
 
 func (ig Integration) Events(context.Context) [][]byte { return [][]byte{} }
 
@@ -655,7 +678,7 @@ func (ig Integration) Insert(ctx context.Context, pg e2pg.PG, blocks []eth.Block
 	}
 	return pg.CopyFrom(
 		ctx,
-		pgx.Identifier{ig.Table().Name},
+		pgx.Identifier{ig.Table.Name},
 		ig.Columns,
 		pgx.CopyFromRows(rows),
 	)
@@ -710,14 +733,14 @@ func (ig Integration) process(rows [][]any, lwc *logWithCtx) ([][]any, error) {
 			switch {
 			case def.Input.Indexed:
 				d := dbtype(def.Input.Type, lwc.l.Topics[1+i])
-				if b, ok := d.([]byte); ok && !def.Column.Accept(b) {
-					return nil, nil
+				if b, ok := d.([]byte); ok && !def.Input.Accept(b) {
+					return rows, nil
 				}
 				row[i] = d
-			case def.Metadata:
-				d := lwc.get(def.Column.Name)
-				if b, ok := d.([]byte); ok && !def.Column.Accept(b) {
-					return nil, nil
+			case !def.BlockData.Empty():
+				d := lwc.get(def.BlockData.Name)
+				if b, ok := d.([]byte); ok && !def.BlockData.Accept(b) {
+					return rows, nil
 				}
 				row[i] = d
 			default:
@@ -739,16 +762,16 @@ func (ig Integration) process(rows [][]any, lwc *logWithCtx) ([][]any, error) {
 					d := lwc.l.Topics[ictr]
 					row[j] = dbtype(def.Input.Type, d)
 					ictr++
-				case def.Metadata:
+				case !def.BlockData.Empty():
 					d := lwc.get(def.Column.Name)
-					if b, ok := d.([]byte); ok && !def.Column.Accept(b) {
-						return nil, nil
+					if b, ok := d.([]byte); ok && !def.BlockData.Accept(b) {
+						return rows, nil
 					}
 					row[j] = d
 				default:
 					d := ig.resultCache.At(i)[actr]
-					if !def.Column.Accept(d) {
-						return nil, nil
+					if !def.Input.Accept(d) {
+						return rows, nil
 					}
 					row[j] = dbtype(def.Input.Type, d)
 					actr++
@@ -793,7 +816,7 @@ func (ig Integration) Count(ctx context.Context, pg *pgxpool.Pool, chainID uint6
 	`
 	var (
 		res string
-		fq  = fmt.Sprintf(q, ig.Table().Name)
+		fq  = fmt.Sprintf(q, ig.Table.Name)
 	)
 	err := pg.QueryRow(ctx, fq, chainID).Scan(&res)
 	if err != nil {
@@ -820,7 +843,7 @@ func (ig Integration) RecentRows(ctx context.Context, pgp *pgxpool.Pool, chainID
 		}
 	}
 	q.WriteString(" from ")
-	q.WriteString(ig.Table().Name)
+	q.WriteString(ig.Table.Name)
 	q.WriteString(" where chain_id = $1")
 	q.WriteString(" order by block_num desc limit 10")
 
@@ -835,47 +858,13 @@ func (ig Integration) RecentRows(ctx context.Context, pgp *pgxpool.Pool, chainID
 }
 
 type Column struct {
-	Name      string   `json:"name"`
-	Type      string   `json:"type"`
-	FilterOp  string   `json:"filter_op"`
-	FilterArg []string `json:"filter_arg"`
-}
-
-// Uses FilterOp and FilterArg to check if d passes the filter.
-// Current filter_ops include: contains and !contains
-func (c Column) Accept(d []byte) bool {
-	switch {
-	case strings.HasSuffix(c.FilterOp, "contains"):
-		var res bool
-		for i := range c.FilterArg {
-			hb, _ := hex.DecodeString(c.FilterArg[i])
-			if bytes.Equal(hb, d) {
-				res = true
-				break
-			}
-		}
-		if strings.HasPrefix(c.FilterOp, "!") {
-			return !res
-		}
-		return res
-	default:
-		return true
-	}
+	Name string `json:"name"`
+	Type string `json:"type"`
 }
 
 type Table struct {
 	Name string   `json:"name"`
 	Cols []Column `json:"columns"`
-}
-
-func (t Table) Filters() []Column {
-	var res []Column
-	for i := range t.Cols {
-		if t.Cols[i].FilterOp != "" {
-			res = append(res, t.Cols[i])
-		}
-	}
-	return res
 }
 
 func CreateTable(ctx context.Context, pg Conn, t Table) error {
