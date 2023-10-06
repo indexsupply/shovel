@@ -38,9 +38,7 @@
 			"name": "status",
 			"enabled": true,
 			"backfill": true,
-			"sources": [
-				{"name": "redstone", "start": 800000}
-			],
+			"sources": [{"name": "redstone"}],
 			"table": {
 				"name": "challenge_status",
 				"columns": [

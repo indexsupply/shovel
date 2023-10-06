@@ -91,8 +91,7 @@ func NewTasks(conf Config) ([]*e2pg.Task, error) {
 	if err != nil {
 		return nil, fmt.Errorf("dburl invalid: %w", err)
 	}
-
-	intgsBySource := map[string][]e2pg.Integration{}
+	intgsBySource := map[Source][]e2pg.Integration{}
 	for _, ig := range conf.Integrations {
 		if !ig.Enabled {
 			continue
@@ -102,7 +101,7 @@ func NewTasks(conf Config) ([]*e2pg.Task, error) {
 			return nil, fmt.Errorf("unable to build integration: %s", ig.Name)
 		}
 		for _, src := range ig.Sources {
-			intgsBySource[src.Name] = append(intgsBySource[src.Name], eig)
+			intgsBySource[src] = append(intgsBySource[src], eig)
 		}
 	}
 
@@ -111,54 +110,24 @@ func NewTasks(conf Config) ([]*e2pg.Task, error) {
 		tasks  []*e2pg.Task
 	)
 	// Start per-source main tasks
-	for srcName, intgs := range intgsBySource {
-		chainID, node, err := getNode(conf.EthSources, srcName)
+	for src, intgs := range intgsBySource {
+		chainID, node, err := getNode(conf.EthSources, src.Name)
 		if err != nil {
-			return nil, fmt.Errorf("unkown source: %s", srcName)
+			return nil, fmt.Errorf("unkown source: %s", src.Name)
 		}
 		tasks = append(tasks, e2pg.NewTask(
 			taskID,
 			chainID,
-			srcName,
+			src.Name,
 			1,
 			1,
 			node,
 			pgp,
-			0,
+			src.Start,
 			0,
 			intgs...,
 		))
 		taskID++
-	}
-
-	// Start integration specific backfill tasks
-	for _, ig := range conf.Integrations {
-		if !ig.Backfill {
-			continue
-		}
-		eig, err := getIntegration(pgp, ig)
-		if err != nil {
-			return nil, fmt.Errorf("building backfill integration: %w", err)
-		}
-		for _, src := range ig.Sources {
-			chainID, node, err := getNode(conf.EthSources, src.Name)
-			if err != nil {
-				return nil, fmt.Errorf("unkown source %s for backfill %s", src.Name, ig.Name)
-			}
-			tasks = append(tasks, e2pg.NewTask(
-				taskID,
-				chainID,
-				fmt.Sprintf("%s-%s-backfill", src.Name, ig.Name),
-				32,
-				1,
-				node,
-				pgp,
-				src.Start,
-				src.Stop,
-				eig,
-			))
-			taskID++
-		}
 	}
 	return tasks, nil
 }
