@@ -164,7 +164,7 @@ func (dh *dashHandler) Index(w http.ResponseWriter, r *http.Request) {
 	}
 	snaps := make(map[uint64]e2pg.StatusSnapshot)
 	for _, task := range dh.tasks {
-		snaps[task.ChainID] = task.Status()
+		snaps[task.ID] = task.Status()
 	}
 	err = tmpl.Execute(w, snaps)
 	if err != nil {
