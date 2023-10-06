@@ -1,0 +1,44 @@
+{
+	"name": "erc721",
+	"table": {
+		"name": "erc721_test",
+		"columns": [
+			{"name": "chain_id", "type": "numeric"},
+			{"name": "block_num", "type": "numeric"},
+			{"name": "tx_hash", "type": "bytea"},
+			{"name": "f", "type": "bytea"},
+			{"name": "t", "type": "bytea"},
+			{"name": "token", "type": "numeric"}
+		]
+	},
+	"block": [
+		{"name": "chain_id", "column": "chain_id"},
+		{"name": "block_num", "column": "block_num"},
+		{"name": "tx_hash", "column": "tx_hash", "filter_op": "contains", "filter_arg": ["713df81a2ab53db1d01531106fc5de43012a401ddc3e0586d522e5c55a162d42"]}
+	],
+	"event": {
+		"name": "Transfer",
+		"type": "event",
+		"anonymous": false,
+		"inputs": [
+			{
+				"indexed": true,
+				"name": "from",
+				"type": "address",
+				"column": "f"
+			},
+			{
+				"indexed": true,
+				"name": "to",
+				"type": "address",
+				"column": "t"
+			},
+			{
+				"indexed": true,
+				"name": "tokenId",
+				"type": "uint256",
+				"column": "token"
+			}
+		]
+	}
+}
