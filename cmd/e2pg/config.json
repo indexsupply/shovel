@@ -2,47 +2,25 @@
 	"pg_url": "postgres:///e2pg",
 	"eth_sources": [
 		{"name": "mainnet", "chain_id": 1, "url": "http://hera:8545"},
-		{"name": "optimism", "chain_id": 10, "url": "https://10.rlps.indexsupply.net"}
+		{"name": "optimism", "chain_id": 10, "url": "https://10.rlps.indexsupply.net"},
+		{"name": "redstone", "chain_id": 4242, "url": "https://quarry-l1.linfra.xyz/"}
 	],
 	"integrations": [
 		{
 			"name": "txinputs",
 			"enabled": true,
-			"sources": ["mainnet"],
+			"sources": [{"name": "redstone"}],
 			"table": {
-				"name": "tx_inputs",
+				"name": "tx_inputs2",
 				"columns": [
+					{"name": "chain_id", "type": "numeric"},
 					{"name": "block_hash", "type": "bytea"},
 					{"name": "block_num", "type": "numeric"},
 					{"name": "tx_hash", "type": "bytea"},
-					{"name": "tx_num", "type": "numeric"},
-					{"name": "tx_from", "type": "bytea"},
-					{"name": "tx_inputs", "type": "bytea"}
-				]
-			},
-			"compiled": {
-				"name": "txinputs",
-				"config": {
-					"filter_from": [],
-					"filter_to": []
-				}
-			}
-		},
-		{
-			"name": "erc721 mints",
-			"enabled": true,
-			"sources": ["mainnet", "optimism"],
-			"table": {
-				"name": "transfers",
-				"columns": [
-					{"name": "chain_id", "type": "numeric"},
-					{"name": "contract", "type": "bytea"},
-					{"name": "f", "type": "bytea"},
-					{"name": "minter", "type": "bytea"},
-					{"name": "token", "type": "numeric"},
-					{"name": "block_hash", "type": "bytea"},
-					{"name": "block_num", "type": "numeric"},
-					{"name": "tx_hash", "type": "bytea"}
+					{"name": "tx_idx", "type": "numeric"},
+					{"name": "tx_signer", "type": "bytea"},
+					{"name": "tx_to", "type": "bytea"},
+					{"name": "tx_input", "type": "bytea"}
 				]
 			},
 			"block": [
@@ -50,33 +28,68 @@
 				{"name": "block_hash", "column": "block_hash"},
 				{"name": "block_num", "column": "block_num"},
 				{"name": "tx_hash", "column": "tx_hash"},
-				{"name": "log_addr", "column": "contract"}
-
+				{"name": "tx_idx", "column": "tx_idx"},
+				{"name": "tx_signer", "column": "tx_signer", "filter_op": "contains", "filter_arg": ["3C44CdDdB6a900fa2b585dd299e03d12FA4293BC"]},
+				{"name": "tx_to", "column": "tx_to"},
+				{"name": "tx_input", "column": "tx_input"}
+			]
+		},
+		{
+			"name": "status",
+			"enabled": true,
+			"backfill": true,
+			"sources": [
+				{"name": "redstone", "start": 800000}
+			],
+			"table": {
+				"name": "challenge_status",
+				"columns": [
+					{"name": "chain_id", "type": "numeric"},
+					{"name": "author", "type": "bytea"},
+					{"name": "hash", "type": "bytea"},
+					{"name": "change_block_num", "type": "numeric"},
+					{"name": "status", "type": "bytea"},
+					{"name": "block_hash", "type": "bytea"},
+					{"name": "block_num", "type": "numeric"},
+					{"name": "tx_hash", "type": "bytea"},
+					{"name": "log_addr", "type": "bytea"}
+				]
+			},
+			"block": [
+				{"name": "chain_id", "column": "chain_id"},
+				{"name": "block_hash", "column": "block_hash"},
+				{"name": "block_num", "column": "block_num"},
+				{"name": "tx_hash", "column": "tx_hash"},
+				{"name": "log_addr", "column": "log_addr"}
 			],
 			"event": {
-				"name": "Transfer",
+				"name": "ChallengeStatusChanged",
 				"type": "event",
 				"anonymous": false,
 				"inputs": [
 					{
 						"indexed": true,
-						"name": "from",
+						"name": "author",
 						"type": "address",
-						"column": "f",
-						"filter_op": "contains",
-						"filter_arg": ["0000000000000000000000000000000000000000"]
+						"column": "author"
 					},
 					{
-						"indexed": true,
-						"name": "to",
-						"type": "address",
-						"column": "minter"
+						"indexed": false,
+						"name": "hash",
+						"type": "bytes32",
+						"column": "hash"
 					},
 					{
-						"indexed": true,
-						"name": "tokenId",
+						"indexed": false,
+						"name": "blockNumber",
 						"type": "uint256",
-						"column": "token"
+						"column": "change_block_num"
+					},
+					{
+						"indexed": false,
+						"name": "status",
+						"type": "uint8",
+						"column": "status"
 					}
 				]
  			}

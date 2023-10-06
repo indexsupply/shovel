@@ -33,6 +33,12 @@ type EthSource struct {
 	URL     string `json:"url"`
 }
 
+type Source struct {
+	Name  string `json:"name"`
+	Start uint64 `json:"start"`
+	Stop  uint64 `json:"stop"`
+}
+
 type Compiled struct {
 	Name   string          `json:"name"`
 	Config json.RawMessage `json:"config"`
@@ -44,7 +50,7 @@ type Integration struct {
 	Start    string           `json:"start"`
 	Stop     string           `json:"stop"`
 	Backfill bool             `json:"backfill"`
-	Sources  []string         `json:"sources"`
+	Sources  []Source         `json:"sources"`
 	Table    abi2.Table       `json:"table"`
 	Compiled Compiled         `json:"compiled"`
 	Block    []abi2.BlockData `json:"block"`
@@ -81,73 +87,35 @@ func Env(s string) string {
 }
 
 func NewTasks(conf Config) ([]*e2pg.Task, error) {
-	var (
-		err     error
-		tasks   []*e2pg.Task
-		pgp     *pgxpool.Pool
-		sources = map[string]e2pg.Node{}
-	)
-	pgp, err = pgxpool.New(context.Background(), Env(conf.PGURL))
+	pgp, err := pgxpool.New(context.Background(), Env(conf.PGURL))
 	if err != nil {
 		return nil, fmt.Errorf("dburl invalid: %w", err)
 	}
 
-	for _, es := range conf.EthSources {
-		_, ok := sources[es.Name]
-		if !ok {
-			sources[es.Name] = parseNode(Env(es.URL))
-		}
-	}
-
 	intgsBySource := map[string][]e2pg.Integration{}
 	for _, ig := range conf.Integrations {
-		switch {
-		case len(ig.Compiled.Name) > 0:
-			cig, ok := compiled[ig.Name]
-			if !ok {
-				return nil, fmt.Errorf("unable to find compiled integration: %s", ig.Name)
-			}
-			for _, srcName := range ig.Sources {
-				_, ok := sources[srcName]
-				if !ok {
-					return nil, fmt.Errorf("unable to find source: %s", srcName)
-				}
-				intgsBySource[srcName] = append(intgsBySource[srcName], cig)
-			}
-		default:
-			aig, err := abi2.New(ig.Event, ig.Block, ig.Table)
-			if err != nil {
-				return nil, fmt.Errorf("building abi integration: %w", err)
-			}
-
-			if err := abi2.CreateTable(context.Background(), pgp, aig.Table); err != nil {
-				return nil, fmt.Errorf("setting up table for abi integration: %w", err)
-			}
-			for _, srcName := range ig.Sources {
-				if _, ok := sources[srcName]; !ok {
-					return nil, fmt.Errorf("unable to find source: %s", srcName)
-				}
-				intgsBySource[srcName] = append(intgsBySource[srcName], aig)
-			}
+		if !ig.Enabled {
+			continue
+		}
+		eig, err := getIntegration(pgp, ig)
+		if err != nil {
+			return nil, fmt.Errorf("unable to build integration: %s", ig.Name)
+		}
+		for _, src := range ig.Sources {
+			intgsBySource[src.Name] = append(intgsBySource[src.Name], eig)
 		}
 	}
 
-	var taskID uint64 = 1
+	var (
+		taskID uint64 = 1
+		tasks  []*e2pg.Task
+	)
+	// Start per-source main tasks
 	for srcName, intgs := range intgsBySource {
-		node, ok := sources[srcName]
-		if !ok {
+		chainID, node, err := getNode(conf.EthSources, srcName)
+		if err != nil {
 			return nil, fmt.Errorf("unkown source: %s", srcName)
 		}
-		var chainID uint64
-		for i := range conf.EthSources {
-			if conf.EthSources[i].Name == srcName {
-				chainID = conf.EthSources[i].ChainID
-			}
-		}
-		if chainID == 0 {
-			return nil, fmt.Errorf("unkown chain id for source: %s", srcName)
-		}
-		fmt.Printf("new task: %d %d %s\n", taskID, chainID, srcName)
 		tasks = append(tasks, e2pg.NewTask(
 			taskID,
 			chainID,
@@ -162,17 +130,73 @@ func NewTasks(conf Config) ([]*e2pg.Task, error) {
 		))
 		taskID++
 	}
+
+	// Start integration specific backfill tasks
+	for _, ig := range conf.Integrations {
+		if !ig.Backfill {
+			continue
+		}
+		eig, err := getIntegration(pgp, ig)
+		if err != nil {
+			return nil, fmt.Errorf("building backfill integration: %w", err)
+		}
+		for _, src := range ig.Sources {
+			chainID, node, err := getNode(conf.EthSources, src.Name)
+			if err != nil {
+				return nil, fmt.Errorf("unkown source %s for backfill %s", src.Name, ig.Name)
+			}
+			tasks = append(tasks, e2pg.NewTask(
+				taskID,
+				chainID,
+				fmt.Sprintf("%s-%s-backfill", src.Name, ig.Name),
+				32,
+				1,
+				node,
+				pgp,
+				src.Start,
+				src.Stop,
+				eig,
+			))
+			taskID++
+		}
+	}
 	return tasks, nil
 }
 
-func parseNode(url string) e2pg.Node {
+func getIntegration(pgp *pgxpool.Pool, ig Integration) (e2pg.Integration, error) {
 	switch {
-	case strings.Contains(url, "rlps"):
-		return rlps.NewClient(url)
-	case strings.HasPrefix(url, "http"):
-		return jrpc2.New(url)
+	case len(ig.Compiled.Name) > 0:
+		cig, ok := compiled[ig.Name]
+		if !ok {
+			return nil, fmt.Errorf("unable to find compiled integration: %s", ig.Name)
+		}
+		return cig, nil
 	default:
-		// TODO add back support for local node
-		return nil
+		aig, err := abi2.New(ig.Event, ig.Block, ig.Table)
+		if err != nil {
+			return nil, fmt.Errorf("building abi integration: %w", err)
+		}
+		if err := abi2.CreateTable(context.Background(), pgp, aig.Table); err != nil {
+			return nil, fmt.Errorf("setting up table for abi integration: %w", err)
+		}
+		return aig, nil
 	}
+}
+
+func getNode(srcs []EthSource, name string) (uint64, e2pg.Node, error) {
+	for _, src := range srcs {
+		if src.Name != name {
+			continue
+		}
+		switch {
+		case strings.Contains(src.URL, "rlps"):
+			return src.ChainID, rlps.NewClient(src.URL), nil
+		case strings.HasPrefix(src.URL, "http"):
+			return src.ChainID, jrpc2.New(src.URL), nil
+		default:
+			// TODO add back support for local node
+			return 0, nil, fmt.Errorf("unsupported src type: %v", src)
+		}
+	}
+	return 0, nil, fmt.Errorf("unable to find src for %s", name)
 }

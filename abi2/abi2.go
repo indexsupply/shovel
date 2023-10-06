@@ -558,8 +558,9 @@ type Integration struct {
 	Columns []string
 	coldefs []coldef
 
-	numIndexed  int
-	numSelected int
+	numIndexed    int
+	numSelected   int
+	numBDSelected int
 
 	resultCache *Result
 	sighash     []byte
@@ -593,8 +594,9 @@ type Conn interface {
 //	{"name": "my_column", "type": "db_type", "filter_op": "contains", "filter_arg": ["0x000"]}
 func New(ev Event, bd []BlockData, table Table) (Integration, error) {
 	ig := Integration{
-		Event: ev,
-		Table: table,
+		Event:      ev,
+		Table:      table,
+		numIndexed: ev.numIndexed(),
 	}
 	ig.resultCache = NewResult(ev.ABIType())
 	ig.sighash = ev.SignatureHash()
@@ -604,10 +606,6 @@ func New(ev Event, bd []BlockData, table Table) (Integration, error) {
 		return ig, fmt.Errorf("number of columns in table definitino must equal number of selected columns + metadata columns")
 	}
 
-	ig.numIndexed = ig.Event.numIndexed()
-	ig.numSelected = len(selected)
-
-	var colCount int
 	for _, input := range selected {
 		c, err := col(table, input.Column)
 		if err != nil {
@@ -618,7 +616,7 @@ func New(ev Event, bd []BlockData, table Table) (Integration, error) {
 			Input:  input,
 			Column: c,
 		})
-		colCount++
+		ig.numSelected++
 	}
 	for _, data := range bd {
 		c, err := col(table, data.Column)
@@ -630,8 +628,9 @@ func New(ev Event, bd []BlockData, table Table) (Integration, error) {
 			BlockData: data,
 			Column:    c,
 		})
-		colCount++
+		ig.numBDSelected++
 	}
+
 	return ig, nil
 }
 
@@ -651,6 +650,7 @@ func (ig Integration) Delete(context.Context, e2pg.PG, uint64) error { return ni
 func (ig Integration) Insert(ctx context.Context, pg e2pg.PG, blocks []eth.Block) (int64, error) {
 	var (
 		err  error
+		skip bool
 		rows [][]any
 		lwc  = &logWithCtx{ctx: ctx}
 	)
@@ -660,16 +660,17 @@ func (ig Integration) Insert(ctx context.Context, pg e2pg.PG, blocks []eth.Block
 			lwc.r = &lwc.b.Receipts[ridx]
 			lwc.t = &lwc.b.Txs[ridx]
 			lwc.ridx = ridx
+			rows, skip, err = ig.processTx(rows, lwc)
+			if err != nil {
+				return 0, fmt.Errorf("processing tx: %w", err)
+			}
+			if skip {
+				continue
+			}
 			for lidx := range blocks[bidx].Receipts[ridx].Logs {
 				lwc.l = &lwc.r.Logs[lidx]
 				lwc.lidx = lidx
-				if len(lwc.l.Topics)-1 != ig.numIndexed {
-					continue
-				}
-				if !bytes.Equal(ig.sighash, lwc.l.Topics[0]) {
-					continue
-				}
-				rows, err = ig.process(rows, lwc)
+				rows, err = ig.processLog(rows, lwc)
 				if err != nil {
 					return 0, fmt.Errorf("processing log: %w", err)
 				}
@@ -716,6 +717,8 @@ func (lwc *logWithCtx) get(name string) any {
 		return lwc.t.To.Bytes()
 	case "tx_value":
 		return lwc.t.Value.Dec()
+	case "tx_input":
+		return lwc.t.Data.Bytes()
 	case "log_idx":
 		return lwc.lidx
 	case "log_addr":
@@ -725,30 +728,36 @@ func (lwc *logWithCtx) get(name string) any {
 	}
 }
 
-func (ig Integration) process(rows [][]any, lwc *logWithCtx) ([][]any, error) {
+func (ig Integration) processTx(rows [][]any, lwc *logWithCtx) ([][]any, bool, error) {
 	switch {
-	case ig.numIndexed == ig.numSelected:
+	case ig.numSelected > 0:
+		return rows, false, nil
+	case ig.numBDSelected > 0:
 		row := make([]any, len(ig.coldefs))
 		for i, def := range ig.coldefs {
 			switch {
-			case def.Input.Indexed:
-				d := dbtype(def.Input.Type, lwc.l.Topics[1+i])
-				if b, ok := d.([]byte); ok && !def.Input.Accept(b) {
-					return rows, nil
-				}
-				row[i] = d
 			case !def.BlockData.Empty():
-				d := lwc.get(def.BlockData.Name)
+				d := lwc.get(def.Column.Name)
 				if b, ok := d.([]byte); ok && !def.BlockData.Accept(b) {
-					return rows, nil
+					return rows, true, nil
 				}
 				row[i] = d
 			default:
-				return nil, fmt.Errorf("no rows for un-indexed data")
+				return rows, false, fmt.Errorf("expected only blockdata coldef")
 			}
 		}
 		rows = append(rows, row)
-	default:
+	}
+	return rows, true, nil
+}
+
+func (ig Integration) processLog(rows [][]any, lwc *logWithCtx) ([][]any, error) {
+	switch {
+	case len(lwc.l.Topics)-1 != ig.numIndexed:
+		return rows, nil
+	case !bytes.Equal(ig.sighash, lwc.l.Topics[0]):
+		return rows, nil
+	case ig.numSelected > ig.numIndexed:
 		err := ig.resultCache.Scan(lwc.l.Data)
 		if err != nil {
 			return nil, fmt.Errorf("scanning abi data: %w", err)
@@ -779,6 +788,27 @@ func (ig Integration) process(rows [][]any, lwc *logWithCtx) ([][]any, error) {
 			}
 			rows = append(rows, row)
 		}
+	default:
+		row := make([]any, len(ig.coldefs))
+		for i, def := range ig.coldefs {
+			switch {
+			case def.Input.Indexed:
+				d := dbtype(def.Input.Type, lwc.l.Topics[1+i])
+				if b, ok := d.([]byte); ok && !def.Input.Accept(b) {
+					return rows, nil
+				}
+				row[i] = d
+			case !def.BlockData.Empty():
+				d := lwc.get(def.BlockData.Name)
+				if b, ok := d.([]byte); ok && !def.BlockData.Accept(b) {
+					return rows, nil
+				}
+				row[i] = d
+			default:
+				return nil, fmt.Errorf("no rows for un-indexed data")
+			}
+		}
+		rows = append(rows, row)
 	}
 	return rows, nil
 }
