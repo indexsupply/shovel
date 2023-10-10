@@ -37,77 +37,8 @@ CREATE TABLE e2pg.task (
 
 
 
-CREATE TABLE public.erc20_transfers (
-    contract bytea,
-    f bytea,
-    t bytea,
-    value numeric,
-    tx_signer bytea,
-    eth numeric,
-    task_id text,
-    chain_id numeric,
-    block_hash bytea,
-    block_number numeric,
-    transaction_hash bytea,
-    transaction_index numeric,
-    log_index numeric
-);
-
-
-
-CREATE TABLE public.erc4337_userops (
-    contract bytea,
-    op_hash bytea,
-    op_sender bytea,
-    op_paymaster bytea,
-    op_nonce numeric,
-    op_success boolean,
-    op_actual_gas_cost numeric,
-    op_actual_gas_used numeric,
-    tx_signer bytea,
-    eth numeric,
-    task_id text,
-    chain_id numeric,
-    block_hash bytea,
-    block_number numeric,
-    transaction_hash bytea,
-    transaction_index numeric,
-    log_index numeric
-);
-
-
-
-CREATE TABLE public.nft_transfers (
-    contract bytea,
-    token_id numeric,
-    quantity numeric,
-    f bytea,
-    t bytea,
-    tx_signer bytea,
-    eth numeric,
-    task_id text,
-    chain_id numeric,
-    block_hash bytea,
-    block_number numeric,
-    transaction_hash bytea,
-    transaction_index numeric,
-    log_index numeric
-);
-
-
-
 ALTER TABLE ONLY e2pg.migrations
     ADD CONSTRAINT migrations_pkey PRIMARY KEY (idx, hash);
-
-
-
-ALTER TABLE ONLY public.erc20_transfers
-    ADD CONSTRAINT erc20_transfers_unique UNIQUE (chain_id, transaction_hash, log_index);
-
-
-
-ALTER TABLE ONLY public.erc4337_userops
-    ADD CONSTRAINT erc4337_userops_unique UNIQUE (chain_id, transaction_hash, log_index);
 
 
 
