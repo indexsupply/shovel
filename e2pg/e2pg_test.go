@@ -81,6 +81,8 @@ type testGeth struct {
 	blocks []eth.Block
 }
 
+func (tg *testGeth) ChainID() uint64 { return 0 }
+
 func (tg *testGeth) Hash(n uint64) ([]byte, error) {
 	for j := range tg.blocks {
 		if uint64(tg.blocks[j].Header.Number) == n {
@@ -136,7 +138,11 @@ func TestSetup(t *testing.T) {
 	var (
 		tg   = &testGeth{}
 		pg   = testpg(t)
-		task = NewTask(0, 0, "main", 1, 1, tg, pg, 0, 0, newTestIntegration())
+		task = NewTask(
+			WithNode(tg),
+			WithPG(pg),
+			WithIntegrations(newTestIntegration()),
+		)
 	)
 	tg.add(0, hash(0), hash(0))
 	tg.add(1, hash(1), hash(0))
@@ -151,9 +157,13 @@ func TestSetup(t *testing.T) {
 
 func TestConverge_Zero(t *testing.T) {
 	var (
-		g    = &testGeth{}
+		tg   = &testGeth{}
 		pg   = testpg(t)
-		task = NewTask(0, 0, "main", 1, 1, g, pg, 0, 0, newTestIntegration())
+		task = NewTask(
+			WithNode(tg),
+			WithPG(pg),
+			WithIntegrations(newTestIntegration()),
+		)
 	)
 	diff.Test(t, t.Errorf, task.Converge(false), ErrNothingNew)
 }
@@ -163,7 +173,11 @@ func TestConverge_EmptyIntegration(t *testing.T) {
 		pg   = testpg(t)
 		tg   = &testGeth{}
 		ig   = newTestIntegration()
-		task = NewTask(0, 0, "main", 1, 1, tg, pg, 0, 0, ig)
+		task = NewTask(
+			WithNode(tg),
+			WithPG(pg),
+			WithIntegrations(ig),
+		)
 	)
 	tg.add(0, hash(0), hash(0))
 	tg.add(1, hash(1), hash(0))
@@ -178,7 +192,11 @@ func TestConverge_Reorg(t *testing.T) {
 		pg   = testpg(t)
 		tg   = &testGeth{}
 		ig   = newTestIntegration()
-		task = NewTask(0, 0, "main", 1, 1, tg, pg, 0, 0, ig)
+		task = NewTask(
+			WithNode(tg),
+			WithPG(pg),
+			WithIntegrations(ig),
+		)
 	)
 
 	tg.add(0, hash(0), hash(0))
@@ -205,7 +223,12 @@ func TestConverge_DeltaBatchSize(t *testing.T) {
 		pg   = testpg(t)
 		tg   = &testGeth{}
 		ig   = newTestIntegration()
-		task = NewTask(0, 0, "main", batchSize, workers, tg, pg, 0, 0, ig)
+		task = NewTask(
+			WithNode(tg),
+			WithPG(pg),
+			WithConcurrency(workers, batchSize),
+			WithIntegrations(ig),
+		)
 	)
 
 	tg.add(0, hash(0), hash(0))
@@ -229,8 +252,18 @@ func TestConverge_MultipleTasks(t *testing.T) {
 		pg    = testpg(t)
 		ig1   = newTestIntegration()
 		ig2   = newTestIntegration()
-		task1 = NewTask(0, 0, "one", 3, 1, tg, pg, 0, 0, ig1)
-		task2 = NewTask(1, 0, "two", 3, 1, tg, pg, 0, 0, ig2)
+		task1 = NewTask(
+			WithNode(tg),
+			WithPG(pg),
+			WithConcurrency(1, 3),
+			WithIntegrations(ig1),
+		)
+		task2 = NewTask(
+			WithBackfillNode(tg, "foo"),
+			WithPG(pg),
+			WithConcurrency(1, 3),
+			WithIntegrations(ig2),
+		)
 	)
 	tg.add(1, hash(1), hash(0))
 	tg.add(2, hash(2), hash(1))
@@ -250,7 +283,12 @@ func TestConverge_LocalAhead(t *testing.T) {
 		tg   = &testGeth{}
 		pg   = testpg(t)
 		ig   = newTestIntegration()
-		task = NewTask(0, 0, "one", 3, 1, tg, pg, 0, 0, ig)
+		task = NewTask(
+			WithNode(tg),
+			WithPG(pg),
+			WithConcurrency(1, 3),
+			WithIntegrations(ig),
+		)
 	)
 	tg.add(1, hash(1), hash(0))
 

@@ -114,4 +114,13 @@ var Migrations = map[int]pgmig.Migration{
 			)
 		`,
 	},
+	8: pgmig.Migration{
+		SQL: `
+			alter table e2pg.task alter column id type text;
+			alter table nft_transfers alter column task_id type text;
+			alter table erc20_transfers alter column task_id type text;
+			alter table erc4337_userops alter column task_id type text;
+			alter table tx_inputs alter column task_id type text;
+		`,
+	},
 }

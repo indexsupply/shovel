@@ -28,7 +28,7 @@ func TestServerErrors(t *testing.T) {
 		ts = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "an error", http.StatusInternalServerError)
 		}))
-		cli = NewClient(ts.URL)
+		cli = NewClient(0, ts.URL)
 	)
 	defer ts.Close()
 	h, err := cli.Hash(16000000)
@@ -58,7 +58,7 @@ func TestHash(t *testing.T) {
 	var (
 		srv = NewServer(gtest.FileCache, gtest.Client)
 		ts  = httptest.NewServer(srv)
-		cli = NewClient(ts.URL)
+		cli = NewClient(0, ts.URL)
 	)
 	defer ts.Close()
 
@@ -75,7 +75,7 @@ func TestLatest(t *testing.T) {
 	var (
 		srv = NewServer(gtest.FileCache, gtest.Client)
 		ts  = httptest.NewServer(srv)
-		cli = NewClient(ts.URL)
+		cli = NewClient(0, ts.URL)
 	)
 	defer ts.Close()
 
@@ -93,7 +93,7 @@ func TestLoadBlocks(t *testing.T) {
 	var (
 		srv = NewServer(gtest.FileCache, gtest.Client)
 		ts  = httptest.NewServer(srv)
-		cli = NewClient(ts.URL)
+		cli = NewClient(0, ts.URL)
 	)
 	defer ts.Close()
 
@@ -124,7 +124,7 @@ func TestLoadBlocks_Filter(t *testing.T) {
 	var (
 		srv = NewServer(gtest.FileCache, gtest.Client)
 		ts  = httptest.NewServer(srv)
-		cli = NewClient(ts.URL)
+		cli = NewClient(0, ts.URL)
 	)
 	defer ts.Close()
 
@@ -148,7 +148,7 @@ func TestLoadBlocks_Filter_Error(t *testing.T) {
 	var (
 		srv = NewServer(gtest.FileCache, gtest.Client)
 		ts  = httptest.NewServer(srv)
-		cli = NewClient(ts.URL)
+		cli = NewClient(0, ts.URL)
 	)
 	defer ts.Close()
 

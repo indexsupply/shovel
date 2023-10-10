@@ -105,29 +105,20 @@ func NewTasks(conf Config) ([]*e2pg.Task, error) {
 		}
 	}
 
-	var (
-		taskID uint64 = 1
-		tasks  []*e2pg.Task
-	)
 	// Start per-source main tasks
+	var tasks []*e2pg.Task
 	for src, intgs := range intgsBySource {
-		chainID, node, err := getNode(conf.EthSources, src.Name)
+		node, err := getNode(conf.EthSources, src.Name)
 		if err != nil {
 			return nil, fmt.Errorf("unkown source: %s", src.Name)
 		}
 		tasks = append(tasks, e2pg.NewTask(
-			taskID,
-			chainID,
-			src.Name,
-			1,
-			1,
-			node,
-			pgp,
-			src.Start,
-			0,
-			intgs...,
+			e2pg.WithName(src.Name),
+			e2pg.WithNode(node),
+			e2pg.WithPG(pgp),
+			e2pg.WithRange(src.Start, src.Stop),
+			e2pg.WithIntegrations(intgs...),
 		))
-		taskID++
 	}
 	return tasks, nil
 }
@@ -152,20 +143,20 @@ func getIntegration(pgp *pgxpool.Pool, ig Integration) (e2pg.Integration, error)
 	}
 }
 
-func getNode(srcs []EthSource, name string) (uint64, e2pg.Node, error) {
+func getNode(srcs []EthSource, name string) (e2pg.Node, error) {
 	for _, src := range srcs {
 		if src.Name != name {
 			continue
 		}
 		switch {
 		case strings.Contains(src.URL, "rlps"):
-			return src.ChainID, rlps.NewClient(src.URL), nil
+			return rlps.NewClient(src.ChainID, src.URL), nil
 		case strings.HasPrefix(src.URL, "http"):
-			return src.ChainID, jrpc2.New(src.URL), nil
+			return jrpc2.New(src.ChainID, src.URL), nil
 		default:
 			// TODO add back support for local node
-			return 0, nil, fmt.Errorf("unsupported src type: %v", src)
+			return nil, fmt.Errorf("unsupported src type: %v", src)
 		}
 	}
-	return 0, nil, fmt.Errorf("unable to find src for %s", name)
+	return nil, fmt.Errorf("unable to find src for %s", name)
 }

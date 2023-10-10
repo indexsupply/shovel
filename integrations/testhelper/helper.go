@@ -66,7 +66,11 @@ func (th *H) Done() {
 func (th *H) Process(ig e2pg.Integration, n uint64) {
 	var (
 		geth = e2pg.NewGeth(th.gt.FileCache, th.gt.Client)
-		task = e2pg.NewTask(0, 0, "main", 1, 1, geth, th.PG, 0, 0, ig)
+		task = e2pg.NewTask(
+			e2pg.WithNode(geth),
+			e2pg.WithPG(th.PG),
+			e2pg.WithIntegrations(ig),
+		)
 	)
 	cur, err := geth.Hash(n)
 	check(th.tb, err)

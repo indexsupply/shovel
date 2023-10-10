@@ -42,12 +42,12 @@ func ChainID(ctx context.Context) uint64 {
 	id, _ := ctx.Value(chainIDKey).(uint64)
 	return id
 }
-func WithTaskID(ctx context.Context, id uint64) context.Context {
+func WithTaskID(ctx context.Context, id string) context.Context {
 	return context.WithValue(ctx, taskIDKey, id)
 }
 
-func TaskID(ctx context.Context) uint64 {
-	id, _ := ctx.Value(taskIDKey).(uint64)
+func TaskID(ctx context.Context) string {
+	id, _ := ctx.Value(taskIDKey).(string)
 	return id
 }
 
@@ -55,6 +55,7 @@ func TaskID(ctx context.Context) uint64 {
 var Schema string
 
 type Node interface {
+	ChainID() uint64
 	LoadBlocks([][]byte, []geth.Buffer, []eth.Block) error
 	Latest() (uint64, []byte, error)
 	Hash(uint64) ([]byte, error)
@@ -72,65 +73,107 @@ type Integration interface {
 	Events(context.Context) [][]byte
 }
 
-func NewTask(
-	id uint64,
-	chainID uint64,
-	name string,
-	batchSize uint64,
-	workers uint64,
-	node Node,
-	pgp *pgxpool.Pool,
-	begin, end uint64,
-	intgs ...Integration,
-) *Task {
-	ctx := context.Background()
-	ctx = WithChainID(ctx, chainID)
-	ctx = WithTaskID(ctx, id)
+type Option func(t *Task)
 
-	var filter [][]byte
-	for i := range intgs {
-		e := intgs[i].Events(ctx)
-		// if one integration has no filter
-		// then the task must consider all data
-		if len(e) == 0 {
-			filter = filter[:0]
-			break
-		}
-		filter = append(filter, e...)
+func WithName(name string) Option {
+	return func(t *Task) {
+		t.Name = name
 	}
-	return &Task{
-		ctx:       ctx,
-		ID:        id,
-		Name:      name,
-		ChainID:   chainID,
-		batch:     make([]eth.Block, batchSize),
-		buffs:     make([]geth.Buffer, batchSize),
-		batchSize: batchSize,
-		workers:   workers,
-		node:      node,
-		pgp:       pgp,
-		intgs:     intgs,
-		filter:    filter,
-		begin:     begin,
-		end:       end,
+}
+
+func WithNode(n Node) Option {
+	return func(t *Task) {
+		if t.node != nil {
+			panic("task can only have 1 node")
+		}
+		t.node = n
+		t.ctx = WithChainID(t.ctx, n.ChainID())
+		t.id = fmt.Sprintf("%d-main", t.node.ChainID())
+		t.ctx = WithTaskID(t.ctx, t.id)
+	}
+}
+
+func WithBackfillNode(n Node, name string) Option {
+	return func(t *Task) {
+		if t.node != nil {
+			panic("task can only have 1 node")
+		}
+		t.backfill = true
+		t.node = n
+		t.ctx = WithChainID(t.ctx, n.ChainID())
+		t.id = fmt.Sprintf("%d-backfill-%s", t.node.ChainID(), name)
+		t.ctx = WithTaskID(t.ctx, t.id)
+	}
+}
+
+func WithPG(pg *pgxpool.Pool) Option {
+	return func(t *Task) {
+		t.pgp = pg
+	}
+}
+
+func WithRange(start, stop uint64) Option {
+	return func(t *Task) {
+		t.start, t.stop = start, stop
+	}
+}
+
+func WithConcurrency(workers, batch uint64) Option {
+	return func(t *Task) {
+		t.workers = workers
+		t.batchSize = batch
+		t.batch = make([]eth.Block, t.batchSize)
+		t.buffs = make([]geth.Buffer, t.batchSize)
+	}
+}
+
+func WithIntegrations(intgs ...Integration) Option {
+	return func(t *Task) {
+		var filter [][]byte
+		for i := range intgs {
+			e := intgs[i].Events(t.ctx)
+			// if one integration has no filter
+			// then the task must consider all data
+			if len(e) == 0 {
+				filter = filter[:0]
+				break
+			}
+			filter = append(filter, e...)
+		}
+		t.intgs = intgs
+		t.filter = filter
+	}
+}
+
+func NewTask(opts ...Option) *Task {
+	t := &Task{
+		ctx:       context.Background(),
+		batch:     make([]eth.Block, 1),
+		buffs:     make([]geth.Buffer, 1),
+		batchSize: 1,
+		workers:   1,
 		stat: status{
 			tlat:  quantile.NewTargeted(0.50, 0.90, 0.99),
 			glat:  quantile.NewTargeted(0.50, 0.90, 0.99),
 			pglat: quantile.NewTargeted(0.50, 0.90, 0.99),
 		},
 	}
+	for _, opt := range opts {
+		opt(t)
+	}
+	return t
 }
 
 type Task struct {
-	ctx     context.Context
-	ID      uint64
-	Name    string
-	ChainID uint64
+	Name     string
+	ctx      context.Context
+	id       string
+	backfill bool
 
-	node       Node
-	pgp        *pgxpool.Pool
-	intgs      []Integration
-	begin, end uint64
+	node        Node
+	pgp         *pgxpool.Pool
+	intgs       []Integration
+	start, stop uint64
 
 	filter    [][]byte
 	batch     []eth.Block
@@ -151,8 +194,9 @@ type status struct {
 }
 
 type StatusSnapshot struct {
+	ID              string `json:"id"`
 	Name            string `json:"name"`
-	ChainID         string `json:"chainID"`
+	ChainID         uint64 `json:"chainID"`
 	EthHash         string `json:"eth_hash"`
 	EthNum          string `json:"eth_num"`
 	Hash            string `json:"hash"`
@@ -168,12 +212,13 @@ type StatusSnapshot struct {
 func (task *Task) Status() StatusSnapshot {
 	printer := message.NewPrinter(message.MatchLanguage("en"))
 	snap := StatusSnapshot{}
+	snap.ID = task.id
 	snap.Name = task.Name
-	snap.ChainID = fmt.Sprintf("%d", task.ChainID)
+	snap.ChainID = ChainID(task.ctx)
 	snap.EthHash = fmt.Sprintf("%.4x", task.stat.ehash)
 	snap.EthNum = fmt.Sprintf("%d", task.stat.enum)
 	snap.Hash = fmt.Sprintf("%.4x", task.stat.ihash)
-	snap.Num = printer.Sprintf("%.9d", task.stat.inum)
+	snap.Num = printer.Sprintf("%d", task.stat.inum)
 	snap.BlockCount = fmt.Sprintf("%d", atomic.SwapInt64(&task.stat.blocks, 0))
 	snap.EventCount = fmt.Sprintf("%d", atomic.SwapInt64(&task.stat.events, 0))
 	snap.TotalLatencyP50 = fmt.Sprintf("%s", time.Duration(task.stat.tlat.Query(0.50)).Round(time.Millisecond))
@@ -186,14 +231,14 @@ func (task *Task) Status() StatusSnapshot {
 
 func (task *Task) Insert(n uint64, h []byte) error {
 	const q = `insert into e2pg.task (id, number, hash) values ($1, $2, $3)`
-	_, err := task.pgp.Exec(context.Background(), q, task.ID, n, h)
+	_, err := task.pgp.Exec(context.Background(), q, task.id, n, h)
 	return err
 }
 
 func (task *Task) Latest() (uint64, []byte, error) {
 	const q = `SELECT number, hash FROM e2pg.task WHERE id = $1 ORDER BY number DESC LIMIT 1`
 	var n, h = uint64(0), []byte{}
-	err := task.pgp.QueryRow(context.Background(), q, task.ID).Scan(&n, &h)
+	err := task.pgp.QueryRow(context.Background(), q, task.id).Scan(&n, &h)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return n, nil, nil
 	}
@@ -209,12 +254,12 @@ func (task *Task) Setup() error {
 		// already setup
 		return nil
 	}
-	if task.begin > 0 {
-		h, err := task.node.Hash(task.begin - 1)
+	if task.start > 0 {
+		h, err := task.node.Hash(task.start - 1)
 		if err != nil {
 			return err
 		}
-		return task.Insert(task.begin-1, h)
+		return task.Insert(task.start-1, h)
 	}
 	gethNum, _, err := task.node.Latest()
 	if err != nil {
@@ -279,27 +324,27 @@ func (task *Task) Converge(notx bool) error {
 		pg = txlocker.NewTx(pgTx)
 		//crc32(task) == 1384045349
 		const lockq = `select pg_advisory_xact_lock(1384045349, $1)`
-		_, err = pg.Exec(task.ctx, lockq, task.ID)
+		_, err = pg.Exec(task.ctx, lockq, ChainID(task.ctx))
 		if err != nil {
-			return fmt.Errorf("task lock %d: %w", task.ID, err)
+			return fmt.Errorf("task lock %s: %w", task.id, err)
 		}
 	}
 	for reorgs := 0; reorgs <= 10; {
 		localNum, localHash := uint64(0), []byte{}
 		const q = `SELECT number, hash FROM e2pg.task WHERE id = $1 ORDER BY number DESC LIMIT 1`
-		err := pg.QueryRow(task.ctx, q, task.ID).Scan(&localNum, &localHash)
+		err := pg.QueryRow(task.ctx, q, task.id).Scan(&localNum, &localHash)
 		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 			return fmt.Errorf("getting latest from task: %w", err)
 		}
-		if task.end > 0 && localNum >= task.end { //don't sync past task.end
+		if task.stop > 0 && localNum >= task.stop { //don't sync past task.stop
 			return ErrDone
 		}
 		gethNum, gethHash, err := task.node.Latest()
 		if err != nil {
 			return fmt.Errorf("getting latest from eth: %w", err)
 		}
-		if task.end > 0 && gethNum > task.end {
-			gethNum = task.end
+		if task.stop > 0 && gethNum > task.stop {
+			gethNum = task.stop
 		}
 		if localNum > gethNum {
 			return ErrAhead
@@ -321,7 +366,7 @@ func (task *Task) Converge(notx bool) error {
 			reorgs++
 			slog.ErrorContext(task.ctx, "reorg", "n", localNum, "h", fmt.Sprintf("%.4x", localHash))
 			const dq = "delete from e2pg.task where id = $1 AND number >= $2"
-			_, err := pg.Exec(task.ctx, dq, task.ID, localNum)
+			_, err := pg.Exec(task.ctx, dq, task.id, localNum)
 			if err != nil {
 				return fmt.Errorf("deleting block from task table: %w", err)
 			}
@@ -417,7 +462,7 @@ func (task *Task) writeIndex(localHash []byte, pg PG, delta uint64) error {
 	}
 	var last = task.batch[delta-1]
 	const uq = "insert into e2pg.task (id, number, hash) values ($1, $2, $3)"
-	_, err := pg.Exec(context.Background(), uq, task.ID, last.Num(), last.Hash())
+	_, err := pg.Exec(context.Background(), uq, task.id, last.Num(), last.Hash())
 	if err != nil {
 		return fmt.Errorf("updating task table: %w", err)
 	}
@@ -434,6 +479,8 @@ type Geth struct {
 	fc freezer.FileCache
 	rc *jrpc.Client
 }
+
+func (g *Geth) ChainID() uint64 { return 0 }
 
 func (g *Geth) Hash(num uint64) ([]byte, error) {
 	return geth.Hash(num, g.fc, g.rc)
