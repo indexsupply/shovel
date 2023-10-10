@@ -739,7 +739,7 @@ func (ig Integration) processTx(rows [][]any, lwc *logWithCtx) ([][]any, bool, e
 		for i, def := range ig.coldefs {
 			switch {
 			case !def.BlockData.Empty():
-				d := lwc.get(def.Column.Name)
+				d := lwc.get(def.BlockData.Name)
 				if b, ok := d.([]byte); ok && !def.BlockData.Accept(b) {
 					return rows, true, nil
 				}

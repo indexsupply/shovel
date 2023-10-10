@@ -4,14 +4,14 @@
 		"name": "txinput_test",
 		"columns": [
 			{"name": "chain_id", "type": "numeric"},
-			{"name": "block_num", "type": "numeric"},
+			{"name": "block_number", "type": "numeric"},
 			{"name": "tx_hash", "type": "bytea"},
 			{"name": "tx_input", "type": "bytea"}
 		]
 	},
 	"block": [
 		{"name": "chain_id", "column": "chain_id"},
-		{"name": "block_num", "column": "block_num"},
+		{"name": "block_num", "column": "block_number"},
 		{"name": "tx_hash", "column": "tx_hash", "filter_op": "contains", "filter_arg": ["713df81a2ab53db1d01531106fc5de43012a401ddc3e0586d522e5c55a162d42"]},
 		{"name": "tx_input", "column": "tx_input"}
 	]

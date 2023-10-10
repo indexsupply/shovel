@@ -32,6 +32,7 @@ func TestIntegrations(t *testing.T) {
 				`
 				select count(*) = 1 from txinput_test
 				where tx_hash = '\x713df81a2ab53db1d01531106fc5de43012a401ddc3e0586d522e5c55a162d42'
+				and block_number = 17943843
 				`,
 			},
 		},
