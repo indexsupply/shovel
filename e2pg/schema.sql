@@ -96,20 +96,6 @@ CREATE TABLE public.nft_transfers (
 
 
 
-CREATE TABLE public.tx_inputs (
-    task_id text,
-    chain_id numeric,
-    block_hash bytea,
-    block_number numeric,
-    tx_hash bytea,
-    tx_index numeric,
-    tx_signer bytea,
-    tx_to bytea,
-    tx_input bytea
-);
-
-
-
 ALTER TABLE ONLY e2pg.migrations
     ADD CONSTRAINT migrations_pkey PRIMARY KEY (idx, hash);
 
