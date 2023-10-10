@@ -62,10 +62,10 @@ func main() {
 	})
 	lh.RegisterContext(func(ctx context.Context) (string, any) {
 		id := e2pg.TaskID(ctx)
-		if id < 1 {
+		if id == "" {
 			return "", nil
 		}
-		return "task", fmt.Sprintf("%.2d", id)
+		return "task", id
 	})
 	slog.SetDefault(slog.New(lh.WithAttrs([]slog.Attr{
 		slog.Int("p", os.Getpid()),

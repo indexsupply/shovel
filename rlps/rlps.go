@@ -21,17 +21,21 @@ import (
 	"github.com/indexsupply/x/rlp"
 )
 
-func NewClient(s string) *Client {
+func NewClient(chainID uint64, url string) *Client {
 	return &Client{
-		surl: s,
-		hc:   &http.Client{},
+		chainID: chainID,
+		surl:    url,
+		hc:      &http.Client{},
 	}
 }
 
 type Client struct {
-	surl string
-	hc   *http.Client
+	chainID uint64
+	surl    string
+	hc      *http.Client
 }
+
+func (c *Client) ChainID() uint64 { return c.chainID }
 
 var bufferPool = sync.Pool{New: func() any { return new(bytes.Buffer) }}
 

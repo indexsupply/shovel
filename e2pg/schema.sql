@@ -29,7 +29,7 @@ CREATE TABLE e2pg.migrations (
 
 
 CREATE TABLE e2pg.task (
-    id smallint NOT NULL,
+    id text NOT NULL,
     number bigint,
     hash bytea,
     insert_at timestamp with time zone DEFAULT now()
@@ -44,7 +44,7 @@ CREATE TABLE public.erc20_transfers (
     value numeric,
     tx_signer bytea,
     eth numeric,
-    task_id numeric,
+    task_id text,
     chain_id numeric,
     block_hash bytea,
     block_number numeric,
@@ -66,7 +66,7 @@ CREATE TABLE public.erc4337_userops (
     op_actual_gas_used numeric,
     tx_signer bytea,
     eth numeric,
-    task_id numeric,
+    task_id text,
     chain_id numeric,
     block_hash bytea,
     block_number numeric,
@@ -85,7 +85,7 @@ CREATE TABLE public.nft_transfers (
     t bytea,
     tx_signer bytea,
     eth numeric,
-    task_id numeric,
+    task_id text,
     chain_id numeric,
     block_hash bytea,
     block_number numeric,
@@ -97,7 +97,7 @@ CREATE TABLE public.nft_transfers (
 
 
 CREATE TABLE public.tx_inputs (
-    task_id numeric,
+    task_id text,
     chain_id numeric,
     block_hash bytea,
     block_number numeric,

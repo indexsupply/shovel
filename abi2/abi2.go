@@ -696,6 +696,8 @@ type logWithCtx struct {
 
 func (lwc *logWithCtx) get(name string) any {
 	switch name {
+	case "task_id":
+		return e2pg.TaskID(lwc.ctx)
 	case "chain_id":
 		return e2pg.ChainID(lwc.ctx)
 	case "block_hash":
@@ -772,7 +774,7 @@ func (ig Integration) processLog(rows [][]any, lwc *logWithCtx) ([][]any, error)
 					row[j] = dbtype(def.Input.Type, d)
 					ictr++
 				case !def.BlockData.Empty():
-					d := lwc.get(def.Column.Name)
+					d := lwc.get(def.BlockData.Name)
 					if b, ok := d.([]byte); ok && !def.BlockData.Accept(b) {
 						return rows, nil
 					}

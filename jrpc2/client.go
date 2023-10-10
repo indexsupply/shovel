@@ -18,19 +18,23 @@ import (
 	"github.com/indexsupply/x/geth"
 )
 
-func New(url string) *Client {
+func New(chainID uint64, url string) *Client {
 	return &Client{
-		d:   strings.Contains(url, "debug"),
-		hc:  &http.Client{},
-		url: url,
+		chainID: chainID,
+		d:       strings.Contains(url, "debug"),
+		hc:      &http.Client{},
+		url:     url,
 	}
 }
 
 type Client struct {
-	d   bool
-	url string
-	hc  *http.Client
+	d       bool
+	chainID uint64
+	url     string
+	hc      *http.Client
 }
+
+func (c *Client) ChainID() uint64 { return c.chainID }
 
 func (c *Client) debug(r io.Reader) io.Reader {
 	if !c.d {

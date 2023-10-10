@@ -36,7 +36,7 @@ func TestLatest(t *testing.T) {
 	defer ts.Close()
 
 	blocks := []eth.Block{eth.Block{Header: eth.Header{Number: 18000000}}}
-	c := New(ts.URL)
+	c := New(0, ts.URL)
 	err := c.LoadBlocks(nil, nil, blocks)
 	diff.Test(t, t.Errorf, nil, err)
 
