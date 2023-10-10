@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"blake.io/pqx/pqxtest"
-	"github.com/indexsupply/x/integrations/testhelper"
+	"github.com/indexsupply/x/e2pg/config/testhelper"
 	"github.com/jackc/pgx/v5/stdlib"
 	"kr.dev/diff"
 )
