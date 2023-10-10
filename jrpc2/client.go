@@ -118,6 +118,9 @@ func (c *Client) LoadBlocks(f [][]byte, _ []geth.Buffer, blocks []eth.Block) err
 	if err := c.blocks(blocks); err != nil {
 		return fmt.Errorf("getting blocks: %w", err)
 	}
+	for i := range blocks {
+		blocks[i].Receipts = make(eth.Receipts, len(blocks[i].Txs))
+	}
 	if err := c.logs(blocks); err != nil {
 		return fmt.Errorf("getting logs: %w", err)
 	}
@@ -207,7 +210,6 @@ func (c *Client) logs(blocks []eth.Block) error {
 			for j := range blocks {
 				if blocks[j].Num() == uint64(lresp.Result[i].BlockNum) {
 					b = &blocks[j]
-					b.Receipts = make(eth.Receipts, len(b.Txs))
 				}
 			}
 		}
