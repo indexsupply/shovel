@@ -94,7 +94,7 @@ The url can point to a standard JSON RPC API (local or hosted) or it can point t
 You can specify the url directly or you can instruct the config file to read from an environment variable via:
 
 ```json
-... "url": "$ETH_URL" ...
+"url": "$ETH_URL"
 ```
 
 The dollar sign indicates that E2PG should read from env.
@@ -113,7 +113,7 @@ Integrations map a transaction or a log onto a row (set of columns) and that row
 
 The log can be decoded using an ABI event specification.
 
-Integrations are specified using the config file. Here is an example of an integration that reads transaction data and decodes a log event based on an ABI snippt:
+Integrations are specified using the config file. Here is an example of an integration that reads transaction data and decodes a log event based on an ABI fragment:
 
 ```json
 "integrations": [{
@@ -158,7 +158,7 @@ Integrations are specified using the config file. Here is an example of an integ
                 "column": "t"
             },
             {
-                "indexed": true,
+                "indexed": false,
                 "name": "amount",
                 "type": "uint256",
                 "column": "amt"
@@ -177,7 +177,7 @@ The table is created dynamically. If the table already exists, nothing is change
 
 #### block
 
-Instructs the integration to retreive block level data. The avilable data include:
+Instructs the integration to retrieve block level data. The available data include:
 
 - task_id, text (e2pg internal bookkeeping)
 - chain_id, numeric
@@ -201,7 +201,7 @@ Additionally, you may also specify a "filter_op" and "filter_arg".
 The event is a ABI fragment containing an ABI JSON event definition. However, an event's input may contain 3 additional fields:
 
 1. "column" - a reference to a column name in the table definition
-2. "filter_op" - a way to filter an input's value. Possible values are: "contians" and "!contains"
+2. "filter_op" - a way to filter an input's value. Possible values are: "contains" and "!contains"
 3. "filter_arg" - a JSON list of hex encoded, non-0x prefixed values.
 
 ## Reorgs
