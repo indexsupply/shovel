@@ -18,7 +18,40 @@ var (
 	block18000000JSON string
 	//go:embed testdata/logs-18000000.json
 	logs18000000JSON string
+
+	//go:embed testdata/block-1000001.json
+	block1000001JSON string
+	//go:embed testdata/logs-1000001.json
+	logs1000001JSON string
 )
+
+func TestNoLogs(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		diff.Test(t, t.Fatalf, nil, err)
+		switch {
+		case strings.Contains(string(body), "eth_getBlockByNumber"):
+			_, err := w.Write([]byte(block1000001JSON))
+			diff.Test(t, t.Fatalf, nil, err)
+		case strings.Contains(string(body), "eth_getLogs"):
+			_, err := w.Write([]byte(logs1000001JSON))
+			diff.Test(t, t.Fatalf, nil, err)
+		}
+	}))
+	defer ts.Close()
+
+	blocks := []eth.Block{eth.Block{Header: eth.Header{Number: 1000001}}}
+	c := New(0, ts.URL)
+	err := c.LoadBlocks(nil, nil, blocks)
+	diff.Test(t, t.Errorf, nil, err)
+
+	b := blocks[0]
+	diff.Test(t, t.Errorf, len(b.Txs), 1)
+	diff.Test(t, t.Errorf, len(b.Receipts), 1)
+
+	r := blocks[0].Receipts[0]
+	diff.Test(t, t.Errorf, len(r.Logs), 0)
+}
 
 func TestLatest(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
