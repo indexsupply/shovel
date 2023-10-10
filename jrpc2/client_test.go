@@ -48,6 +48,9 @@ func TestNoLogs(t *testing.T) {
 	b := blocks[0]
 	diff.Test(t, t.Errorf, len(b.Txs), 1)
 	diff.Test(t, t.Errorf, len(b.Receipts), 1)
+
+	r := blocks[0].Receipts[0]
+	diff.Test(t, t.Errorf, len(r.Logs), 0)
 }
 
 func TestLatest(t *testing.T) {
