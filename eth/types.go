@@ -283,7 +283,7 @@ type Tx struct {
 	GasLimit Uint64      `json:"gas"`
 	From     Bytes       `json:"from"`
 	To       Bytes       `json:"to"`
-	Value    uint256.Int `json:"vlaue"`
+	Value    uint256.Int `json:"value"`
 	Data     Bytes       `json:"input"`
 	V        uint256.Int `json:"v"`
 	R        uint256.Int `json:"r"`
