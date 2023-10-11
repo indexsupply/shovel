@@ -82,13 +82,17 @@ func TestLatest(t *testing.T) {
 	diff.Test(t, t.Errorf, len(b.Txs), 94)
 	diff.Test(t, t.Errorf, len(b.Receipts), 94)
 
-	tx := blocks[0].Txs[0]
-	diff.Test(t, t.Errorf, fmt.Sprintf("%.4x", tx.Hash()), "16e19967")
-	diff.Test(t, t.Errorf, fmt.Sprintf("%.4x", tx.To), "fd14567e")
+	tx0 := blocks[0].Txs[0]
+	diff.Test(t, t.Errorf, fmt.Sprintf("%.4x", tx0.Hash()), "16e19967")
+	diff.Test(t, t.Errorf, fmt.Sprintf("%.4x", tx0.To), "fd14567e")
+	diff.Test(t, t.Errorf, fmt.Sprintf("%s", tx0.Value.Dec()), "0")
 
-	signer, err := tx.Signer()
+	signer, err := tx0.Signer()
 	diff.Test(t, t.Errorf, nil, err)
 	diff.Test(t, t.Errorf, fmt.Sprintf("%.4x", signer), "16d5783a")
+
+	tx3 := blocks[0].Txs[3]
+	diff.Test(t, t.Errorf, fmt.Sprintf("%s", tx3.Value.Dec()), "69970000000000014")
 
 	r := blocks[0].Receipts[0]
 	diff.Test(t, t.Errorf, len(r.Logs), 1)
