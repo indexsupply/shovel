@@ -87,7 +87,7 @@ func NewTasks(conf Config) ([]*e2pg.Task, error) {
 		}
 		eig, err := getIntegration(pgp, ig)
 		if err != nil {
-			return nil, fmt.Errorf("unable to build integration: %s", ig.Name)
+			return nil, fmt.Errorf("unable to build integration %s: %w", ig.Name, err)
 		}
 		for _, src := range ig.Sources {
 			intgsBySource[src] = append(intgsBySource[src], eig)
