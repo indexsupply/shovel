@@ -10,7 +10,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/indexsupply/x/bloom"
 	"github.com/indexsupply/x/eth"
 	"github.com/indexsupply/x/geth"
 	"github.com/indexsupply/x/wpg"
@@ -377,18 +376,6 @@ func (task *Task) Converge(notx bool) error {
 		}
 	}
 	return errors.Join(ErrReorg, rollback())
-}
-
-func (task *Task) skip(bf bloom.Filter) bool {
-	if len(task.filter) == 0 {
-		return false
-	}
-	for _, sig := range task.filter {
-		if !bf.Missing(sig) {
-			return false
-		}
-	}
-	return true
 }
 
 // Fills in task.batch with block data (headers, bodies, receipts) from
