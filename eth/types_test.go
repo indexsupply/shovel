@@ -96,6 +96,14 @@ func TestBytes(t *testing.T) {
 	}
 }
 
+func TestBytes_Reuse(t *testing.T) {
+	x := struct{ D Bytes }{}
+	json.Unmarshal([]byte(`{"D": "0xdeadbeef"}`), &x)
+	diff.Test(t, t.Errorf, h2b("deadbeef"), x.D.Bytes())
+	json.Unmarshal([]byte(`{"D": "0xde"}`), &x)
+	diff.Test(t, t.Errorf, h2b("de"), x.D.Bytes())
+}
+
 func TestBytes_Write(t *testing.T) {
 	var x Bytes
 	diff.Test(t, t.Errorf, 0, len(x))
