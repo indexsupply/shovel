@@ -494,7 +494,7 @@ func (g *Geth) Latest() (uint64, []byte, error) {
 	return bint.Uint64(n), h, nil
 }
 
-func Skip(filter [][]byte, bf bloom.Filter) bool {
+func skip(filter [][]byte, bf bloom.Filter) bool {
 	if len(filter) == 0 {
 		return false
 	}
@@ -513,7 +513,7 @@ func (g *Geth) LoadBlocks(filter [][]byte, bfs []geth.Buffer, blks []eth.Block) 
 	}
 	for i := range blks {
 		blks[i].Header.UnmarshalRLP(bfs[i].Header())
-		if Skip(filter, bloom.Filter(blks[i].Header.LogsBloom)) {
+		if skip(filter, bloom.Filter(blks[i].Header.LogsBloom)) {
 			continue
 		}
 		//rlp contains: [transactions,uncles]

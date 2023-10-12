@@ -13,7 +13,6 @@ import (
 
 	"github.com/indexsupply/x/bint"
 	"github.com/indexsupply/x/bloom"
-	"github.com/indexsupply/x/e2pg"
 	"github.com/indexsupply/x/eth"
 	"github.com/indexsupply/x/freezer"
 	"github.com/indexsupply/x/geth"
@@ -181,7 +180,7 @@ func (s *Server) get(filter [][]byte, n, limit uint64) ([]byte, error) {
 		block := eth.Block{}
 		block.UnmarshalRLP(hrlp)
 		switch {
-		case e2pg.Skip(filter, bloom.Filter(block.LogsBloom)):
+		case skip(filter, bloom.Filter(block.LogsBloom)):
 			res[i] = rlp.List(rlp.Encode(hrlp, zero, zero))
 		default:
 			res[i] = rlp.List(rlp.Encode(
@@ -192,6 +191,18 @@ func (s *Server) get(filter [][]byte, n, limit uint64) ([]byte, error) {
 		}
 	}
 	return rlp.List(res...), nil
+}
+
+func skip(filter [][]byte, bf bloom.Filter) bool {
+	if len(filter) == 0 {
+		return false
+	}
+	for i := range filter {
+		if !bf.Missing(filter[i]) {
+			return false
+		}
+	}
+	return true
 }
 
 func (s *Server) Index(w http.ResponseWriter, r *http.Request) {
