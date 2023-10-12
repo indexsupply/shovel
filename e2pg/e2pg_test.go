@@ -24,20 +24,20 @@ func TestMain(m *testing.M) {
 	pqxtest.TestMain(m)
 }
 
-type testIntegration struct {
+type testDestination struct {
 	sync.Mutex
 	chain map[uint64]eth.Block
 }
 
-func newTestIntegration() *testIntegration {
-	return &testIntegration{
+func newTestDestination() *testDestination {
+	return &testDestination{
 		chain: make(map[uint64]eth.Block),
 	}
 }
 
-func (ti *testIntegration) blocks() []eth.Block {
+func (dest *testDestination) blocks() []eth.Block {
 	var blks []eth.Block
-	for _, b := range ti.chain {
+	for _, b := range dest.chain {
 		blks = append(blks, b)
 	}
 	sort.Slice(blks, func(i, j int) bool {
@@ -46,17 +46,17 @@ func (ti *testIntegration) blocks() []eth.Block {
 	return blks
 }
 
-func (ti *testIntegration) Insert(_ context.Context, _ wpg.Conn, blocks []eth.Block) (int64, error) {
-	ti.Lock()
-	defer ti.Unlock()
+func (dest *testDestination) Insert(_ context.Context, _ wpg.Conn, blocks []eth.Block) (int64, error) {
+	dest.Lock()
+	defer dest.Unlock()
 	for _, b := range blocks {
-		ti.chain[uint64(b.Header.Number)] = b
+		dest.chain[uint64(b.Header.Number)] = b
 	}
 	return int64(len(blocks)), nil
 }
 
-func (ti *testIntegration) add(n uint64, hash, parent []byte) {
-	ti.Insert(context.Background(), nil, []eth.Block{
+func (dest *testDestination) add(n uint64, hash, parent []byte) {
+	dest.Insert(context.Background(), nil, []eth.Block{
 		eth.Block{
 			Header: eth.Header{
 				Number: eth.Uint64(n),
@@ -67,14 +67,14 @@ func (ti *testIntegration) add(n uint64, hash, parent []byte) {
 	})
 }
 
-func (ti *testIntegration) Delete(_ context.Context, pg wpg.Conn, n uint64) error {
-	ti.Lock()
-	defer ti.Unlock()
-	delete(ti.chain, n)
+func (dest *testDestination) Delete(_ context.Context, pg wpg.Conn, n uint64) error {
+	dest.Lock()
+	defer dest.Unlock()
+	delete(dest.chain, n)
 	return nil
 }
 
-func (ti *testIntegration) Events(_ context.Context) [][]byte {
+func (dest *testDestination) Events(_ context.Context) [][]byte {
 	return nil
 }
 
@@ -140,9 +140,9 @@ func TestSetup(t *testing.T) {
 		tg   = &testGeth{}
 		pg   = testpg(t)
 		task = NewTask(
-			WithNode(tg),
+			WithSource(tg),
 			WithPG(pg),
-			WithIntegrations(newTestIntegration()),
+			WithDestinations(newTestDestination()),
 		)
 	)
 	tg.add(0, hash(0), hash(0))
@@ -161,42 +161,42 @@ func TestConverge_Zero(t *testing.T) {
 		tg   = &testGeth{}
 		pg   = testpg(t)
 		task = NewTask(
-			WithNode(tg),
+			WithSource(tg),
 			WithPG(pg),
-			WithIntegrations(newTestIntegration()),
+			WithDestinations(newTestDestination()),
 		)
 	)
 	diff.Test(t, t.Errorf, task.Converge(false), ErrNothingNew)
 }
 
-func TestConverge_EmptyIntegration(t *testing.T) {
+func TestConverge_EmptyDestination(t *testing.T) {
 	var (
 		pg   = testpg(t)
 		tg   = &testGeth{}
-		ig   = newTestIntegration()
+		dest = newTestDestination()
 		task = NewTask(
-			WithNode(tg),
+			WithSource(tg),
 			WithPG(pg),
-			WithIntegrations(ig),
+			WithDestinations(dest),
 		)
 	)
 	tg.add(0, hash(0), hash(0))
 	tg.add(1, hash(1), hash(0))
-	ig.add(0, hash(0), hash(0))
+	dest.add(0, hash(0), hash(0))
 	task.Insert(0, hash(0))
 	diff.Test(t, t.Fatalf, task.Converge(true), nil)
-	diff.Test(t, t.Errorf, ig.blocks(), tg.blocks)
+	diff.Test(t, t.Errorf, dest.blocks(), tg.blocks)
 }
 
 func TestConverge_Reorg(t *testing.T) {
 	var (
 		pg   = testpg(t)
 		tg   = &testGeth{}
-		ig   = newTestIntegration()
+		dest = newTestDestination()
 		task = NewTask(
-			WithNode(tg),
+			WithSource(tg),
 			WithPG(pg),
-			WithIntegrations(ig),
+			WithDestinations(dest),
 		)
 	)
 
@@ -204,15 +204,15 @@ func TestConverge_Reorg(t *testing.T) {
 	tg.add(1, hash(2), hash(0))
 	tg.add(2, hash(3), hash(2))
 
-	ig.add(0, hash(0), hash(0))
-	ig.add(1, hash(2), hash(0))
+	dest.add(0, hash(0), hash(0))
+	dest.add(1, hash(2), hash(0))
 
 	task.Insert(0, hash(0))
 	task.Insert(1, hash(1))
 
 	diff.Test(t, t.Fatalf, task.Converge(false), nil)
 	diff.Test(t, t.Fatalf, task.Converge(false), nil)
-	diff.Test(t, t.Errorf, ig.blocks(), tg.blocks)
+	diff.Test(t, t.Errorf, dest.blocks(), tg.blocks)
 }
 
 func TestConverge_DeltaBatchSize(t *testing.T) {
@@ -223,17 +223,17 @@ func TestConverge_DeltaBatchSize(t *testing.T) {
 	var (
 		pg   = testpg(t)
 		tg   = &testGeth{}
-		ig   = newTestIntegration()
+		dest = newTestDestination()
 		task = NewTask(
-			WithNode(tg),
+			WithSource(tg),
 			WithPG(pg),
 			WithConcurrency(workers, batchSize),
-			WithIntegrations(ig),
+			WithDestinations(dest),
 		)
 	)
 
 	tg.add(0, hash(0), hash(0))
-	ig.add(0, hash(0), hash(0))
+	dest.add(0, hash(0), hash(0))
 	task.Insert(0, hash(0))
 
 	for i := uint64(1); i <= batchSize+1; i++ {
@@ -241,29 +241,29 @@ func TestConverge_DeltaBatchSize(t *testing.T) {
 	}
 
 	diff.Test(t, t.Errorf, nil, task.Converge(false))
-	diff.Test(t, t.Errorf, ig.blocks(), tg.blocks[:batchSize+1])
+	diff.Test(t, t.Errorf, dest.blocks(), tg.blocks[:batchSize+1])
 
 	diff.Test(t, t.Errorf, nil, task.Converge(false))
-	diff.Test(t, t.Errorf, ig.blocks(), tg.blocks)
+	diff.Test(t, t.Errorf, dest.blocks(), tg.blocks)
 }
 
 func TestConverge_MultipleTasks(t *testing.T) {
 	var (
 		tg    = &testGeth{}
 		pg    = testpg(t)
-		ig1   = newTestIntegration()
-		ig2   = newTestIntegration()
+		dest1 = newTestDestination()
+		dest2 = newTestDestination()
 		task1 = NewTask(
-			WithNode(tg),
+			WithSource(tg),
 			WithPG(pg),
 			WithConcurrency(1, 3),
-			WithIntegrations(ig1),
+			WithDestinations(dest1),
 		)
 		task2 = NewTask(
-			WithBackfillNode(tg, "foo"),
+			WithBackfillSource(tg, "foo"),
 			WithPG(pg),
 			WithConcurrency(1, 3),
-			WithIntegrations(ig2),
+			WithDestinations(dest2),
 		)
 	)
 	tg.add(1, hash(1), hash(0))
@@ -273,22 +273,22 @@ func TestConverge_MultipleTasks(t *testing.T) {
 	task2.Insert(0, hash(0))
 
 	diff.Test(t, t.Errorf, task1.Converge(true), nil)
-	diff.Test(t, t.Errorf, ig1.blocks(), tg.blocks)
-	diff.Test(t, t.Errorf, len(ig2.blocks()), 0)
+	diff.Test(t, t.Errorf, dest1.blocks(), tg.blocks)
+	diff.Test(t, t.Errorf, len(dest2.blocks()), 0)
 	diff.Test(t, t.Errorf, task2.Converge(true), nil)
-	diff.Test(t, t.Errorf, ig2.blocks(), tg.blocks)
+	diff.Test(t, t.Errorf, dest2.blocks(), tg.blocks)
 }
 
 func TestConverge_LocalAhead(t *testing.T) {
 	var (
 		tg   = &testGeth{}
 		pg   = testpg(t)
-		ig   = newTestIntegration()
+		dest = newTestDestination()
 		task = NewTask(
-			WithNode(tg),
+			WithSource(tg),
 			WithPG(pg),
 			WithConcurrency(1, 3),
-			WithIntegrations(ig),
+			WithDestinations(dest),
 		)
 	)
 	tg.add(1, hash(1), hash(0))

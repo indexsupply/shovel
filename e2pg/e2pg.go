@@ -25,14 +25,14 @@ import (
 //go:embed schema.sql
 var Schema string
 
-type Node interface {
+type Source interface {
 	ChainID() uint64
 	LoadBlocks([][]byte, []geth.Buffer, []eth.Block) error
 	Latest() (uint64, []byte, error)
 	Hash(uint64) ([]byte, error)
 }
 
-type Integration interface {
+type Destination interface {
 	Insert(context.Context, wpg.Conn, []eth.Block) (int64, error)
 	Delete(context.Context, wpg.Conn, uint64) error
 	Events(context.Context) [][]byte
@@ -46,27 +46,27 @@ func WithName(name string) Option {
 	}
 }
 
-func WithNode(n Node) Option {
+func WithSource(s Source) Option {
 	return func(t *Task) {
-		if t.node != nil {
-			panic("task can only have 1 node")
+		if t.src != nil {
+			panic("task can only have 1 src")
 		}
-		t.node = n
-		t.ctx = wctx.WithChainID(t.ctx, n.ChainID())
-		t.id = fmt.Sprintf("%d-main", t.node.ChainID())
+		t.src = s
+		t.ctx = wctx.WithChainID(t.ctx, s.ChainID())
+		t.id = fmt.Sprintf("%d-main", t.src.ChainID())
 		t.ctx = wctx.WithTaskID(t.ctx, t.id)
 	}
 }
 
-func WithBackfillNode(n Node, name string) Option {
+func WithBackfillSource(s Source, name string) Option {
 	return func(t *Task) {
-		if t.node != nil {
-			panic("task can only have 1 node")
+		if t.src != nil {
+			panic("task can only have 1 src")
 		}
 		t.backfill = true
-		t.node = n
-		t.ctx = wctx.WithChainID(t.ctx, n.ChainID())
-		t.id = fmt.Sprintf("%d-backfill-%s", t.node.ChainID(), name)
+		t.src = s
+		t.ctx = wctx.WithChainID(t.ctx, s.ChainID())
+		t.id = fmt.Sprintf("%d-backfill-%s", t.src.ChainID(), name)
 		t.ctx = wctx.WithTaskID(t.ctx, t.id)
 	}
 }
@@ -92,11 +92,11 @@ func WithConcurrency(workers, batch uint64) Option {
 	}
 }
 
-func WithIntegrations(intgs ...Integration) Option {
+func WithDestinations(dests ...Destination) Option {
 	return func(t *Task) {
 		var filter [][]byte
-		for i := range intgs {
-			e := intgs[i].Events(t.ctx)
+		for i := range dests {
+			e := dests[i].Events(t.ctx)
 			// if one integration has no filter
 			// then the task must consider all data
 			if len(e) == 0 {
@@ -105,7 +105,7 @@ func WithIntegrations(intgs ...Integration) Option {
 			}
 			filter = append(filter, e...)
 		}
-		t.intgs = intgs
+		t.dests = dests
 		t.filter = filter
 	}
 }
@@ -135,9 +135,9 @@ type Task struct {
 	id       string
 	backfill bool
 
-	node        Node
+	src         Source
 	pgp         *pgxpool.Pool
-	intgs       []Integration
+	dests       []Destination
 	start, stop uint64
 
 	filter    [][]byte
@@ -220,17 +220,17 @@ func (task *Task) Setup() error {
 		return nil
 	}
 	if task.start > 0 {
-		h, err := task.node.Hash(task.start - 1)
+		h, err := task.src.Hash(task.start - 1)
 		if err != nil {
 			return err
 		}
 		return task.Insert(task.start-1, h)
 	}
-	gethNum, _, err := task.node.Latest()
+	gethNum, _, err := task.src.Latest()
 	if err != nil {
 		return err
 	}
-	h, err := task.node.Hash(gethNum - 1)
+	h, err := task.src.Hash(gethNum - 1)
 	if err != nil {
 		return fmt.Errorf("getting hash for %d: %w", gethNum-1, err)
 	}
@@ -304,7 +304,7 @@ func (task *Task) Converge(notx bool) error {
 		if task.stop > 0 && localNum >= task.stop { //don't sync past task.stop
 			return ErrDone
 		}
-		gethNum, gethHash, err := task.node.Latest()
+		gethNum, gethHash, err := task.src.Latest()
 		if err != nil {
 			return fmt.Errorf("getting latest from eth: %w", err)
 		}
@@ -335,8 +335,8 @@ func (task *Task) Converge(notx bool) error {
 			if err != nil {
 				return fmt.Errorf("deleting block from task table: %w", err)
 			}
-			for _, ig := range task.intgs {
-				if err := ig.Delete(task.ctx, pg, localNum); err != nil {
+			for _, dest := range task.dests {
+				if err := dest.Delete(task.ctx, pg, localNum); err != nil {
 					return fmt.Errorf("deleting block from integration: %w", err)
 				}
 			}
@@ -367,7 +367,7 @@ func (task *Task) Converge(notx bool) error {
 // with the number of go routines controlled by c.
 func (task *Task) writeIndex(localHash []byte, pg wpg.Conn, delta uint64) error {
 	var (
-		eg    = errgroup.Group{}
+		eg1   = errgroup.Group{}
 		wsize = task.batchSize / task.workers
 	)
 	for i := uint64(0); i < task.workers && i*wsize < delta; i++ {
@@ -378,9 +378,9 @@ func (task *Task) writeIndex(localHash []byte, pg wpg.Conn, delta uint64) error 
 		if len(blks) == 0 {
 			continue
 		}
-		eg.Go(func() error { return task.node.LoadBlocks(task.filter, bfs, blks) })
+		eg1.Go(func() error { return task.src.LoadBlocks(task.filter, bfs, blks) })
 	}
-	if err := eg.Wait(); err != nil {
+	if err := eg1.Wait(); err != nil {
 		return err
 	}
 	if len(task.batch[0].Header.Parent) != 32 {
@@ -389,7 +389,7 @@ func (task *Task) writeIndex(localHash []byte, pg wpg.Conn, delta uint64) error 
 	if !bytes.Equal(localHash, task.batch[0].Header.Parent) {
 		return ErrReorg
 	}
-	eg = errgroup.Group{}
+	var eg2 errgroup.Group
 	for i := uint64(0); i < task.workers && i*wsize < delta; i++ {
 		n := i * wsize
 		m := n + wsize
@@ -397,20 +397,20 @@ func (task *Task) writeIndex(localHash []byte, pg wpg.Conn, delta uint64) error 
 		if len(blks) == 0 {
 			continue
 		}
-		eg.Go(func() error {
-			var igeg errgroup.Group
-			for _, ig := range task.intgs {
-				ig := ig
-				igeg.Go(func() error {
-					count, err := ig.Insert(task.ctx, pg, blks)
+		eg2.Go(func() error {
+			var eg3 errgroup.Group
+			for _, dest := range task.dests {
+				dest := dest
+				eg3.Go(func() error {
+					count, err := dest.Insert(task.ctx, pg, blks)
 					atomic.AddInt64(&task.stat.events, count)
 					return err
 				})
 			}
-			return igeg.Wait()
+			return eg3.Wait()
 		})
 	}
-	if err := eg.Wait(); err != nil {
+	if err := eg2.Wait(); err != nil {
 		return fmt.Errorf("writing indexed data: %w", err)
 	}
 	var last = task.batch[delta-1]

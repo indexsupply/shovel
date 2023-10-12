@@ -63,13 +63,13 @@ func (th *H) Done() {
 // In the case that it needs to fetch the data, an RPC
 // client will be used. The RPC endpoint needs to support
 // the debug_dbAncient and debug_dbGet methods.
-func (th *H) Process(ig e2pg.Integration, n uint64) {
+func (th *H) Process(dest e2pg.Destination, n uint64) {
 	var (
 		geth = e2pg.NewGeth(th.gt.FileCache, th.gt.Client)
 		task = e2pg.NewTask(
-			e2pg.WithNode(geth),
+			e2pg.WithSource(geth),
 			e2pg.WithPG(th.PG),
-			e2pg.WithIntegrations(ig),
+			e2pg.WithDestinations(dest),
 		)
 	)
 	cur, err := geth.Hash(n)
