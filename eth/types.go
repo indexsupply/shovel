@@ -93,6 +93,7 @@ func (hb *Bytes) UnmarshalJSON(data []byte) error {
 		n := len(data)/2 - len(*hb)
 		*hb = append(*hb, make(Bytes, n)...)
 	}
+	*hb = (*hb)[:len(data)/2]
 	_, err := hex.Decode(*hb, data)
 	return err
 }
