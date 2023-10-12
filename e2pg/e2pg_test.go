@@ -11,6 +11,7 @@ import (
 	"github.com/indexsupply/x/eth"
 	"github.com/indexsupply/x/geth"
 	"github.com/indexsupply/x/tc"
+	"github.com/indexsupply/x/wpg"
 
 	"blake.io/pqx/pqxtest"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -45,7 +46,7 @@ func (ti *testIntegration) blocks() []eth.Block {
 	return blks
 }
 
-func (ti *testIntegration) Insert(_ context.Context, _ PG, blocks []eth.Block) (int64, error) {
+func (ti *testIntegration) Insert(_ context.Context, _ wpg.Conn, blocks []eth.Block) (int64, error) {
 	ti.Lock()
 	defer ti.Unlock()
 	for _, b := range blocks {
@@ -66,7 +67,7 @@ func (ti *testIntegration) add(n uint64, hash, parent []byte) {
 	})
 }
 
-func (ti *testIntegration) Delete(_ context.Context, pg PG, n uint64) error {
+func (ti *testIntegration) Delete(_ context.Context, pg wpg.Conn, n uint64) error {
 	ti.Lock()
 	defer ti.Unlock()
 	delete(ti.chain, n)

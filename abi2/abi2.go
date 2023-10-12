@@ -15,10 +15,10 @@ import (
 	"github.com/indexsupply/x/e2pg"
 	"github.com/indexsupply/x/eth"
 	"github.com/indexsupply/x/isxhash"
+	"github.com/indexsupply/x/wpg"
 
 	"github.com/holiman/uint256"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -566,13 +566,6 @@ type Integration struct {
 	sighash     []byte
 }
 
-type Conn interface {
-	CopyFrom(context.Context, pgx.Identifier, []string, pgx.CopyFromSource) (int64, error)
-	Exec(context.Context, string, ...any) (pgconn.CommandTag, error)
-	QueryRow(context.Context, string, ...any) pgx.Row
-	Query(context.Context, string, ...any) (pgx.Rows, error)
-}
-
 // js must be a json encoded abi event.
 //
 //	{"name": "MyEent", "type": "event", "inputs": [{"indexed": true, "name": "f", "type": "t"}]}
@@ -645,9 +638,9 @@ func col(t Table, name string) (Column, error) {
 
 func (ig Integration) Events(context.Context) [][]byte { return [][]byte{} }
 
-func (ig Integration) Delete(context.Context, e2pg.PG, uint64) error { return nil }
+func (ig Integration) Delete(context.Context, wpg.Conn, uint64) error { return nil }
 
-func (ig Integration) Insert(ctx context.Context, pg e2pg.PG, blocks []eth.Block) (int64, error) {
+func (ig Integration) Insert(ctx context.Context, pg wpg.Conn, blocks []eth.Block) (int64, error) {
 	var (
 		err  error
 		skip bool
@@ -899,7 +892,7 @@ type Table struct {
 	Cols []Column `json:"columns"`
 }
 
-func CreateTable(ctx context.Context, pg Conn, t Table) error {
+func CreateTable(ctx context.Context, pg wpg.Conn, t Table) error {
 	var s strings.Builder
 	s.WriteString(fmt.Sprintf("create table if not exists %s(", t.Name))
 	for i := range t.Cols {
@@ -914,7 +907,7 @@ func CreateTable(ctx context.Context, pg Conn, t Table) error {
 	return err
 }
 
-func Indexes(ctx context.Context, pg Conn, table string) []map[string]any {
+func Indexes(ctx context.Context, pg wpg.Conn, table string) []map[string]any {
 	const q = `
 		select indexname, indexdef
 		from pg_indexes
@@ -928,7 +921,7 @@ func Indexes(ctx context.Context, pg Conn, table string) []map[string]any {
 	return res
 }
 
-func RowEstimate(ctx context.Context, pg Conn, table string) string {
+func RowEstimate(ctx context.Context, pg wpg.Conn, table string) string {
 	const q = `
 		select trim(to_char(reltuples, '999,999,999,999'))
 		from pg_class
@@ -948,7 +941,7 @@ func RowEstimate(ctx context.Context, pg Conn, table string) string {
 	}
 }
 
-func TableSize(ctx context.Context, pg Conn, table string) string {
+func TableSize(ctx context.Context, pg wpg.Conn, table string) string {
 	const q = `SELECT pg_size_pretty(pg_total_relation_size($1))`
 	var res string
 	if err := pg.QueryRow(ctx, q, table).Scan(&res); err != nil {

@@ -17,11 +17,10 @@ import (
 	"github.com/indexsupply/x/geth"
 	"github.com/indexsupply/x/jrpc"
 	"github.com/indexsupply/x/rlp"
-	"github.com/indexsupply/x/txlocker"
+	"github.com/indexsupply/x/wpg"
 
 	"github.com/bmizerany/perks/quantile"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/text/message"
@@ -61,15 +60,9 @@ type Node interface {
 	Hash(uint64) ([]byte, error)
 }
 
-type PG interface {
-	CopyFrom(context.Context, pgx.Identifier, []string, pgx.CopyFromSource) (int64, error)
-	Exec(context.Context, string, ...any) (pgconn.CommandTag, error)
-	QueryRow(context.Context, string, ...any) pgx.Row
-}
-
 type Integration interface {
-	Insert(context.Context, PG, []eth.Block) (int64, error)
-	Delete(context.Context, PG, uint64) error
+	Insert(context.Context, wpg.Conn, []eth.Block) (int64, error)
+	Delete(context.Context, wpg.Conn, uint64) error
 	Events(context.Context) [][]byte
 }
 
@@ -308,10 +301,10 @@ var (
 // in no side-effects.
 func (task *Task) Converge(notx bool) error {
 	var (
-		start       = time.Now()
-		pg       PG = task.pgp
-		commit      = func() error { return nil }
-		rollback    = func() error { return nil }
+		start             = time.Now()
+		pg       wpg.Conn = task.pgp
+		commit            = func() error { return nil }
+		rollback          = func() error { return nil }
 	)
 	if !notx {
 		pgTx, err := task.pgp.Begin(task.ctx)
@@ -321,7 +314,7 @@ func (task *Task) Converge(notx bool) error {
 		commit = func() error { return pgTx.Commit(task.ctx) }
 		rollback = func() error { return pgTx.Rollback(task.ctx) }
 		defer rollback()
-		pg = txlocker.NewTx(pgTx)
+		pg = wpg.NewTxLocker(pgTx)
 		//crc32(task) == 1384045349
 		const lockq = `select pg_advisory_xact_lock(1384045349, $1)`
 		_, err = pg.Exec(task.ctx, lockq, ChainID(task.ctx))
@@ -412,7 +405,7 @@ func (task *Task) skip(bf bloom.Filter) bool {
 //
 // The reading of block data and indexing of integrations happens concurrently
 // with the number of go routines controlled by c.
-func (task *Task) writeIndex(localHash []byte, pg PG, delta uint64) error {
+func (task *Task) writeIndex(localHash []byte, pg wpg.Conn, delta uint64) error {
 	var (
 		eg    = errgroup.Group{}
 		wsize = task.batchSize / task.workers
