@@ -378,7 +378,7 @@ func (f Filter) Accept(d []byte) bool {
 		var res bool
 		for i := range f.Arg {
 			hb, _ := hex.DecodeString(f.Arg[i])
-			if bytes.Equal(hb, d) {
+			if bytes.Contains(d, hb) {
 				res = true
 				break
 			}
