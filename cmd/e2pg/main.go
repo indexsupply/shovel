@@ -16,13 +16,12 @@ import (
 	"time"
 
 	"github.com/indexsupply/x/e2pg"
-	"github.com/indexsupply/x/e2pg/config"
 	"github.com/indexsupply/x/pgmig"
 	"github.com/indexsupply/x/wctx"
+	"github.com/indexsupply/x/wos"
 	"github.com/indexsupply/x/wslog"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"golang.org/x/sync/errgroup"
 )
 
 func check(err error) {
@@ -78,7 +77,7 @@ func main() {
 		os.Exit(0)
 	}
 
-	var conf config.Config
+	var conf e2pg.Config
 	switch {
 	case cfile == "":
 		fmt.Printf("missing config file\n")
@@ -90,19 +89,20 @@ func main() {
 	}
 
 	if !skipMigrate {
-		migdb, err := pgxpool.New(ctx, config.Env(conf.PGURL))
+		migdb, err := pgxpool.New(ctx, wos.Getenv(conf.PGURL))
 		check(err)
 		check(pgmig.Migrate(migdb, e2pg.Migrations))
 		migdb.Close()
 	}
 
-	tasks, err := config.NewTasks(conf)
+	pg, err := pgxpool.New(ctx, wos.Getenv(conf.PGURL))
 	check(err)
 
 	var (
-		pbuf  bytes.Buffer
-		snaps = make(chan e2pg.StatusSnapshot)
-		dh    = newDashHandler(tasks, snaps)
+		pbuf   bytes.Buffer
+		snaps  = make(chan e2pg.StatusSnapshot)
+		tskmgr = e2pg.NewManager(pg, snaps, conf)
+		dh     = newDashHandler(tskmgr, snaps)
 	)
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", dh.Index)
@@ -120,13 +120,7 @@ func main() {
 	if profile == "cpu" {
 		check(pprof.StartCPUProfile(&pbuf))
 	}
-	var eg errgroup.Group
-	for i := range tasks {
-		i := i
-		check(tasks[i].Setup())
-		eg.Go(func() error { tasks[i].Run(snaps, notx); return nil })
-	}
-	eg.Wait()
+	tskmgr.Run()
 	switch profile {
 	case "cpu":
 		pprof.StopCPUProfile()

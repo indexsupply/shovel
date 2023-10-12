@@ -20,10 +20,25 @@ SET default_tablespace = '';
 SET default_table_access_method = heap;
 
 
+CREATE TABLE e2pg.integrations (
+    name text,
+    conf jsonb
+);
+
+
+
 CREATE TABLE e2pg.migrations (
     idx integer NOT NULL,
     hash bytea NOT NULL,
     inserted_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+
+CREATE TABLE e2pg.sources (
+    name text,
+    chain_id integer,
+    url text
 );
 
 
@@ -39,6 +54,14 @@ CREATE TABLE e2pg.task (
 
 ALTER TABLE ONLY e2pg.migrations
     ADD CONSTRAINT migrations_pkey PRIMARY KEY (idx, hash);
+
+
+
+CREATE UNIQUE INDEX sources_name_chain_id_idx ON e2pg.sources USING btree (name, chain_id);
+
+
+
+CREATE UNIQUE INDEX sources_name_idx ON e2pg.sources USING btree (name);
 
 
 

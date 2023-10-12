@@ -1,24 +1,87 @@
-package config
+package e2pg
 
 import (
-	"database/sql"
+	"context"
 	"encoding/json"
 	"os"
 	"testing"
 
 	"blake.io/pqx/pqxtest"
-	"github.com/indexsupply/x/e2pg/config/testhelper"
-	"github.com/jackc/pgx/v5/stdlib"
+	"github.com/indexsupply/x/geth/gethtest"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"kr.dev/diff"
 )
 
-func TestMain(m *testing.M) {
-	sql.Register("postgres", stdlib.GetDefaultDriver())
-	pqxtest.TestMain(m)
+func check(t testing.TB, err error) {
+	t.Helper()
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+type Helper struct {
+	tb  testing.TB
+	ctx context.Context
+	PG  *pgxpool.Pool
+	gt  *gethtest.Helper
+}
+
+// jrpc.Client is required when testdata isn't
+// available in the integrations/testdata directory.
+func NewHelper(tb testing.TB) *Helper {
+	ctx := context.Background()
+
+	pqxtest.CreateDB(tb, Schema)
+	pg, err := pgxpool.New(ctx, pqxtest.DSNForTest(tb))
+	diff.Test(tb, tb.Fatalf, err, nil)
+
+	return &Helper{
+		tb:  tb,
+		ctx: ctx,
+		PG:  pg,
+		gt:  gethtest.New(tb, "http://hera:8545"),
+	}
+}
+
+// Reset the task table. Call this in-between test cases
+func (th *Helper) Reset() {
+	_, err := th.PG.Exec(context.Background(), "truncate table e2pg.task")
+	check(th.tb, err)
+}
+
+func (th *Helper) Context() context.Context {
+	return th.ctx
+}
+
+func (th *Helper) Done() {
+	th.gt.Done()
+}
+
+// Process will download the header,bodies, and receipts data
+// if it doesn't exist in: integrations/testdata
+// In the case that it needs to fetch the data, an RPC
+// client will be used. The RPC endpoint needs to support
+// the debug_dbAncient and debug_dbGet methods.
+func (th *Helper) Process(dest Destination, n uint64) {
+	var (
+		geth = NewGeth(th.gt.FileCache, th.gt.Client)
+		task = NewTask(
+			WithSource(geth),
+			WithPG(th.PG),
+			WithDestinations(dest),
+		)
+	)
+	cur, err := geth.Hash(n)
+	check(th.tb, err)
+	prev, err := geth.Hash(n - 1)
+	check(th.tb, err)
+	th.gt.SetLatest(n, cur)
+	check(th.tb, task.Insert(n-1, prev))
+	check(th.tb, task.Converge(true))
 }
 
 func TestIntegrations(t *testing.T) {
-	th := testhelper.New(t)
+	th := NewHelper(t)
 	defer th.Done()
 	cases := []struct {
 		blockNum uint64
@@ -82,9 +145,9 @@ func TestIntegrations(t *testing.T) {
 		th.Reset()
 		ig := Integration{}
 		decode(t, read(t, tc.config), &ig)
-		eig, err := getIntegration(th.PG, ig)
+		dest, err := getDest(th.PG, ig)
 		diff.Test(t, t.Errorf, nil, err)
-		th.Process(eig, tc.blockNum)
+		th.Process(dest, tc.blockNum)
 		for i, q := range tc.queries {
 			var found bool
 			err := th.PG.QueryRow(th.Context(), q).Scan(&found)

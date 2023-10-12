@@ -4,14 +4,20 @@ import (
 	"bytes"
 	"context"
 	_ "embed"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/indexsupply/x/abi2"
 	"github.com/indexsupply/x/eth"
 	"github.com/indexsupply/x/geth"
+	"github.com/indexsupply/x/jrpc2"
+	"github.com/indexsupply/x/rlps"
 	"github.com/indexsupply/x/wctx"
 	"github.com/indexsupply/x/wpg"
 
@@ -237,26 +243,24 @@ func (task *Task) Setup() error {
 	return task.Insert(gethNum-1, h)
 }
 
-func (task *Task) Run(snaps chan<- StatusSnapshot, notx bool) {
-	for {
-		switch err := task.Converge(notx); {
-		case err == nil:
-			go func() {
-				snap := task.Status()
-				slog.InfoContext(task.ctx, "", "n", snap.Num, "h", snap.Hash)
-				select {
-				case snaps <- snap:
-				default:
-				}
-			}()
-		case errors.Is(err, ErrDone):
-			return
-		case errors.Is(err, ErrNothingNew):
-			time.Sleep(time.Second)
-		default:
-			time.Sleep(time.Second)
-			slog.ErrorContext(task.ctx, "error", err)
-		}
+func (task *Task) Run1(snaps chan<- StatusSnapshot, notx bool) {
+	switch err := task.Converge(notx); {
+	case err == nil:
+		go func() {
+			snap := task.Status()
+			slog.InfoContext(task.ctx, "", "n", snap.Num, "h", snap.Hash)
+			select {
+			case snaps <- snap:
+			default:
+			}
+		}()
+	case errors.Is(err, ErrDone):
+		return
+	case errors.Is(err, ErrNothingNew):
+		time.Sleep(time.Second)
+	default:
+		time.Sleep(time.Second)
+		slog.ErrorContext(task.ctx, "error", err)
 	}
 }
 
@@ -422,4 +426,277 @@ func (task *Task) writeIndex(localHash []byte, pg wpg.Conn, delta uint64) error 
 	task.stat.inum = last.Num()
 	task.stat.ihash = last.Hash()
 	return nil
+}
+
+var compiled = map[string]Destination{}
+
+// Loads, Starts, and provides method for Restarting tasks
+// based on config stored in the DB and in the config file.
+type Manager struct {
+	running sync.Mutex
+	restart chan struct{}
+	snaps   chan<- StatusSnapshot
+	tasks   []*Task
+	pgp     *pgxpool.Pool
+	conf    Config
+}
+
+func NewManager(pgp *pgxpool.Pool, snaps chan<- StatusSnapshot, conf Config) *Manager {
+	return &Manager{
+		restart: make(chan struct{}),
+		snaps:   snaps,
+		pgp:     pgp,
+		conf:    conf,
+	}
+}
+
+// TODO(r): remove once old dashboard is gone
+func (tm *Manager) Tasks() []*Task {
+	return tm.tasks
+}
+
+func (tm *Manager) runTask(t *Task) error {
+	if err := t.Setup(); err != nil {
+		return fmt.Errorf("setting up task: %w", err)
+	}
+	for {
+		select {
+		case <-tm.restart:
+			slog.Info("restart-task", "name", t.Name)
+			return nil
+		default:
+			t.Run1(tm.snaps, false)
+		}
+	}
+}
+
+// Ensures all running tasks stop
+// and calls [Manager.Run] in a new go routine.
+func (tm *Manager) Restart() {
+	close(tm.restart)
+	go tm.Run()
+}
+
+// Loads ethereum sources and integrations from both the config file
+// and the database and assembles the nessecary tasks and runs all
+// tasks in a loop.
+//
+// Acquires a lock to ensure only on routine is running.
+// Releases lock on return
+func (tm *Manager) Run() error {
+	tm.running.Lock()
+	defer tm.running.Unlock()
+	tm.restart = make(chan struct{})
+	var err error
+	tm.tasks, err = loadTasks(context.Background(), tm.pgp, tm.conf)
+	if err != nil {
+		return fmt.Errorf("loading tasks: %w", err)
+	}
+	var eg errgroup.Group
+	for i := range tm.tasks {
+		i := i
+		eg.Go(func() error {
+			return tm.runTask(tm.tasks[i])
+		})
+	}
+	return eg.Wait()
+}
+
+func loadTasks(ctx context.Context, pgp *pgxpool.Pool, conf Config) ([]*Task, error) {
+	var (
+		sourcesByName = map[string]SourceConfig{}
+		allSources    []SourceConfig
+	)
+	dbSources, err := SourceConfigs(ctx, pgp)
+	if err != nil {
+		return nil, fmt.Errorf("loading sources: %w", err)
+	}
+	for _, sc := range dbSources {
+		sourcesByName[sc.Name] = sc
+	}
+	for _, sc := range conf.SourceConfigs {
+		sourcesByName[sc.Name] = sc
+	}
+	for _, sc := range sourcesByName {
+		allSources = append(allSources, sc)
+	}
+
+	intgsByName := map[string]Integration{}
+	dbIntgs, err := Integrations(ctx, pgp)
+	if err != nil {
+		return nil, fmt.Errorf("loading integrations: %w", err)
+	}
+	for _, intg := range dbIntgs {
+		intgsByName[intg.Name] = intg
+	}
+	for _, intg := range conf.Integrations {
+		intgsByName[intg.Name] = intg
+	}
+	destsBySource := map[SourceConfig][]Destination{}
+	for _, ig := range intgsByName {
+		if !ig.Enabled {
+			continue
+		}
+		dest, err := getDest(pgp, ig)
+		if err != nil {
+			return nil, fmt.Errorf("unable to build integration %s: %w", ig.Name, err)
+		}
+		for _, sc := range ig.SourceConfigs {
+			destsBySource[sc] = append(destsBySource[sc], dest)
+		}
+	}
+	// Start per-source main tasks
+	var tasks []*Task
+	for sc, dests := range destsBySource {
+		src, err := getSource(allSources, sc.Name)
+		if err != nil {
+			return nil, fmt.Errorf("unkown source: %s", sc.Name)
+		}
+		tasks = append(tasks, NewTask(
+			WithName(sc.Name),
+			WithSource(src),
+			WithPG(pgp),
+			WithRange(sc.Start, sc.Stop),
+			WithDestinations(dests...),
+		))
+	}
+	return tasks, nil
+}
+
+func getDest(pgp *pgxpool.Pool, ig Integration) (Destination, error) {
+	switch {
+	case len(ig.Compiled.Name) > 0:
+		cig, ok := compiled[ig.Name]
+		if !ok {
+			return nil, fmt.Errorf("unable to find compiled integration: %s", ig.Name)
+		}
+		return cig, nil
+	default:
+		aig, err := abi2.New(ig.Event, ig.Block, ig.Table)
+		if err != nil {
+			return nil, fmt.Errorf("building abi integration: %w", err)
+		}
+		if err := abi2.CreateTable(context.Background(), pgp, aig.Table); err != nil {
+			return nil, fmt.Errorf("setting up table for abi integration: %w", err)
+		}
+		return aig, nil
+	}
+}
+
+func getSource(scs []SourceConfig, name string) (Source, error) {
+	for _, sc := range scs {
+		if sc.Name != name {
+			continue
+		}
+		switch {
+		case strings.Contains(sc.URL, "rlps"):
+			return rlps.NewClient(sc.ChainID, sc.URL), nil
+		case strings.HasPrefix(sc.URL, "http"):
+			return jrpc2.New(sc.ChainID, sc.URL), nil
+		default:
+			// TODO add back support for local geth
+			return nil, fmt.Errorf("unsupported src type: %v", sc)
+		}
+	}
+	return nil, fmt.Errorf("unable to find src for %s", name)
+}
+
+func Integrations(ctx context.Context, pgp *pgxpool.Pool) ([]Integration, error) {
+	var res []Integration
+	const q = `select conf from e2pg.integrations`
+	rows, err := pgp.Query(ctx, q)
+	if err != nil {
+		return nil, fmt.Errorf("querying integrations: %w", err)
+	}
+	for rows.Next() {
+		var buf = []byte{}
+		if err := rows.Scan(&buf); err != nil {
+			return nil, fmt.Errorf("scanning integration: %w", err)
+		}
+		var intg Integration
+		if err := json.Unmarshal(buf, &intg); err != nil {
+			return nil, fmt.Errorf("unmarshaling integration: %w", err)
+		}
+		res = append(res, intg)
+	}
+	return res, nil
+}
+
+func SourceConfigs(ctx context.Context, pgp *pgxpool.Pool) ([]SourceConfig, error) {
+	var res []SourceConfig
+	const q = `select name, chain_id, url from e2pg.sources`
+	rows, err := pgp.Query(ctx, q)
+	if err != nil {
+		return nil, fmt.Errorf("querying sources: %w", err)
+	}
+	for rows.Next() {
+		var s SourceConfig
+		if err := rows.Scan(&s.Name, &s.ChainID, &s.URL); err != nil {
+			return nil, fmt.Errorf("scanning source: %w", err)
+		}
+		res = append(res, s)
+	}
+	return res, nil
+}
+
+type SourceConfig struct {
+	Name    string `json:"name"`
+	ChainID uint64 `json:"chain_id"`
+	URL     string `json:"url"`
+	Start   uint64 `json:"start"`
+	Stop    uint64 `json:"stop"`
+}
+
+type Compiled struct {
+	Name   string          `json:"name"`
+	Config json.RawMessage `json:"config"`
+}
+
+type Integration struct {
+	Name          string           `json:"name"`
+	Enabled       bool             `json:"enabled"`
+	Start         string           `json:"start"`
+	Stop          string           `json:"stop"`
+	Backfill      bool             `json:"backfill"`
+	SourceConfigs []SourceConfig   `json:"sources"`
+	Table         abi2.Table       `json:"table"`
+	Compiled      Compiled         `json:"compiled"`
+	Block         []abi2.BlockData `json:"block"`
+	Event         abi2.Event       `json:"event"`
+}
+
+type Config struct {
+	PGURL         string         `json:"pg_url"`
+	SourceConfigs []SourceConfig `json:"eth_sources"`
+	Integrations  []Integration  `json:"integrations"`
+}
+
+func (conf Config) Empty() bool {
+	return conf.PGURL == ""
+}
+
+func (conf Config) Valid(intg Integration) error {
+	return nil
+}
+
+func (conf Config) AllIntegrations(ctx context.Context, pgp *pgxpool.Pool) ([]Integration, error) {
+	res, err := Integrations(ctx, pgp)
+	if err != nil {
+		return nil, fmt.Errorf("loading db integrations: %w", err)
+	}
+	for i := range conf.Integrations {
+		res = append(res, conf.Integrations[i])
+	}
+	return res, nil
+}
+
+func (conf Config) AllSourceConfigs(ctx context.Context, pgp *pgxpool.Pool) ([]SourceConfig, error) {
+	res, err := SourceConfigs(ctx, pgp)
+	if err != nil {
+		return nil, fmt.Errorf("loading db integrations: %w", err)
+	}
+	for i := range conf.SourceConfigs {
+		res = append(res, conf.SourceConfigs[i])
+	}
+	return res, nil
 }

@@ -12,14 +12,14 @@ import (
 )
 
 type dashHandler struct {
-	tasks        []*e2pg.Task
+	mgr          *e2pg.Manager
 	clientsMutex sync.Mutex
 	clients      map[string]chan e2pg.StatusSnapshot
 }
 
-func newDashHandler(tasks []*e2pg.Task, snaps <-chan e2pg.StatusSnapshot) *dashHandler {
+func newDashHandler(mgr *e2pg.Manager, snaps <-chan e2pg.StatusSnapshot) *dashHandler {
 	dh := &dashHandler{
-		tasks:   tasks,
+		mgr:     mgr,
 		clients: make(map[string]chan e2pg.StatusSnapshot),
 	}
 	go func() {
@@ -163,7 +163,7 @@ func (dh *dashHandler) Index(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	snaps := make(map[uint64]e2pg.StatusSnapshot)
-	for _, task := range dh.tasks {
+	for _, task := range dh.mgr.Tasks() {
 		s := task.Status()
 		snaps[s.ChainID] = s
 	}
