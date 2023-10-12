@@ -18,6 +18,7 @@ import (
 	"github.com/indexsupply/x/e2pg"
 	"github.com/indexsupply/x/e2pg/config"
 	"github.com/indexsupply/x/pgmig"
+	"github.com/indexsupply/x/wctx"
 	"github.com/indexsupply/x/wslog"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -54,14 +55,14 @@ func main() {
 
 	lh := wslog.New(os.Stdout, nil)
 	lh.RegisterContext(func(ctx context.Context) (string, any) {
-		id := e2pg.ChainID(ctx)
+		id := wctx.ChainID(ctx)
 		if id < 1 {
 			return "", nil
 		}
 		return "chain", fmt.Sprintf("%.5d", id)
 	})
 	lh.RegisterContext(func(ctx context.Context) (string, any) {
-		id := e2pg.TaskID(ctx)
+		id := wctx.TaskID(ctx)
 		if id == "" {
 			return "", nil
 		}

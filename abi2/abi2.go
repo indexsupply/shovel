@@ -12,9 +12,9 @@ import (
 	"strings"
 
 	"github.com/indexsupply/x/bint"
-	"github.com/indexsupply/x/e2pg"
 	"github.com/indexsupply/x/eth"
 	"github.com/indexsupply/x/isxhash"
+	"github.com/indexsupply/x/wctx"
 	"github.com/indexsupply/x/wpg"
 
 	"github.com/holiman/uint256"
@@ -690,9 +690,9 @@ type logWithCtx struct {
 func (lwc *logWithCtx) get(name string) any {
 	switch name {
 	case "task_id":
-		return e2pg.TaskID(lwc.ctx)
+		return wctx.TaskID(lwc.ctx)
 	case "chain_id":
-		return e2pg.ChainID(lwc.ctx)
+		return wctx.ChainID(lwc.ctx)
 	case "block_hash":
 		return lwc.b.Hash()
 	case "block_num":

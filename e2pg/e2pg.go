@@ -12,6 +12,7 @@ import (
 
 	"github.com/indexsupply/x/eth"
 	"github.com/indexsupply/x/geth"
+	"github.com/indexsupply/x/wctx"
 	"github.com/indexsupply/x/wpg"
 
 	"github.com/bmizerany/perks/quantile"
@@ -20,30 +21,6 @@ import (
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/text/message"
 )
-
-type ctxkey int
-
-const (
-	taskIDKey  ctxkey = 1
-	chainIDKey ctxkey = 2
-)
-
-func WithChainID(ctx context.Context, id uint64) context.Context {
-	return context.WithValue(ctx, chainIDKey, id)
-}
-
-func ChainID(ctx context.Context) uint64 {
-	id, _ := ctx.Value(chainIDKey).(uint64)
-	return id
-}
-func WithTaskID(ctx context.Context, id string) context.Context {
-	return context.WithValue(ctx, taskIDKey, id)
-}
-
-func TaskID(ctx context.Context) string {
-	id, _ := ctx.Value(taskIDKey).(string)
-	return id
-}
 
 //go:embed schema.sql
 var Schema string
@@ -75,9 +52,9 @@ func WithNode(n Node) Option {
 			panic("task can only have 1 node")
 		}
 		t.node = n
-		t.ctx = WithChainID(t.ctx, n.ChainID())
+		t.ctx = wctx.WithChainID(t.ctx, n.ChainID())
 		t.id = fmt.Sprintf("%d-main", t.node.ChainID())
-		t.ctx = WithTaskID(t.ctx, t.id)
+		t.ctx = wctx.WithTaskID(t.ctx, t.id)
 	}
 }
 
@@ -88,9 +65,9 @@ func WithBackfillNode(n Node, name string) Option {
 		}
 		t.backfill = true
 		t.node = n
-		t.ctx = WithChainID(t.ctx, n.ChainID())
+		t.ctx = wctx.WithChainID(t.ctx, n.ChainID())
 		t.id = fmt.Sprintf("%d-backfill-%s", t.node.ChainID(), name)
-		t.ctx = WithTaskID(t.ctx, t.id)
+		t.ctx = wctx.WithTaskID(t.ctx, t.id)
 	}
 }
 
@@ -202,7 +179,7 @@ func (task *Task) Status() StatusSnapshot {
 	snap := StatusSnapshot{}
 	snap.ID = task.id
 	snap.Name = task.Name
-	snap.ChainID = ChainID(task.ctx)
+	snap.ChainID = wctx.ChainID(task.ctx)
 	snap.EthHash = fmt.Sprintf("%.4x", task.stat.ehash)
 	snap.EthNum = fmt.Sprintf("%d", task.stat.enum)
 	snap.Hash = fmt.Sprintf("%.4x", task.stat.ihash)
@@ -312,7 +289,7 @@ func (task *Task) Converge(notx bool) error {
 		pg = wpg.NewTxLocker(pgTx)
 		//crc32(task) == 1384045349
 		const lockq = `select pg_advisory_xact_lock(1384045349, $1)`
-		_, err = pg.Exec(task.ctx, lockq, ChainID(task.ctx))
+		_, err = pg.Exec(task.ctx, lockq, wctx.ChainID(task.ctx))
 		if err != nil {
 			return fmt.Errorf("task lock %s: %w", task.id, err)
 		}
