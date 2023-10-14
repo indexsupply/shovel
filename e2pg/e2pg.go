@@ -559,11 +559,6 @@ func NewManager(pgp *pgxpool.Pool, conf Config) *Manager {
 	}
 }
 
-// TODO(r): remove once old dashboard is gone
-func (tm *Manager) Tasks() []*Task {
-	return tm.tasks
-}
-
 func (tm *Manager) Updates() string {
 	return <-tm.updates
 }
@@ -600,16 +595,15 @@ func (tm *Manager) Run() error {
 	tm.running.Lock()
 	defer tm.running.Unlock()
 	tm.restart = make(chan struct{})
-	var err error
-	tm.tasks, err = loadTasks(context.Background(), tm.pgp, tm.conf)
+	tasks, err := loadTasks(context.Background(), tm.pgp, tm.conf)
 	if err != nil {
 		return fmt.Errorf("loading tasks: %w", err)
 	}
 	var eg errgroup.Group
-	for i := range tm.tasks {
+	for i := range tasks {
 		i := i
 		eg.Go(func() error {
-			return tm.runTask(tm.tasks[i])
+			return tm.runTask(tasks[i])
 		})
 	}
 	return eg.Wait()
