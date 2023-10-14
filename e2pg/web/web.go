@@ -15,21 +15,34 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+var (
+	//go:embed index.html
+	indexHTML string
+)
+
+var htmlpages = map[string]string{
+	"index": indexHTML,
+}
+
 type Handler struct {
-	pgp  *pgxpool.Pool
-	mgr  *e2pg.Manager
-	conf *e2pg.Config
+	local bool
+	pgp   *pgxpool.Pool
+	mgr   *e2pg.Manager
+	conf  *e2pg.Config
 
 	clientsMutex sync.Mutex
 	clients      map[string]chan string
+
+	templates map[string]*template.Template
 }
 
 func New(mgr *e2pg.Manager, conf *e2pg.Config, pgp *pgxpool.Pool) *Handler {
 	h := &Handler{
-		pgp:     pgp,
-		mgr:     mgr,
-		conf:    conf,
-		clients: make(map[string]chan string),
+		pgp:       pgp,
+		mgr:       mgr,
+		conf:      conf,
+		clients:   make(map[string]chan string),
+		templates: make(map[string]*template.Template),
 	}
 	go func() {
 		for {
@@ -42,9 +55,28 @@ func New(mgr *e2pg.Manager, conf *e2pg.Config, pgp *pgxpool.Pool) *Handler {
 	return h
 }
 
-func read(file string) string {
-	b, _ := os.ReadFile(fmt.Sprintf("./e2pg/web/%s.html", file))
-	return string(b)
+func (h *Handler) template(name string) (*template.Template, error) {
+	if h.local {
+		b, err := os.ReadFile(fmt.Sprintf("./e2pg/web/%s.html", name))
+		if err != nil {
+			return nil, fmt.Errorf("reading %s: %w", name, err)
+		}
+		return template.New(name).Parse(string(b))
+	}
+	t, ok := h.templates[name]
+	if ok {
+		return t, nil
+	}
+	html, ok := htmlpages[name]
+	if !ok {
+		return nil, fmt.Errorf("unable to find html for %s", name)
+	}
+	t, err := template.New(name).Parse(html)
+	if err != nil {
+		return nil, fmt.Errorf("parsing template %s: %w", name, err)
+	}
+	h.templates[name] = t
+	return t, nil
 }
 
 type IndexView struct {
@@ -80,13 +112,12 @@ func (h *Handler) Index(w http.ResponseWriter, r *http.Request) {
 		view.ChainsByTaskID[k] = sources[i]
 	}
 
-	tmpl, err := template.New("index").Parse(read("index"))
+	t, err := h.template("index")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	err = tmpl.Execute(w, view)
-	if err != nil {
+	if err := t.Execute(w, view); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
