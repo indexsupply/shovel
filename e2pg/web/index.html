@@ -100,7 +100,7 @@
 				</div>
 			</div>
 			{{ range $name, $stat := $tu.Dstat -}}
-			<div class="Dest" id="{{ $tu.ID }}-{{$name}}">
+			<div class="Dest" id="{{ $tu.ID }}-{{$name}}" style="display:none;">
 				<div class="Name">
 					<span>{{ $name }}</span>
 				</div>
@@ -130,6 +130,15 @@
 			fieldDiv.innerText = val;
 		};
 		document.addEventListener("DOMContentLoaded", function() {
+			document.addEventListener('keydown', function(e) {
+				if (e.keyCode == 73) {
+					document.querySelectorAll('.Dest').forEach(el => {
+						const d = el.style.display;
+						el.style.display = (d == 'none' ? '' : 'none');
+					});
+				}
+			});
+
 			document.querySelectorAll(".addComma").forEach(e => {
 				e.innerText = comma(e.innerText);
 			});
