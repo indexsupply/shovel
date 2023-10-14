@@ -47,7 +47,13 @@ CREATE TABLE e2pg.task (
     id text NOT NULL,
     number bigint,
     hash bytea,
-    insert_at timestamp with time zone DEFAULT now()
+    insert_at timestamp with time zone DEFAULT now(),
+    src_hash bytea,
+    src_num numeric,
+    nblocks numeric,
+    nrows numeric,
+    latency interval,
+    dstat jsonb
 );
 
 

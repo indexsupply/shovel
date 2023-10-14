@@ -553,6 +553,7 @@ type coldef struct {
 
 // Implements the [e2pg.Integration] interface
 type Integration struct {
+	name    string
 	Event   Event
 	Table   Table
 	Columns []string
@@ -585,8 +586,9 @@ type Integration struct {
 // For example:
 //
 //	{"name": "my_column", "type": "db_type", "filter_op": "contains", "filter_arg": ["0x000"]}
-func New(ev Event, bd []BlockData, table Table) (Integration, error) {
+func New(name string, ev Event, bd []BlockData, table Table) (Integration, error) {
 	ig := Integration{
+		name:       name,
 		Event:      ev,
 		Table:      table,
 		numIndexed: ev.numIndexed(),
@@ -635,6 +637,8 @@ func col(t Table, name string) (Column, error) {
 	}
 	return Column{}, fmt.Errorf("table %q doesn't contain column %q", t.Name, name)
 }
+
+func (ig Integration) Name() string { return ig.name }
 
 func (ig Integration) Events(context.Context) [][]byte { return [][]byte{} }
 

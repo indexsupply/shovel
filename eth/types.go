@@ -98,6 +98,10 @@ func (hb *Bytes) UnmarshalJSON(data []byte) error {
 	return err
 }
 
+func (hb Bytes) MarshalJSON() ([]byte, error) {
+	return []byte(`"` + fmt.Sprintf("0x%x", hb) + `"`), nil
+}
+
 func (hb *Bytes) Write(p []byte) (int, error) {
 	if len(*hb) < len(p) {
 		*hb = append(*hb, make([]byte, len(p)-len(*hb))...)
