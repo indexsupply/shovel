@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/indexsupply/x/e2pg"
+	"github.com/indexsupply/x/e2pg/web"
 	"github.com/indexsupply/x/pgmig"
 	"github.com/indexsupply/x/wctx"
 	"github.com/indexsupply/x/wos"
@@ -43,7 +44,6 @@ func main() {
 		version     bool
 	)
 	flag.StringVar(&cfile, "config", "", "task config file")
-
 	flag.BoolVar(&skipMigrate, "skip-migrate", false, "do not run db migrations on startup")
 	flag.StringVar(&listen, "l", ":8546", "dashboard server listen address")
 	flag.BoolVar(&notx, "notx", false, "disable pg tx")
@@ -77,36 +77,37 @@ func main() {
 		os.Exit(0)
 	}
 
-	var conf e2pg.Config
+	var (
+		conf  e2pg.Config
+		pgurl string
+	)
 	switch {
 	case cfile == "":
-		fmt.Printf("missing config file\n")
-		os.Exit(1)
+		pgurl = os.Getenv("DATABASE_URL")
 	case cfile != "":
 		f, err := os.Open(cfile)
 		check(err)
 		check(json.NewDecoder(f).Decode(&conf))
+		pgurl = wos.Getenv(conf.PGURL)
 	}
 
 	if !skipMigrate {
-		migdb, err := pgxpool.New(ctx, wos.Getenv(conf.PGURL))
+		migdb, err := pgxpool.New(ctx, pgurl)
 		check(err)
 		check(pgmig.Migrate(migdb, e2pg.Migrations))
 		migdb.Close()
 	}
 
-	pg, err := pgxpool.New(ctx, wos.Getenv(conf.PGURL))
+	pg, err := pgxpool.New(ctx, pgurl)
 	check(err)
-
 	var (
-		pbuf   bytes.Buffer
-		snaps  = make(chan e2pg.StatusSnapshot)
-		tskmgr = e2pg.NewManager(pg, snaps, conf)
-		dh     = newDashHandler(tskmgr, snaps)
+		pbuf bytes.Buffer
+		mgr  = e2pg.NewManager(pg, conf)
+		wh   = web.New(mgr, &conf, pg)
 	)
 	mux := http.NewServeMux()
-	mux.HandleFunc("/", dh.Index)
-	mux.HandleFunc("/updates", dh.Updates)
+	mux.HandleFunc("/", wh.Index)
+	mux.HandleFunc("/task-updates", wh.Updates)
 	mux.HandleFunc("/debug/pprof/", npprof.Index)
 	mux.HandleFunc("/debug/pprof/cmdline", npprof.Cmdline)
 	mux.HandleFunc("/debug/pprof/profile", npprof.Profile)
@@ -120,15 +121,16 @@ func main() {
 	if profile == "cpu" {
 		check(pprof.StartCPUProfile(&pbuf))
 	}
-	tskmgr.Run()
+
+	go mgr.Run()
+
 	switch profile {
 	case "cpu":
 		pprof.StopCPUProfile()
-		select {}
 	case "heap":
 		check(pprof.Lookup("heap").WriteTo(&pbuf, 0))
-		select {}
 	}
+	select {}
 }
 
 func log(v bool, h http.Handler) http.Handler {

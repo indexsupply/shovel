@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset="utf-8"><title>E2PG</title>
+		<style>
+			body {
+				font-family: system-ui;
+				max-width: 800px;
+				margin: 0 auto;
+			}
+			.header {
+				display: flex;
+				flex-direction: row;
+				align-items: baseline;
+				justify-content: space-between;
+			}
+			.task {
+				margin-bottom: 20px;
+			}
+			.chain {
+				width: 100%;
+				display: flex;
+				flex-direction: row;
+				justify-content: flex-start;
+				align-items: baseline;
+				gap: 20px;
+				font-size: x-large;
+				border-bottom: 1px dotted black;
+				margin-bottom: 20px;
+			}
+			.Name {
+				width: 25%;
+				text-transform: capitalize;
+			}
+			.chain .Num {
+				width: 20%;
+				text-transform: lowercase;
+				text-align: right;
+				font-family: monospace;
+			}
+			.chain .Hash {
+				width: 20%;
+				text-transform: lowercase;
+				text-align: left;
+				font-family: monospace;
+				overflow: hidden;
+				text-overflow: ellipsis;
+			}
+			.Latency {
+				width: 10%;
+				text-transform: lowercase;
+				text-align: left;
+				font-family: monospace;
+			}
+			.NRows {
+				width: 10%;
+				text-transform: lowercase;
+				text-align: right;
+				font-family: monospace;
+			}
+			.Dest .Name span {
+				padding-left: 5px;
+			}
+			.Dest {
+				font-size: medium;
+				width: 100%;
+				display: flex;
+				flex-direction: row;
+				justify-content: flex-start;
+				align-items: baseline;
+				gap: 20px;
+			}
+		</style>
+	</head>
+	<body>
+		<div class="header">
+			<h1>E2PG</h1>
+		</div>
+		{{ range $tu := .TaskUpdates -}}
+		<div id="{{ $tu.ID }}" class="task">
+			<div class="chain">
+				<div class="Name">
+					<span>{{ (index  $.ChainsByTaskID $tu.ID).Name }}</span>
+				</div>
+				<div class="NRows">
+					<span>{{ $tu.NRows }}</span>
+				</div>
+				<div class="Latency">
+					<span>{{ $tu.Latency }}</span>
+				</div>
+				<div class="Hash">
+					<span>{{(printf "0x%x" $tu.Hash)}}</span>
+				</div>
+				<div class="Num">
+					<span class="addComma">{{ $tu.Num }}</span>
+				</div>
+			</div>
+			{{ range $name, $stat := $tu.Dstat -}}
+			<div class="Dest" id="{{ $tu.ID }}-{{$name}}" style="display:none;">
+				<div class="Name">
+					<span>{{ $name }}</span>
+				</div>
+				<div class="NRows">
+					<span>{{ $stat.NRows }}</span>
+				</div>
+				<div class="Latency">
+					<span>{{ $stat.Latency }}</span>
+				</div>
+			</div>
+			{{ end -}}
+		</div>
+		{{ end -}}
+	</body>
+	<script>
+		function comma(s) {
+			return Number(s).toLocaleString();
+		};
+		function update(id, field, val) {
+			const taskDiv = document.getElementById(id);
+			const fieldDiv = taskDiv.querySelector(`.${field}`);
+			fieldDiv.innerText = val;
+		};
+		document.addEventListener("DOMContentLoaded", function() {
+			document.addEventListener('keydown', function(e) {
+				if (e.keyCode == 73) {
+					document.querySelectorAll('.Dest').forEach(el => {
+						const d = el.style.display;
+						el.style.display = (d == 'none' ? '' : 'none');
+					});
+				}
+			});
+
+			document.querySelectorAll(".addComma").forEach(e => {
+				e.innerText = comma(e.innerText);
+			});
+			let updates = new EventSource("/task-updates");
+			updates.onmessage = function(event) {
+				const tu = JSON.parse(event.data);
+				update(tu.ID, "Num", comma(tu.Num));
+				update(tu.ID, "Hash", tu.Hash);
+				update(tu.ID, "Latency", tu.Latency);
+				update(tu.ID, "NRows", tu.NRows);
+				for (const [k1, v1] of Object.entries(tu.Dstat)) {
+					for (const [k2, v2] of Object.entries(v1)) {
+						update(`${tu.ID}-${k1}`, k2, v2);
+					}
+				}
+			};
+		});
+	</script>
+</html>

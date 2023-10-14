@@ -10,7 +10,6 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/indexsupply/x/abi2"
@@ -21,11 +20,10 @@ import (
 	"github.com/indexsupply/x/wctx"
 	"github.com/indexsupply/x/wpg"
 
-	"github.com/bmizerany/perks/quantile"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/sync/errgroup"
-	"golang.org/x/text/message"
 )
 
 //go:embed schema.sql
@@ -39,6 +37,7 @@ type Source interface {
 }
 
 type Destination interface {
+	Name() string
 	Insert(context.Context, wpg.Conn, []eth.Block) (int64, error)
 	Delete(context.Context, wpg.Conn, uint64) error
 	Events(context.Context) [][]byte
@@ -100,7 +99,10 @@ func WithConcurrency(workers, batch uint64) Option {
 
 func WithDestinations(dests ...Destination) Option {
 	return func(t *Task) {
-		var filter [][]byte
+		var (
+			filter [][]byte
+			dstat  = make(map[string]Dstat)
+		)
 		for i := range dests {
 			e := dests[i].Events(t.ctx)
 			// if one integration has no filter
@@ -110,9 +112,11 @@ func WithDestinations(dests ...Destination) Option {
 				break
 			}
 			filter = append(filter, e...)
+			dstat[dests[i].Name()] = Dstat{}
 		}
 		t.dests = dests
 		t.filter = filter
+		t.dstat = dstat
 	}
 }
 
@@ -123,16 +127,17 @@ func NewTask(opts ...Option) *Task {
 		buffs:     make([]geth.Buffer, 1),
 		batchSize: 1,
 		workers:   1,
-		stat: status{
-			tlat:  quantile.NewTargeted(0.50, 0.90, 0.99),
-			glat:  quantile.NewTargeted(0.50, 0.90, 0.99),
-			pglat: quantile.NewTargeted(0.50, 0.90, 0.99),
-		},
 	}
 	for _, opt := range opts {
 		opt(t)
 	}
+	slog.InfoContext(t.ctx, "starting task", "dest-count", len(t.dests))
 	return t
+}
+
+type Dstat struct {
+	NRows   int64
+	Latency jsonDuration
 }
 
 type Task struct {
@@ -146,68 +151,34 @@ type Task struct {
 	dests       []Destination
 	start, stop uint64
 
+	dstatMut sync.Mutex
+	dstat    map[string]Dstat
+
 	filter    [][]byte
 	batch     []eth.Block
 	buffs     []geth.Buffer
 	batchSize uint64
 	workers   uint64
-	stat      status
 }
 
-type status struct {
-	ehash, ihash      []byte
-	enum, inum        uint64
-	tlat, glat, pglat *quantile.Stream
+func (t *Task) dstatw(name string, n int64, d time.Duration) {
+	t.dstatMut.Lock()
+	defer t.dstatMut.Unlock()
 
-	reset          time.Time
-	err            error
-	blocks, events int64
-}
-
-type StatusSnapshot struct {
-	ID              string `json:"id"`
-	Name            string `json:"name"`
-	ChainID         uint64 `json:"chainID"`
-	EthHash         string `json:"eth_hash"`
-	EthNum          string `json:"eth_num"`
-	Hash            string `json:"hash"`
-	Num             string `json:"num"`
-	EventCount      string `json:"event_count"`
-	BlockCount      string `json:"block_count"`
-	TotalLatencyP50 string `json:"total_latency_p50"`
-	TotalLatencyP95 string `json:"total_latency_p95"`
-	TotalLatencyP99 string `json:"total_latency_p99"`
-	Error           string `json:"error"`
-}
-
-func (task *Task) Status() StatusSnapshot {
-	printer := message.NewPrinter(message.MatchLanguage("en"))
-	snap := StatusSnapshot{}
-	snap.ID = task.id
-	snap.Name = task.Name
-	snap.ChainID = wctx.ChainID(task.ctx)
-	snap.EthHash = fmt.Sprintf("%.4x", task.stat.ehash)
-	snap.EthNum = fmt.Sprintf("%d", task.stat.enum)
-	snap.Hash = fmt.Sprintf("%.4x", task.stat.ihash)
-	snap.Num = printer.Sprintf("%d", task.stat.inum)
-	snap.BlockCount = fmt.Sprintf("%d", atomic.SwapInt64(&task.stat.blocks, 0))
-	snap.EventCount = fmt.Sprintf("%d", atomic.SwapInt64(&task.stat.events, 0))
-	snap.TotalLatencyP50 = fmt.Sprintf("%s", time.Duration(task.stat.tlat.Query(0.50)).Round(time.Millisecond))
-	snap.TotalLatencyP95 = fmt.Sprintf("%.2f", task.stat.tlat.Query(0.95))
-	snap.TotalLatencyP99 = fmt.Sprintf("%.2f", task.stat.tlat.Query(0.99))
-	snap.Error = fmt.Sprintf("%v", task.stat.err)
-	task.stat.tlat.Reset()
-	return snap
+	s := t.dstat[name]
+	s.NRows = n
+	s.Latency = jsonDuration(d)
+	t.dstat[name] = s
 }
 
 func (task *Task) Insert(n uint64, h []byte) error {
-	const q = `insert into e2pg.task (id, number, hash) values ($1, $2, $3)`
+	const q = `insert into e2pg.task (id, num, hash) values ($1, $2, $3)`
 	_, err := task.pgp.Exec(context.Background(), q, task.id, n, h)
 	return err
 }
 
 func (task *Task) Latest() (uint64, []byte, error) {
-	const q = `SELECT number, hash FROM e2pg.task WHERE id = $1 ORDER BY number DESC LIMIT 1`
+	const q = `SELECT num, hash FROM e2pg.task WHERE id = $1 ORDER BY num DESC LIMIT 1`
 	var n, h = uint64(0), []byte{}
 	err := task.pgp.QueryRow(context.Background(), q, task.id).Scan(&n, &h)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -243,24 +214,24 @@ func (task *Task) Setup() error {
 	return task.Insert(gethNum-1, h)
 }
 
-func (task *Task) Run1(snaps chan<- StatusSnapshot, notx bool) {
+func (task *Task) Run1(updates chan<- string, notx bool) {
 	switch err := task.Converge(notx); {
-	case err == nil:
-		go func() {
-			snap := task.Status()
-			slog.InfoContext(task.ctx, "", "n", snap.Num, "h", snap.Hash)
-			select {
-			case snaps <- snap:
-			default:
-			}
-		}()
 	case errors.Is(err, ErrDone):
 		return
 	case errors.Is(err, ErrNothingNew):
 		time.Sleep(time.Second)
-	default:
+	case err != nil:
 		time.Sleep(time.Second)
 		slog.ErrorContext(task.ctx, "error", err)
+	default:
+		go func() {
+			// try out best to deliver update
+			// but don't stack up work
+			select {
+			case updates <- task.id:
+			default:
+			}
+		}()
 	}
 }
 
@@ -300,7 +271,7 @@ func (task *Task) Converge(notx bool) error {
 	}
 	for reorgs := 0; reorgs <= 10; {
 		localNum, localHash := uint64(0), []byte{}
-		const q = `SELECT number, hash FROM e2pg.task WHERE id = $1 ORDER BY number DESC LIMIT 1`
+		const q = `SELECT num, hash FROM e2pg.task WHERE id = $1 ORDER BY num DESC LIMIT 1`
 		err := pg.QueryRow(task.ctx, q, task.id).Scan(&localNum, &localHash)
 		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 			return fmt.Errorf("getting latest from task: %w", err)
@@ -330,11 +301,11 @@ func (task *Task) Converge(notx bool) error {
 			task.batch[i].SetNum(localNum + i + 1)
 			task.buffs[i].Number = task.batch[i].Num()
 		}
-		switch err := task.writeIndex(localHash, pg, delta); {
+		switch nrows, err := task.loadinsert(localHash, pg, delta); {
 		case errors.Is(err, ErrReorg):
 			reorgs++
 			slog.ErrorContext(task.ctx, "reorg", "n", localNum, "h", fmt.Sprintf("%.4x", localHash))
-			const dq = "delete from e2pg.task where id = $1 AND number >= $2"
+			const dq = "delete from e2pg.task where id = $1 AND num >= $2"
 			_, err := pg.Exec(task.ctx, dq, task.id, localNum)
 			if err != nil {
 				return fmt.Errorf("deleting block from task table: %w", err)
@@ -346,14 +317,42 @@ func (task *Task) Converge(notx bool) error {
 			}
 		case err != nil:
 			err = errors.Join(rollback(), err)
-			task.stat.err = err
 			return err
 		default:
-			task.stat.enum = gethNum
-			task.stat.ehash = gethHash
-			task.stat.blocks += int64(delta)
-			task.stat.tlat.Insert(float64(time.Since(start)))
-			return commit()
+			var last = task.batch[delta-1]
+			const uq = `
+				insert into e2pg.task (
+					id,
+					num,
+					hash,
+					src_num,
+					src_hash,
+					nblocks,
+					nrows,
+					latency,
+					dstat
+				)
+				values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+			`
+			_, err := pg.Exec(task.ctx, uq,
+				task.id,
+				last.Num(),
+				last.Hash(),
+				gethNum,
+				gethHash,
+				delta,
+				nrows,
+				time.Since(start),
+				task.dstat,
+			)
+			if err != nil {
+				return fmt.Errorf("updating task table: %w", err)
+			}
+			if err := commit(); err != nil {
+				return fmt.Errorf("commit converge tx: %w", err)
+			}
+			slog.InfoContext(task.ctx, "converge", "n", last.Num())
+			return nil
 		}
 	}
 	return errors.Join(ErrReorg, rollback())
@@ -369,8 +368,9 @@ func (task *Task) Converge(notx bool) error {
 //
 // The reading of block data and indexing of integrations happens concurrently
 // with the number of go routines controlled by c.
-func (task *Task) writeIndex(localHash []byte, pg wpg.Conn, delta uint64) error {
+func (task *Task) loadinsert(localHash []byte, pg wpg.Conn, delta uint64) (int64, error) {
 	var (
+		nrows int64
 		eg1   = errgroup.Group{}
 		wsize = task.batchSize / task.workers
 	)
@@ -385,13 +385,13 @@ func (task *Task) writeIndex(localHash []byte, pg wpg.Conn, delta uint64) error 
 		eg1.Go(func() error { return task.src.LoadBlocks(task.filter, bfs, blks) })
 	}
 	if err := eg1.Wait(); err != nil {
-		return err
+		return 0, err
 	}
 	if len(task.batch[0].Header.Parent) != 32 {
-		return fmt.Errorf("corrupt parent: %x\n", task.batch[0].Header.Parent)
+		return 0, fmt.Errorf("corrupt parent: %x\n", task.batch[0].Header.Parent)
 	}
 	if !bytes.Equal(localHash, task.batch[0].Header.Parent) {
-		return ErrReorg
+		return 0, ErrReorg
 	}
 	var eg2 errgroup.Group
 	for i := uint64(0); i < task.workers && i*wsize < delta; i++ {
@@ -403,29 +403,96 @@ func (task *Task) writeIndex(localHash []byte, pg wpg.Conn, delta uint64) error 
 		}
 		eg2.Go(func() error {
 			var eg3 errgroup.Group
-			for _, dest := range task.dests {
-				dest := dest
+			for j := range task.dests {
+				j := j
 				eg3.Go(func() error {
-					count, err := dest.Insert(task.ctx, pg, blks)
-					atomic.AddInt64(&task.stat.events, count)
+					t0 := time.Now()
+					count, err := task.dests[j].Insert(task.ctx, pg, blks)
+					task.dstatw(task.dests[j].Name(), count, time.Since(t0))
+					nrows += count
 					return err
 				})
 			}
 			return eg3.Wait()
 		})
 	}
-	if err := eg2.Wait(); err != nil {
-		return fmt.Errorf("writing indexed data: %w", err)
-	}
-	var last = task.batch[delta-1]
-	const uq = "insert into e2pg.task (id, number, hash) values ($1, $2, $3)"
-	_, err := pg.Exec(context.Background(), uq, task.id, last.Num(), last.Hash())
-	if err != nil {
-		return fmt.Errorf("updating task table: %w", err)
-	}
-	task.stat.inum = last.Num()
-	task.stat.ihash = last.Hash()
+	return nrows, eg2.Wait()
+}
+
+type jsonDuration time.Duration
+
+func (d *jsonDuration) ScanInterval(i pgtype.Interval) error {
+	*d = jsonDuration(i.Microseconds * 1000)
 	return nil
+}
+
+func (d *jsonDuration) UnmarshalJSON(data []byte) error {
+	if len(data) < 2 {
+		return fmt.Errorf("jsonDuration must be at leaset 2 bytes")
+	}
+	data = data[1 : len(data)-1] // remove quotes
+	dur, err := time.ParseDuration(string(data))
+	*d = jsonDuration(dur)
+	return err
+}
+
+func (d jsonDuration) MarshalJSON() ([]byte, error) {
+	return []byte(fmt.Sprintf(`"%s"`, d.String())), nil
+}
+
+func (d jsonDuration) String() string {
+	return time.Duration(d).Round(time.Millisecond).String()
+}
+
+type TaskUpdate struct {
+	ID      string           `db:"id"`
+	Num     uint64           `db:"num"`
+	Hash    eth.Bytes        `db:"hash"`
+	SrcNum  uint64           `db:"src_num"`
+	SrcHash eth.Bytes        `db:"src_hash"`
+	NBlocks uint64           `db:"nblocks"`
+	NRows   uint64           `db:"nrows"`
+	Latency jsonDuration     `db:"latency"`
+	Dstat   map[string]Dstat `db:"dstat"`
+}
+
+func TaskUpdate1(ctx context.Context, pg wpg.Conn, id string) (TaskUpdate, error) {
+	const q = `
+		select
+			id,
+			num,
+			hash,
+			coalesce(src_num, 0) src_num,
+			coalesce(src_hash, '\x00') src_hash,
+			coalesce(nblocks, 0) nblocks,
+			coalesce(nrows, 0) nrows,
+			coalesce(latency, '0')::interval latency,
+			coalesce(dstat, '{}') dstat
+		from e2pg.task
+		where id = $1
+		order by num desc
+		limit 1;
+	`
+	row, _ := pg.Query(ctx, q, id)
+	return pgx.CollectOneRow(row, pgx.RowToStructByName[TaskUpdate])
+}
+
+func TaskUpdates(ctx context.Context, pg wpg.Conn) ([]TaskUpdate, error) {
+	rows, _ := pg.Query(ctx, `
+		select distinct on (id)
+			id,
+			num,
+			hash,
+			coalesce(src_num, 0) src_num,
+			coalesce(src_hash, '\x00') src_hash,
+			coalesce(nblocks, 0) nblocks,
+			coalesce(nrows, 0) nrows,
+			coalesce(latency, '0')::interval latency,
+			coalesce(dstat, '{}') dstat
+		from e2pg.task
+		order by id, num desc;
+	`)
+	return pgx.CollectRows(rows, pgx.RowToStructByName[TaskUpdate])
 }
 
 var compiled = map[string]Destination{}
@@ -435,24 +502,23 @@ var compiled = map[string]Destination{}
 type Manager struct {
 	running sync.Mutex
 	restart chan struct{}
-	snaps   chan<- StatusSnapshot
 	tasks   []*Task
+	updates chan string
 	pgp     *pgxpool.Pool
 	conf    Config
 }
 
-func NewManager(pgp *pgxpool.Pool, snaps chan<- StatusSnapshot, conf Config) *Manager {
+func NewManager(pgp *pgxpool.Pool, conf Config) *Manager {
 	return &Manager{
 		restart: make(chan struct{}),
-		snaps:   snaps,
+		updates: make(chan string),
 		pgp:     pgp,
 		conf:    conf,
 	}
 }
 
-// TODO(r): remove once old dashboard is gone
-func (tm *Manager) Tasks() []*Task {
-	return tm.tasks
+func (tm *Manager) Updates() string {
+	return <-tm.updates
 }
 
 func (tm *Manager) runTask(t *Task) error {
@@ -465,7 +531,7 @@ func (tm *Manager) runTask(t *Task) error {
 			slog.Info("restart-task", "name", t.Name)
 			return nil
 		default:
-			t.Run1(tm.snaps, false)
+			t.Run1(tm.updates, false)
 		}
 	}
 }
@@ -487,16 +553,15 @@ func (tm *Manager) Run() error {
 	tm.running.Lock()
 	defer tm.running.Unlock()
 	tm.restart = make(chan struct{})
-	var err error
-	tm.tasks, err = loadTasks(context.Background(), tm.pgp, tm.conf)
+	tasks, err := loadTasks(context.Background(), tm.pgp, tm.conf)
 	if err != nil {
 		return fmt.Errorf("loading tasks: %w", err)
 	}
 	var eg errgroup.Group
-	for i := range tm.tasks {
+	for i := range tasks {
 		i := i
 		eg.Go(func() error {
-			return tm.runTask(tm.tasks[i])
+			return tm.runTask(tasks[i])
 		})
 	}
 	return eg.Wait()
@@ -568,7 +633,7 @@ func getDest(pgp *pgxpool.Pool, ig Integration) (Destination, error) {
 		}
 		return cig, nil
 	default:
-		aig, err := abi2.New(ig.Event, ig.Block, ig.Table)
+		aig, err := abi2.New(ig.Name, ig.Event, ig.Block, ig.Table)
 		if err != nil {
 			return nil, fmt.Errorf("building abi integration: %w", err)
 		}
@@ -591,10 +656,10 @@ func getSource(sc SourceConfig) (Source, error) {
 	}
 }
 
-func Integrations(ctx context.Context, pgp *pgxpool.Pool) ([]Integration, error) {
+func Integrations(ctx context.Context, pg wpg.Conn) ([]Integration, error) {
 	var res []Integration
 	const q = `select conf from e2pg.integrations`
-	rows, err := pgp.Query(ctx, q)
+	rows, err := pg.Query(ctx, q)
 	if err != nil {
 		return nil, fmt.Errorf("querying integrations: %w", err)
 	}
@@ -669,13 +734,27 @@ func (conf Config) Valid(intg Integration) error {
 	return nil
 }
 
-func (conf Config) AllIntegrations(ctx context.Context, pgp *pgxpool.Pool) ([]Integration, error) {
-	res, err := Integrations(ctx, pgp)
+func (conf Config) AllIntegrations(ctx context.Context, pg wpg.Conn) ([]Integration, error) {
+	res, err := Integrations(ctx, pg)
 	if err != nil {
 		return nil, fmt.Errorf("loading db integrations: %w", err)
 	}
 	for i := range conf.Integrations {
 		res = append(res, conf.Integrations[i])
+	}
+	return res, nil
+}
+
+func (conf Config) IntegrationsBySource(ctx context.Context, pg wpg.Conn) (map[string][]Integration, error) {
+	igs, err := conf.AllIntegrations(ctx, pg)
+	if err != nil {
+		return nil, fmt.Errorf("querying all integrations: %w", err)
+	}
+	res := make(map[string][]Integration)
+	for _, ig := range igs {
+		for _, sc := range ig.SourceConfigs {
+			res[sc.Name] = append(res[sc.Name], ig)
+		}
 	}
 	return res, nil
 }

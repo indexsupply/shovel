@@ -78,6 +78,10 @@ func (dest *testDestination) Events(_ context.Context) [][]byte {
 	return nil
 }
 
+func (dest *testDestination) Name() string {
+	return "test"
+}
+
 type testGeth struct {
 	blocks []eth.Block
 }
