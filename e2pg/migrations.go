@@ -25,6 +25,7 @@ var Migrations = map[int]pgmig.Migration{
 	},
 	10: pgmig.Migration{
 		SQL: `
+			alter table e2pg.task rename column number to num;
 			alter table e2pg.task add column src_hash bytea;
 			alter table e2pg.task add column src_num numeric;
 			alter table e2pg.task add column nblocks numeric;
