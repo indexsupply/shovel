@@ -120,11 +120,6 @@
 			const fieldDiv = taskDiv.querySelector(`.${field}`);
 			fieldDiv.innerText = val;
 		};
-		function updateDest(taskID, destID, field, val) {
-			const destDiv = document.getElementById(`${taskID}-${destID}`);
-			const fieldDiv = destDiv.querySelector(`.${field}`);
-			fieldDiv.innerText = val;
-		};
 		document.addEventListener("DOMContentLoaded", function() {
 			document.addEventListener('keydown', function(e) {
 				if (e.keyCode == 73) {
@@ -147,7 +142,7 @@
 				update(tu.ID, "NRows", tu.NRows);
 				for (const [k1, v1] of Object.entries(tu.Dstat)) {
 					for (const [k2, v2] of Object.entries(v1)) {
-						updateDest(tu.ID, k1, k2, v2);
+						update(`${tu.ID}-${k1}`, k2, v2);
 					}
 				}
 			};
