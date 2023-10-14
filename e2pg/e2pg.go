@@ -234,7 +234,12 @@ func (task *Task) Run1(updates chan<- string, notx bool) {
 		slog.ErrorContext(task.ctx, "error", err)
 	default:
 		go func() {
-			updates <- task.id
+			// try out best to deliver update
+			// but don't stack up work
+			select {
+			case updates <- task.id:
+			default:
+			}
 		}()
 	}
 }
