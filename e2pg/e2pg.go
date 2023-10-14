@@ -161,15 +161,6 @@ type Task struct {
 	workers   uint64
 }
 
-func (t *Task) dstatJSON() []byte {
-	b, err := json.Marshal(t.dstat)
-	if err != nil {
-		slog.ErrorContext(t.ctx, "encoding dstat", err)
-		return nil
-	}
-	return b
-}
-
 func (t *Task) dstatw(name string, n int64, d time.Duration) {
 	t.dstatMut.Lock()
 	defer t.dstatMut.Unlock()
@@ -352,7 +343,7 @@ func (task *Task) Converge(notx bool) error {
 				delta,
 				nrows,
 				time.Since(start),
-				task.dstatJSON(),
+				task.dstat,
 			)
 			if err != nil {
 				return fmt.Errorf("updating task table: %w", err)

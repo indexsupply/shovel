@@ -45,7 +45,7 @@ CREATE TABLE e2pg.sources (
 
 CREATE TABLE e2pg.task (
     id text NOT NULL,
-    number bigint,
+    num bigint,
     hash bytea,
     insert_at timestamp with time zone DEFAULT now(),
     src_hash bytea,
@@ -71,7 +71,7 @@ CREATE UNIQUE INDEX sources_name_idx ON e2pg.sources USING btree (name);
 
 
 
-CREATE INDEX task_id_number_idx ON e2pg.task USING btree (id, number DESC);
+CREATE INDEX task_id_number_idx ON e2pg.task USING btree (id, num DESC);
 
 
 
