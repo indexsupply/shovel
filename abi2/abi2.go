@@ -832,6 +832,12 @@ func dbtype(t string, d []byte) any {
 			return d[12:]
 		}
 		return d
+	case t == "bool":
+		var x uint256.Int
+		x.SetBytes32(d)
+		return x.Dec() == "1"
+	case t == "text":
+		return string(d)
 	default:
 		return d
 	}
