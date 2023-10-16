@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"strconv"
 	"sync"
 
 	"github.com/indexsupply/x/e2pg"
@@ -18,10 +19,14 @@ import (
 var (
 	//go:embed index.html
 	indexHTML string
+
+	//go:embed add-source.html
+	addSourceHTML string
 )
 
 var htmlpages = map[string]string{
-	"index": indexHTML,
+	"index":      indexHTML,
+	"add-source": addSourceHTML,
 }
 
 type Handler struct {
@@ -80,36 +85,28 @@ func (h *Handler) template(name string) (*template.Template, error) {
 }
 
 type IndexView struct {
-	Igs            map[string][]e2pg.Integration
-	TaskUpdates    []e2pg.TaskUpdate
-	ChainsByTaskID map[string]e2pg.SourceConfig
+	TaskUpdates   map[string]e2pg.TaskUpdate
+	SourceConfigs []e2pg.SourceConfig
 }
 
 func (h *Handler) Index(w http.ResponseWriter, r *http.Request) {
 	var (
 		ctx  = r.Context()
 		view = IndexView{}
-		err  error
 	)
-	view.TaskUpdates, err = e2pg.TaskUpdates(ctx, h.pgp)
+	tus, err := e2pg.TaskUpdates(ctx, h.pgp)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	view.Igs, err = h.conf.IntegrationsBySource(ctx, h.pgp)
+	view.TaskUpdates = make(map[string]e2pg.TaskUpdate)
+	for _, tu := range tus {
+		view.TaskUpdates[tu.ID] = tu
+	}
+	view.SourceConfigs, err = h.conf.AllSourceConfigs(ctx, h.pgp)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
-	}
-	sources, err := h.conf.AllSourceConfigs(ctx, h.pgp)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	view.ChainsByTaskID = map[string]e2pg.SourceConfig{}
-	for i := range sources {
-		k := fmt.Sprintf("%d-main", sources[i].ChainID)
-		view.ChainsByTaskID[k] = sources[i]
 	}
 
 	t, err := h.template("index")
@@ -166,4 +163,50 @@ func (h *Handler) Updates(w http.ResponseWriter, r *http.Request) {
 		}
 		flusher.Flush()
 	}
+}
+
+func (h *Handler) AddSource(w http.ResponseWriter, r *http.Request) {
+	t, err := h.template("add-source")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if err := t.Execute(w, nil); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+}
+
+func (h *Handler) SaveSource(w http.ResponseWriter, r *http.Request) {
+	var (
+		ctx = r.Context()
+		err = r.ParseForm()
+	)
+	chainID, err := strconv.Atoi(r.FormValue("chainID"))
+	if err != nil {
+		slog.ErrorContext(ctx, "parsing chain id", err)
+		return
+	}
+	name := r.FormValue("name")
+	if len(name) == 0 {
+		slog.ErrorContext(ctx, "parsing chain name", err)
+		return
+	}
+	url := r.FormValue("ethURL")
+	if len(url) == 0 {
+		slog.ErrorContext(ctx, "parsing chain eth url", err)
+		return
+	}
+	const q = `
+		insert into e2pg.sources(chain_id, name, url)
+		values ($1, $2, $3)
+	`
+	_, err = h.pgp.Exec(ctx, q, chainID, name, url)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		slog.ErrorContext(ctx, "inserting task", err)
+		return
+	}
+	h.mgr.Restart()
+	http.Redirect(w, r, "/", http.StatusSeeOther)
 }

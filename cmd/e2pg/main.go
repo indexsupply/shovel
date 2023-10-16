@@ -108,6 +108,8 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", wh.Index)
 	mux.HandleFunc("/task-updates", wh.Updates)
+	mux.HandleFunc("/add-source", wh.AddSource)
+	mux.HandleFunc("/save-source", wh.SaveSource)
 	mux.HandleFunc("/debug/pprof/", npprof.Index)
 	mux.HandleFunc("/debug/pprof/cmdline", npprof.Cmdline)
 	mux.HandleFunc("/debug/pprof/profile", npprof.Profile)
