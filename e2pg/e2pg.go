@@ -479,19 +479,23 @@ func TaskUpdate1(ctx context.Context, pg wpg.Conn, id string) (TaskUpdate, error
 
 func TaskUpdates(ctx context.Context, pg wpg.Conn) ([]TaskUpdate, error) {
 	rows, _ := pg.Query(ctx, `
-		select distinct on (id)
-			id,
-			num,
-			hash,
-			coalesce(src_num, 0) src_num,
-			coalesce(src_hash, '\x00') src_hash,
-			coalesce(nblocks, 0) nblocks,
-			coalesce(nrows, 0) nrows,
-			coalesce(latency, '0')::interval latency,
-			coalesce(dstat, '{}') dstat
-		from e2pg.task
-		order by id, num desc;
-	`)
+        with f as (
+            select id, max(num) num
+            from e2pg.task group by 1
+        )
+        select
+                f.id,
+                f.num,
+                hash,
+                coalesce(src_num, 0) src_num,
+                coalesce(src_hash, '\x00') src_hash,
+                coalesce(nblocks, 0) nblocks,
+                coalesce(nrows, 0) nrows,
+                coalesce(latency, '0')::interval latency,
+                coalesce(dstat, '{}') dstat
+        from f
+        left join e2pg.task on e2pg.task.id = f.id and e2pg.task.num = f.num;
+    `)
 	return pgx.CollectRows(rows, pgx.RowToStructByName[TaskUpdate])
 }
 
