@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset="utf-8"><title>E2PG</title>
+		<style>
+			body {
+				font-family: system-ui;
+				max-width: 800px;
+				margin: 0 auto;
+			}
+			.header h1 a {
+				color: #000000;
+				text-decoration: none;
+			}
+			.addSource {
+				width: 60%;
+				display: grid;
+				align-items: center;
+				grid-gap: 1em;
+				grid-template-columns: 100px 2fr;
+			}
+			.addSource label {
+				font-size: large;
+			}
+			.addSource input {
+				font-size: large;
+				font-family: monospace;
+			}
+			.addSource input[type="submit"] {
+				justify-self: flex-end;
+				width: 40%;
+			}
+		</style>
+	</head>
+	<body>
+		<main>
+			<div class="header">
+				<h1><a href="/">E2PG</a> / Add Source</h1>
+			</div>
+			<form action="/save-source" class="addSource" method="POST">
+				<label for="chainID">Chain ID</label>
+				<input id="chainID" name="chainID" type="text" autofocus>
+
+				<label for="name">Name</label>
+				<input id="name" name="name" type="text">
+
+				<label for="ethURL">ETH URL</label>
+				<input id="ethURL" name="ethURL" type="text">
+
+				<label></label>
+				<input type="submit" value="Save">
+			</form>
+		</main>
+	</body>
+	<script>
+		let nameMap = {
+			1: {name: "Mainnet", url: "https://1.rlps.indexsupply.net"},
+			5: {name: "Goerli", url: "https://5.rlps.indexsupply.net"},
+			10: {name: "Optimism", url: "https://10.rlps.indexsupply.net"},
+			420: {name: "Optimism Goerli", url: "https://420.rlps.indexsupply.net"},
+			8453: {name: "Base", url: "https://8453.rlps.indexsupply.net"},
+			84531: {name: "Base Goerli", url: "https://84531.rlps.indexsupply.net"}
+		}
+		document.addEventListener("DOMContentLoaded", function() {
+			let done = function(v) {
+				let config = nameMap[v];
+				let name = "";
+				let url = "";
+				if (config) {
+					name = config.name;
+					url = config.url;
+				}
+				document.querySelector("#name").value = name;
+				document.querySelector("#ethURL").value = url;
+			}
+			const waitTime = 200;
+			let timer;
+			let chainID = document.querySelector("#chainID");
+			chainID.addEventListener("keyup", e => {
+				clearTimeout(timer);
+				timer = setTimeout(function() {
+					done(e.target.value);
+				}, waitTime);
+			});
+		});
+	</script>
+</html>

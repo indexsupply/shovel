@@ -24,14 +24,18 @@
 				margin-bottom: 10px;
 				color: dimgray;
 			}
-			.taskHeader span {
+			.taskHeader .NRows, .taskHeader .Latency , .taskHeader .Hash, .taskHeader .Num {
 				font-family: system-ui;
 				text-transform: capitalize;
 			}
 			.task {
-				margin-bottom: 20px;
+				margin-bottom: 10px;
+				padding-bottom: 10px;
 			}
-			.chain {
+			.task:not(:only-child) {
+				border-bottom: 1px dotted dimgray;
+			}
+			.source {
 				width: 100%;
 				display: flex;
 				flex-direction: row;
@@ -39,8 +43,21 @@
 				align-items: baseline;
 				gap: 20px;
 				font-size: x-large;
-				border-bottom: 1px dotted black;
-				margin-bottom: 10px;
+			}
+			.destinations :first-child {
+				margin-top: 5px;
+			}
+			.destination .Name::before {
+				content: "- ";
+			}
+			.destination {
+				font-size: medium;
+				width: 100%;
+				display: flex;
+				flex-direction: row;
+				justify-content: flex-start;
+				align-items: baseline;
+				gap: 20px;
 			}
 			.Name {
 				width: 25%;
@@ -73,65 +90,47 @@
 				overflow: hidden;
 				text-overflow: ellipsis;
 			}
-			.Dest .Name span {
-				padding-left: 5px;
-			}
-			.Dest {
-				font-size: medium;
-				width: 100%;
-				display: flex;
-				flex-direction: row;
-				justify-content: flex-start;
-				align-items: baseline;
-				gap: 20px;
-			}
 		</style>
 	</head>
 	<body>
 		<div class="header">
 			<h1>E2PG</h1>
+			<a href="/add-source">Add Source</a>
 		</div>
 		<div class="taskHeader">
-			<div class="Name"><span></span></div>
-			<div class="NRows"><span>Rows</span></div>
+			{{ if (gt (len .SourceConfigs) 0) -}}
+			<div class="Name"></div>
+			<div class="NRows">Rows</div>
 			<div class="Latency"><span>Latency</span></div>
 			<div class="Hash"><span>Hash</span></div>
 			<div class="Num"><span>Number</span></div>
-		</div>
-		{{ range $tu := .TaskUpdates -}}
-		<div id="{{ $tu.ID }}" class="task">
-			<div class="chain">
-				<div class="Name">
-					<span>{{ (index  $.ChainsByTaskID $tu.ID).Name }}</span>
-				</div>
-				<div class="NRows">
-					<span>{{ $tu.NRows }}</span>
-				</div>
-				<div class="Latency">
-					<span>{{ $tu.Latency }}</span>
-				</div>
-				<div class="Hash">
-					<span>{{(printf "0x%x" $tu.Hash)}}</span>
-				</div>
-				<div class="Num">
-					<span class="addComma">{{ $tu.Num }}</span>
-				</div>
-			</div>
-			{{ range $name, $stat := $tu.Dstat -}}
-			<div class="Dest" id="{{ $tu.ID }}-{{$name}}" style="display:none;">
-				<div class="Name">
-					<span>{{ $name }}</span>
-				</div>
-				<div class="NRows">
-					<span>{{ $stat.NRows }}</span>
-				</div>
-				<div class="Latency">
-					<span>{{ $stat.Latency }}</span>
-				</div>
-			</div>
 			{{ end -}}
 		</div>
-		{{ end -}}
+		<div class="tasks">
+			{{ range $sc := .SourceConfigs -}}
+				{{ $tid  := (printf "%d-main" $sc.ChainID) -}}
+				{{ with $tu := (index $.TaskUpdates $tid) -}}
+				<div class="task" id="{{ $tid }}">
+					<div class="source">
+						<div class="Name">{{ $sc.Name }}</div>
+						<div class="NRows">{{ $tu.NRows }}</div>
+						<div class="Latency">{{ $tu.Latency }}</div>
+						<div class="Hash">{{(printf "0x%x" $tu.Hash)}}</div>
+						<div class="Num addComma">{{ $tu.Num }}</div>
+					</div>
+					<div class="destinations" style="display:none;">
+						{{ range $name, $stat := $tu.Dstat -}}
+						<div class="destination" id="{{ $tu.ID }}-{{$name}}">
+							<div class="Name">{{ $name }}</div>
+							<div class="NRows">{{ $stat.NRows }}</div>
+							<div class="Latency">{{ $stat.Latency }}</div>
+						</div>
+						{{ end -}}
+					</div>
+				</div>
+				{{ end -}}
+			{{ end -}}
+		</div>
 	</body>
 	<script>
 		function comma(s) {
@@ -145,7 +144,7 @@
 		document.addEventListener("DOMContentLoaded", function() {
 			document.addEventListener('keydown', function(e) {
 				if (e.keyCode == 73) {
-					document.querySelectorAll('.Dest').forEach(el => {
+					document.querySelectorAll('.destinations').forEach(el => {
 						const d = el.style.display;
 						el.style.display = (d == 'none' ? '' : 'none');
 					});
