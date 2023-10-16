@@ -2,12 +2,14 @@ package e2pg
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	_ "embed"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -572,18 +574,6 @@ func (tm *Manager) Run() error {
 }
 
 func loadTasks(ctx context.Context, pgp *pgxpool.Pool, conf Config) ([]*Task, error) {
-	allSources := map[string]SourceConfig{}
-	dbSources, err := SourceConfigs(ctx, pgp)
-	if err != nil {
-		return nil, fmt.Errorf("loading sources: %w", err)
-	}
-	for _, sc := range dbSources {
-		allSources[sc.Name] = sc
-	}
-	for _, sc := range conf.SourceConfigs {
-		allSources[sc.Name] = sc
-	}
-
 	allIntgs := map[string]Integration{}
 	dbIntgs, err := Integrations(ctx, pgp)
 	if err != nil {
@@ -610,6 +600,11 @@ func loadTasks(ctx context.Context, pgp *pgxpool.Pool, conf Config) ([]*Task, er
 			destBySourceName[sc.Name] = append(destBySourceName[sc.Name], dest)
 		}
 	}
+	allSources, err := conf.AllSourceConfigs(ctx, pgp)
+	if err != nil {
+		return nil, fmt.Errorf("loading source configs: %w", err)
+	}
+
 	var tasks []*Task
 	for _, sc := range allSources {
 		src, err := getSource(sc)
@@ -764,12 +759,25 @@ func (conf Config) IntegrationsBySource(ctx context.Context, pg wpg.Conn) (map[s
 }
 
 func (conf Config) AllSourceConfigs(ctx context.Context, pgp *pgxpool.Pool) ([]SourceConfig, error) {
-	res, err := SourceConfigs(ctx, pgp)
+	indb, err := SourceConfigs(ctx, pgp)
 	if err != nil {
 		return nil, fmt.Errorf("loading db integrations: %w", err)
 	}
-	for i := range conf.SourceConfigs {
-		res = append(res, conf.SourceConfigs[i])
+
+	var uniq = map[uint64]SourceConfig{}
+	for _, sc := range indb {
+		uniq[sc.ChainID] = sc
 	}
+	for _, sc := range conf.SourceConfigs {
+		uniq[sc.ChainID] = sc
+	}
+
+	var res []SourceConfig
+	for _, sc := range uniq {
+		res = append(res, sc)
+	}
+	slices.SortFunc(res, func(a, b SourceConfig) int {
+		return cmp.Compare(a.ChainID, b.ChainID)
+	})
 	return res, nil
 }
