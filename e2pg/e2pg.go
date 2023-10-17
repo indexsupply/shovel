@@ -709,9 +709,6 @@ type Compiled struct {
 type Integration struct {
 	Name          string           `json:"name"`
 	Enabled       bool             `json:"enabled"`
-	Start         string           `json:"start"`
-	Stop          string           `json:"stop"`
-	Backfill      bool             `json:"backfill"`
 	SourceConfigs []SourceConfig   `json:"sources"`
 	Table         abi2.Table       `json:"table"`
 	Compiled      Compiled         `json:"compiled"`
