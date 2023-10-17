@@ -701,6 +701,8 @@ func (lwc *logWithCtx) get(name string) any {
 		return lwc.b.Hash()
 	case "block_num":
 		return lwc.b.Num()
+	case "block_time":
+		return lwc.b.Time
 	case "tx_hash":
 		return lwc.t.Hash()
 	case "tx_idx":
