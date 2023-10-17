@@ -5,7 +5,7 @@
 		"columns": [
 			{"name": "chain_id", "type": "numeric"},
 			{"name": "block_number", "type": "numeric"},
-			{"name": "block_time", "type": "timestamptz"},
+			{"name": "block_time", "type": "numeric"},
 			{"name": "tx_hash", "type": "bytea"},
 			{"name": "tx_input", "type": "bytea"}
 		]

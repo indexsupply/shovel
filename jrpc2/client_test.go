@@ -8,7 +8,6 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/indexsupply/x/eth"
 	"kr.dev/diff"
@@ -78,7 +77,7 @@ func TestLatest(t *testing.T) {
 	diff.Test(t, t.Errorf, b.Num(), uint64(18000000))
 	diff.Test(t, t.Errorf, fmt.Sprintf("%.4x", b.Parent), "198723e0")
 	diff.Test(t, t.Errorf, fmt.Sprintf("%.4x", b.Hash()), "95b198e1")
-	diff.Test(t, t.Errorf, b.Time, eth.Time(time.Unix(1693066895, 0)))
+	diff.Test(t, t.Errorf, b.Time, eth.Uint64(1693066895))
 	diff.Test(t, t.Errorf, fmt.Sprintf("%.4x", b.LogsBloom), "53f146f2")
 	diff.Test(t, t.Errorf, len(b.Txs), 94)
 	diff.Test(t, t.Errorf, len(b.Receipts), 94)

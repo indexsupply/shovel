@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"sync"
-	"time"
 
 	"github.com/btcsuite/btcd/btcec/v2/ecdsa"
 	"github.com/indexsupply/x/bint"
@@ -13,7 +12,6 @@ import (
 	"github.com/indexsupply/x/rlp"
 
 	"github.com/holiman/uint256"
-	"github.com/jackc/pgx/v5/pgtype"
 )
 
 // returns pointer to x[i]. extends x if i >= len(x)
@@ -112,23 +110,6 @@ func (hb *Bytes) Write(p []byte) (int, error) {
 	return copy(*hb, p), nil
 }
 
-type Time time.Time
-
-func (ht *Time) UnmarshalJSON(data []byte) error {
-	if len(data) < 4 {
-		return fmt.Errorf("must be at leaset 4 bytes")
-	}
-	data = data[1 : len(data)-1] // remove quotes
-	data = data[2:]              // remove 0x
-	n, err := decode(string(data))
-	*ht = Time(time.Unix(int64(Uint64(n)), 0))
-	return err
-}
-
-func (ht Time) TimestamptzValue() (pgtype.Timestamptz, error) {
-	return pgtype.Timestamptz{Time: time.Time(ht), Valid: true}, nil
-}
-
 type Block struct {
 	Header
 	Txs      Txs `json:"transactions"`
@@ -218,7 +199,7 @@ type Header struct {
 	Hash      Bytes  `json:"hash"`
 	Parent    Bytes  `json:"parentHash"`
 	LogsBloom Bytes  `json:"logsBloom"`
-	Time      Time   `json:"timestamp"`
+	Time      Uint64 `json:"timestamp"`
 }
 
 func (h *Header) UnmarshalRLP(b []byte) {
@@ -233,7 +214,7 @@ func (h *Header) UnmarshalRLP(b []byte) {
 		case 8:
 			h.Number = Uint64(bint.Uint64(d))
 		case 11:
-			h.Time = Time(time.Unix(int64(Uint64(bint.Uint64(d))), 0))
+			h.Time = Uint64(bint.Uint64(d))
 		}
 	}
 }
