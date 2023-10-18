@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset="utf-8"><title>E2PG</title>
+		<style>
+			body {
+				font-family: system-ui;
+				max-width: 800px;
+				margin: 0 auto;
+			}
+			.header h1 a {
+				color: #000000;
+				text-decoration: none;
+			}
+			#abiDocDrop {
+				width: 100%;
+				background-color: ghostwhite;
+				text-align: center;
+				padding: 5px;
+				border: 1px dotted black;
+			}
+			.event {
+				width: 100%;
+				margin: 0 0 10px 0;
+			}
+			.eventHeader {
+				display: flex;
+				flex-direction: row;
+				align-items: baseline;
+				justify-content: space-between;
+				border-bottom: 1px dotted gray;
+				padding-bottom: 10px;
+			}
+			.eventName:before {
+				content: '⏵';
+				padding-right: 5px;
+			}
+			.eventName.expand:before {
+				content: '⏷ ';
+				padding-right: 5px;
+			}
+			.eventName {
+				width: 55%;
+				font-size: 1.5em;
+				font-weight: bold;
+			}
+			.eventCheckall {
+				width: 5%;
+				text-align: right;
+			}
+			.eventTable {
+				width: 40%;
+				display: none; /* set to flex on checkbox event */
+				align-items: baseline;
+				gap: 2%;
+			}
+			.eventTable select {
+				flex: 1;
+			}
+			.eventTable span {
+				font-size: 0.8rem;
+			}
+			.eventMapping {
+				display: none; /* set to block on checkbox event */
+				flex-direction: column;
+			}
+			.eventMapping input[type="submit"] {
+				float: right;
+			}
+			.eventMapping table {
+				border-collapse: collapse;
+				width: 100%;
+			}
+			.eventMapping table tr:nth-child(odd) {
+				background-color: ghostwhite;
+			}
+			.eventMapping table tr:has(input:checked) {
+				opacity: 1.0;
+			}
+			.eventMapping table tr {
+				opacity: 0.5;
+			}
+			.eventMapping table td {
+				max-width: 0;
+				font-family: ui-monospace, monospace;
+				overflow: hidden;
+				text-overflow: ellipsis;
+			}
+			.eventMapping table tr.seperator {
+				opacity: 1.0;
+				padding: 5px;
+				background-color: white;
+			}
+			.eventMapping table tr.seperator td {
+				font-weight: bold;
+				font-size: large;
+				padding-top: 10px;
+			}
+			.eventMapping table td.tuple-name {
+				font-weight: bold;
+				text-transform: capitalize;
+				background-color: white;
+			}
+			.eventMapping table td.tuple-type {
+				font-weight: bold;
+				text-transform: capitalize;
+				background-color: white;
+				padding-left: 5px;
+			}
+			.eventMapping table td.checkbox {
+				text-align:right;
+				padding-right: 0;
+				margin-right: 0;
+				width: 3%;
+			}
+			.eventMapping table td.arrow {
+				width: 5%;
+				background-color: white;
+			}
+			.eventMapping table td.name {
+				width: 35%;
+			}
+			.eventMapping table tr:nth-child(odd) td.type {
+				background: linear-gradient(to right, ghostwhite 40%, white 100%);
+			}
+			.eventMapping table tr:nth-child(odd) td.dbName {
+				background: linear-gradient(to left, ghostwhite 40%, white 100%);
+			}
+			.eventMapping table td.type {
+				padding-left: 5px;
+				width: 15%;
+			}
+			.eventMapping table td input {
+				font-family: ui-monospace, monospace;
+			}
+			.eventMapping table tr:hover {
+				opacity: 1.0;
+			}
+			.lpad-0 {
+				padding-left: 5px;
+			}
+			.lpad-1 {
+				padding-left: 20px;
+			}
+			.lpad-2 {
+				padding-left: 40px;
+			}
+			.capitalize {
+				text-transform: capitalize;
+			}
+		</style>
+	</head>
+	<body>
+		<main>
+			<div class="header">
+				<h1><a href="/">E2PG</a> / Add Integration</h1>
+			</div>
+			<div id="abiDocDrop"><h2>Drag ABI file here</h2></div>
+		</main>
+	</body>
+	<script>
+		document.addEventListener("DOMContentLoaded", function() {
+			var debug = false;
+			document.addEventListener('keydown', function(e) {
+				if (e.keyCode != 191) {
+					return;
+				}
+				debug = !debug;
+				if (debug) {
+					document.querySelectorAll('*').forEach(el => {
+						el.style.setProperty('outline', '1px dotted red');
+					});
+					abiDoc = abiDocTest;
+					document.querySelector('#abiDocDrop').style.display = 'none';
+					processEvents(abiDocTest);
+				} else {
+					document.querySelectorAll('*').forEach(el => {
+						el.style.removeProperty('outline');
+					});
+				}
+			});
+		});
+
+		var abiDoc = null;
+		document.addEventListener("DOMContentLoaded", function() {
+			let dropArea = document.querySelector('#abiDocDrop');
+			dropArea.addEventListener('dragover', (event) => {
+				event.stopPropagation();
+				event.preventDefault();
+				event.dataTransfer.dropEffect = 'copy';
+			});
+			dropArea.addEventListener('drop', (event) => {
+				event.stopPropagation();
+				event.preventDefault();
+
+				dropArea.style.display = 'none';
+
+				const reader = new FileReader();
+				reader.addEventListener('load', (event) => {
+					abiDoc = JSON.parse(event.target.result);
+					processEvents(abiDoc);
+				});
+				reader.readAsText(event.dataTransfer.files[0]);
+			});
+		});
+
+		function snake(s) {
+			let res = '';
+			for (let i = 0; i < s.length; i++) {
+				if (s[i] === "_") {
+					res += s[i].toLowerCase();
+				} else if (i > 0 && s[i] === s[i].toUpperCase()) {
+					res += '_' + s[i].toLowerCase();
+				} else {
+					res += s[i].toLowerCase();
+				}
+			}
+			return res;
+		}
+
+		function seperator(text) {
+			return `
+				<tr class="seperator">
+					<td colspan="6"><span>${text}</span></td>
+				</tr>
+			`;
+		}
+
+		function tupleRow(depth, parent, field) {
+			return `
+				<tr class="tuple" data-tuple="${field.name}" data-field="${field.name}" data-parent="${parent.name ?? ''}">
+				<td class="tuple-name lpad-${depth}">${field.name}</td>
+				<td class="tuple-type">${field.type}</td>
+				<td class="arrow"></td>
+				<td class="dbName"></td>
+				<td class="dbType"></td>
+				<td class="checkbox"><input type="checkbox"></td>
+				</tr>
+			`;
+		};
+
+		function dbType(abiType) {
+			switch (true) {
+				case abiType.trim().startsWith("uint"):
+					return "numeric";
+				default:
+					return "bytea";
+			}
+		}
+
+		function dbName(parent, field) {
+			if (field.name == "from") {
+				return "f"
+			}
+			if (field.name == "to") {
+				return "t"
+			}
+			if (!parent.components) {
+				return snake(field.name);
+			}
+			return `${parent.name[0]}_${snake(field.name)}`
+		}
+
+		function fieldRow(depth, parent, event, field) {
+			return `
+				<tr class="field" data-parent="${parent.name ?? ''}" data-field="${field.name}">
+				<td class="name lpad-${depth}">${field.name}</td>
+				<td class="type">${field.type}</td>
+				<td class="arrow">→</td>
+				<td class="dbName">
+					<span>${dbName(parent, field)}</span>
+					<input type="text" value="${field.name}" style="display: none;">
+				</td>
+				<td class="dbType">
+					<span>${dbType(field.type)}</span>
+					<select style="display: none;">
+						<option>bytea</option>
+						<option>numeric</option>
+					</select>
+				</td>
+				<td class="checkbox"><input type="checkbox"></td>
+				</tr>
+			`;
+		};
+
+		function metadataRow(depth, parent, event, field) {
+			return `
+				<tr class="field metadata" data-parent="${parent.name ?? ''}" data-field="${field.name}">
+				<td class="name lpad-${depth}">${field.name}</td>
+				<td class="type">${field.type}</td>
+				<td class="arrow">→</td>
+				<td class="dbName"><span>${dbName(parent, field)}</span></td>
+				<td class="dbType"><span>${dbType(field.type)}</span></td>
+				<td class="checkbox"><input type="checkbox"></td>
+				</tr>
+			`;
+		};
+
+		function srcRow(src) {
+			return `
+				<tr class="chain">
+				<td class="name lpad-0 capitalize">${src.name}</td>
+				<td class="lpad-0">${src.chain_id}</td>
+				<td></td>
+				<td></td>
+				<td></td>
+				<td class="checkbox"><input type="checkbox"></td>
+				</tr>
+			`;
+		};
+
+		function row(depth, parent, event, field) {
+			let res = [];
+			if (!('components' in field)) {
+				res.push(fieldRow(depth, parent, event, field));
+				return res;
+			}
+			res.push(tupleRow(depth, parent, field));
+			field.components.forEach(function(comp, i, arr) {
+				row(depth+1, field, event, comp).forEach(r => {
+					res.push(r);
+				});
+			});
+			return res;
+		}
+
+		const metadata = [
+			{"name": "chain_id", "type": "uint16"},
+			{"name": "block_hash", "type": "bytes32"},
+			{"name": "block_num", "type": "uint256"},
+			{"name": "tx_hash", "type": "bytes32"},
+			{"name": "tx_idx", "type": "uint16"},
+			{"name": "tx_signer", "type": "address"},
+			{"name": "tx_to", "type": "address"},
+			{"name": "tx_value", "type": "uint256"},
+			{"name": "log_idx", "type": "uint16"},
+			{"name": "log_addr", "type": "address"}
+		];
+
+		function eventMapping(event) {
+			let rows = [];
+			rows.push(seperator("Chains"));
+			ethSources.forEach(c => { rows.push(srcRow(c)) });
+
+			rows.push(seperator("Event Data"));
+			event.inputs.forEach(field => {
+				row(0, event, event, field).forEach(r => {
+					rows.push(r);
+				});
+			});
+			rows.push(seperator("Block Data"));
+			metadata.forEach(field => {
+				rows.push(metadataRow(0, event, event, field));
+			});
+			return `
+				<div class="eventMapping">
+					<table data-field="${event.name}">
+						<tbody>${rows.join("\n")}</tbody>
+					</table>
+					<div><input type="submit" value="Save"></div>
+				</div>
+			`;
+		}
+
+		function suggestTableName(event) {
+			return snake(event.name);
+		}
+
+		function eventHeader(event) {
+			return `
+				<div class="eventHeader">
+					<div class="eventName">
+						<span>${event.name}</span>
+					</div>
+					<div class="eventTable">
+					<select><option>${suggestTableName(event)}</option></select>
+						<span><a href="/new-table">new</a></span>
+					</div>
+					<div class="eventCheckall"><input type="checkbox"></div>
+				</div>
+			`;
+		}
+
+		function eventDiv(event) {
+			return `
+				<div class="event">
+					${eventHeader(event)}
+					${eventMapping(event)}
+				</div>
+			`;
+		}
+
+		function processEvents(events) {
+			let main = document.querySelector("main");
+			events.forEach(e => {
+				if (e.type == 'event') {
+					let node = render(main, eventDiv(e));
+				}
+			});
+			addListeners();
+		}
+
+		function render(target, html) {
+			const tmp = document.createElement("div");
+			tmp.innerHTML = html;
+			target.appendChild(tmp.firstElementChild);
+		}
+
+		function swapRows(x, y) {
+			for (var i = 0; i < x.cells.length; i++) {
+				var tmp = x.cells[i].textContent;
+				x.cells[i].textContent = y.cells[i].textContent;
+				y.cells[i].textContent = tmp;
+			}
+		}
+
+		function checkTuple(row) {
+			let eventDiv = row.closest('.event');
+			let checkBox = row.querySelector(`input[type="checkbox"]`);
+			let tupleKey = row.dataset.tuple;
+			if (tupleKey == "") {
+				return;
+			}
+			var numChecked = 0;
+			eventDiv.querySelectorAll(`[data-parent="${tupleKey}"] input[type="checkbox"]`).forEach(childCheckbox => {
+				if (childCheckbox.checked) {
+					numChecked++;
+				}
+			});
+			checkBox.checked = numChecked > 0;
+
+			let parentKey = row.dataset.parent;
+			if (parentKey == "") {
+				return;
+			}
+			eventDiv.querySelectorAll(`[data-tuple="${parentKey}"]`).forEach(prow => {
+				checkTuple(prow);
+			});
+		}
+
+		// Update the event's header checkbox if any of the event's checkboxes
+		// are checked.
+		function checkHeader(eventDiv) {
+			var numChecked = 0;
+			eventDiv.querySelectorAll(`.eventMapping table input[type="checkbox"]:checked`).forEach(cb => {
+				numChecked++;
+			});
+			eventDiv.querySelector('.eventHeader input[type="checkbox"]').checked = numChecked > 0;
+		}
+
+		function addListeners() {
+			document.querySelectorAll('.eventMapping table td:not(.checkbox)').forEach(r =>  {
+				r.addEventListener('click', c => {
+					let row = r.closest('tr');
+					let cb = row.querySelector('input[type="checkbox"]');
+					cb.checked ^= 1;
+					cb.dispatchEvent(new Event("change"));
+				});
+			});
+			document.querySelectorAll('.eventMapping table tr.tuple input[type="checkbox"]').forEach(cb =>  {
+				cb.addEventListener('change', c => {
+					let eventDiv = cb.closest('.event');
+					let row = cb.closest('tr');
+					let tupleKey = row.dataset.tuple;
+					if (tupleKey == "") {
+						return;
+					}
+					// update all immediate children
+					eventDiv.querySelectorAll(`[data-parent="${tupleKey}"] input[type="checkbox"]`).forEach(ccb => {
+						ccb.checked = cb.checked;
+					});
+					// recursively call this function
+					// on all child tuple checkboxes.
+					eventDiv.querySelectorAll(`[data-tuple][data-parent="${tupleKey}"] input[type="checkbox"]`).forEach(ccb => {
+						ccb.dispatchEvent(new Event("change"));
+					});
+
+					let parentKey = cb.closest('tr').dataset.parent;
+					if (parentKey == "") {
+						checkHeader(eventDiv);
+						return
+					}
+					checkTuple(eventDiv.querySelector(`[data-tuple="${parentKey}"]`));
+					checkHeader(eventDiv);
+				});
+			});
+
+			// abidata
+			function setColumn(doc, path, value) {
+				path.shift(); //ignore event name
+				let input = null;
+				let inputs = doc.inputs;
+				path.forEach(pathName => {
+					input = inputs.find(inp => inp.name == pathName);
+					if (!input) {
+						return undefined;
+					}
+					inputs = input.components;
+				});
+				input["column"] = value
+			}
+
+			function getPath(eventDiv, row) {
+				let path = [];
+				for (;;) {
+					path.push(row.dataset.field)
+					row = eventDiv.querySelector(`[data-field="${row.dataset.parent}"]`);
+					if (!row) {
+						break;
+					}
+				}
+				return path.reverse();
+			}
+
+			function getEvent(eventDiv, doc) {
+				let name = eventName(eventDiv);
+				let eventDoc = doc.find(e => {
+					return e.type == 'event' && e.name == name;
+				});
+				if (!event) {
+					return {};
+				}
+				eventDiv.querySelectorAll("tr.field:not(.metadata)").forEach(row => {
+					let cb = row.querySelector(`input[type="checkbox"]`);
+					if (!cb) {
+						return;
+					}
+					if (cb.checked) {
+						let dbColumn = row.querySelector("td.dbName span").textContent.trim();
+						setColumn(eventDoc, getPath(eventDiv, row), dbColumn);
+					} else {
+						setColumn(eventDoc, getPath(eventDiv, row), "");
+					}
+				});
+				return eventDoc;
+			}
+
+			function getBlock(eventDiv) {
+				let res = [];
+				eventDiv.querySelectorAll("tr.metadata").forEach(row => {
+					let cb = row.querySelector(`input[type="checkbox"]`);
+					if (!cb || !cb.checked) {
+						return;
+					}
+					let n = row.querySelector("td.name").textContent.trim()
+					let c = row.querySelector("td.dbName span").textContent.trim();
+					res.push({name: n, column: c});
+				});
+				return res;
+			}
+
+			function getChains(eventDiv) {
+				let res = [];
+				eventDiv.querySelectorAll("tr.chain").forEach(row => {
+					let cb = row.querySelector(`input[type="checkbox"]`);
+					if (!cb || !cb.checked) {
+						return;
+					}
+					let n = row.querySelector("td.name").textContent.trim()
+					res.push({name: n});
+				});
+				return res;
+			}
+
+			function getTable(eventDiv) {
+				let tableSelect = eventDiv.querySelector(".eventTable select");
+				let selectedTable = tableSelect.options[tableSelect.selectedIndex];
+				let name = selectedTable.textContent.trim();
+				let columns = [];
+				eventDiv.querySelectorAll("tr.field").forEach(tr => {
+					let cb = tr.querySelector(`input:checked`);
+					if (!cb) {
+						return;
+					}
+					let n = tr.querySelector("td.dbName span").textContent.trim();
+					let t = tr.querySelector("td.dbType span").textContent.trim();
+					columns.push({name: n, type: t});
+				});
+				return {"name": name, "columns": columns};
+			}
+
+			function eventName(eventDiv) {
+				return eventDiv.querySelector(".eventMapping table").dataset.field;
+			}
+
+			document.querySelectorAll(`.eventMapping input[type="submit"`).forEach(input => {
+				input.addEventListener("click", e => {
+					let eventDiv = input.closest('.event');
+					let integration = {};
+					integration["name"] = eventName(eventDiv);
+					integration["enabled"] = true;
+					integration["sources"] = getChains(eventDiv);
+					integration["table"] = getTable(eventDiv);
+					integration["block"] = getBlock(eventDiv);
+					integration["event"] = getEvent(eventDiv, abiDoc);
+
+					console.log(integration);
+
+					post("/save-integration", integration).then(d => {
+						location.href = `/integration/${integration.name}`;
+					}).catch(e => {
+						console.log(e);
+					});
+				});
+			});
+
+			async function post(url, data) {
+				const resp = await fetch(url, {
+					method: "POST",
+					headers: {"Content-Type": "application/json"},
+					body: JSON.stringify(data)
+				});
+				return resp.json();
+			}
+
+			// fieldRow
+			document.querySelectorAll('.eventMapping table tr.field input[type="checkbox"]').forEach(cb =>  {
+				cb.addEventListener('change', c => {
+					let row = cb.closest('tr');
+					let eventDiv = cb.closest('.event');
+
+					let parentKey = row.dataset.parent;
+					let parentRow = eventDiv.querySelector(`[data-tuple="${parentKey}"]`);
+					if (!parentRow) {
+						checkHeader(eventDiv);
+						return
+					}
+					checkTuple(parentRow);
+					checkHeader(eventDiv);
+				});
+			});
+			document.querySelectorAll('.eventHeader input[type="checkbox"]').forEach(cb =>  {
+				cb.addEventListener('change', c => {
+					cb.closest('.event').querySelectorAll('.eventMapping table input[type="checkbox"]').forEach(fcb =>  {
+						fcb.checked = cb.checked;
+					})
+				});
+			});
+			document.querySelectorAll('.eventName').forEach( e => {
+				e.addEventListener('click', c => {
+					e.classList.toggle("expand");
+					let eventDiv = e.closest('.event');
+					eventDiv.querySelectorAll('.eventTable').forEach(t => {
+						if (t.style.display == 'flex') {
+							t.style.display = 'none';
+						} else {
+							t.style.display = 'flex';
+						}
+					});
+					eventDiv.querySelectorAll('.eventMapping').forEach(t => {
+						if (t.style.display == 'flex') {
+							t.style.display = 'none';
+						} else {
+							t.style.display = 'flex';
+						}
+					});
+				});
+			});
+			var draggedRow = null;
+				document.querySelectorAll('tr[draggable="true"]').forEach(d => {
+					d.addEventListener('dragstart', function(e) {
+					draggedRow = e.target.closest('tr');
+				});
+				d.addEventListener('dragover', function(e) {
+					e.preventDefault();
+				});
+				d.addEventListener('drop', function(e) {
+					swapRows(draggedRow, e.target.parentElement)
+				});
+			});
+		}
+		const abiDocTest = [{"anonymous":false,"inputs":[{"indexed":false,"internalType":"bytes32","name":"orderHash","type":"bytes32"},{"indexed":true,"internalType":"address","name":"offerer","type":"address"},{"indexed":true,"internalType":"address","name":"zone","type":"address"},{"indexed":false,"internalType":"address","name":"recipient","type":"address"},{"components":[{"internalType":"enum ItemType","name":"itemType","type":"uint8"},{"internalType":"address","name":"token","type":"address"},{"internalType":"uint256","name":"identifier","type":"uint256"},{"internalType":"uint256","name":"amount","type":"uint256"}],"indexed":false,"internalType":"struct SpentItem[]","name":"offer","type":"tuple[]"},{"components":[{"internalType":"enum ItemType","name":"itemType","type":"uint8"},{"internalType":"address","name":"token","type":"address"},{"internalType":"uint256","name":"identifier","type":"uint256"},{"internalType":"uint256","name":"amount","type":"uint256"},{"internalType":"address payable","name":"recipient","type":"address"}],"indexed":false,"internalType":"struct ReceivedItem[]","name":"consideration","type":"tuple[]"}],"name":"OrderFulfilled","type":"event"}];
+		const ethSources = {{ .Sources }};
+	</script>
+</html>
