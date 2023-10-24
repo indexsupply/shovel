@@ -617,6 +617,7 @@ func loadTasks(ctx context.Context, pgp *pgxpool.Pool, conf Config) ([]*Task, er
 			WithSource(src),
 			WithPG(pgp),
 			WithRange(sc.Start, sc.Stop),
+			WithConcurrency(1, 512),
 			WithDestinations(dests...),
 		))
 	}
