@@ -86,8 +86,6 @@ type testGeth struct {
 	blocks []eth.Block
 }
 
-func (tg *testGeth) ChainID() uint64 { return 0 }
-
 func (tg *testGeth) Hash(n uint64) ([]byte, error) {
 	for j := range tg.blocks {
 		if uint64(tg.blocks[j].Header.Number) == n {
@@ -144,7 +142,7 @@ func TestSetup(t *testing.T) {
 		tg   = &testGeth{}
 		pg   = testpg(t)
 		task = NewTask(
-			WithSource(tg),
+			WithSource(0, "1", tg),
 			WithPG(pg),
 			WithDestinations(newTestDestination()),
 		)
@@ -165,7 +163,7 @@ func TestConverge_Zero(t *testing.T) {
 		tg   = &testGeth{}
 		pg   = testpg(t)
 		task = NewTask(
-			WithSource(tg),
+			WithSource(0, "1", tg),
 			WithPG(pg),
 			WithDestinations(newTestDestination()),
 		)
@@ -179,7 +177,7 @@ func TestConverge_EmptyDestination(t *testing.T) {
 		tg   = &testGeth{}
 		dest = newTestDestination()
 		task = NewTask(
-			WithSource(tg),
+			WithSource(0, "1", tg),
 			WithPG(pg),
 			WithDestinations(dest),
 		)
@@ -198,7 +196,7 @@ func TestConverge_Reorg(t *testing.T) {
 		tg   = &testGeth{}
 		dest = newTestDestination()
 		task = NewTask(
-			WithSource(tg),
+			WithSource(0, "1", tg),
 			WithPG(pg),
 			WithDestinations(dest),
 		)
@@ -229,7 +227,7 @@ func TestConverge_DeltaBatchSize(t *testing.T) {
 		tg   = &testGeth{}
 		dest = newTestDestination()
 		task = NewTask(
-			WithSource(tg),
+			WithSource(0, "1", tg),
 			WithPG(pg),
 			WithConcurrency(workers, batchSize),
 			WithDestinations(dest),
@@ -258,13 +256,14 @@ func TestConverge_MultipleTasks(t *testing.T) {
 		dest1 = newTestDestination()
 		dest2 = newTestDestination()
 		task1 = NewTask(
-			WithSource(tg),
+			WithSource(0, "1", tg),
 			WithPG(pg),
 			WithConcurrency(1, 3),
 			WithDestinations(dest1),
 		)
 		task2 = NewTask(
-			WithBackfillSource(tg, "foo"),
+			WithSource(0, "1", tg),
+			WithBackfill(true),
 			WithPG(pg),
 			WithConcurrency(1, 3),
 			WithDestinations(dest2),
@@ -289,7 +288,7 @@ func TestConverge_LocalAhead(t *testing.T) {
 		pg   = testpg(t)
 		dest = newTestDestination()
 		task = NewTask(
-			WithSource(tg),
+			WithSource(0, "1", tg),
 			WithPG(pg),
 			WithConcurrency(1, 3),
 			WithDestinations(dest),

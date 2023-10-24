@@ -40,7 +40,7 @@ type Handler struct {
 	conf  *e2pg.Config
 
 	clientsMutex sync.Mutex
-	clients      map[string]chan string
+	clients      map[string]chan uint64
 
 	templates map[string]*template.Template
 }
@@ -50,7 +50,7 @@ func New(mgr *e2pg.Manager, conf *e2pg.Config, pgp *pgxpool.Pool) *Handler {
 		pgp:       pgp,
 		mgr:       mgr,
 		conf:      conf,
-		clients:   make(map[string]chan string),
+		clients:   make(map[string]chan uint64),
 		templates: make(map[string]*template.Template),
 	}
 	go func() {
@@ -167,7 +167,7 @@ func (h *Handler) Index(w http.ResponseWriter, r *http.Request) {
 	}
 	view.TaskUpdates = make(map[string]e2pg.TaskUpdate)
 	for _, tu := range tus {
-		view.TaskUpdates[tu.ID] = tu
+		view.TaskUpdates[tu.SrcName] = tu
 	}
 	view.SourceConfigs, err = h.conf.AllSourceConfigs(ctx, h.pgp)
 	if err != nil {
@@ -192,7 +192,7 @@ func (h *Handler) Updates(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Connection", "keep-alive")
 
 	slog.InfoContext(r.Context(), "start sse", "c", r.RemoteAddr, "n", len(h.clients))
-	c := make(chan string)
+	c := make(chan uint64)
 	h.clientsMutex.Lock()
 	h.clients[r.RemoteAddr] = c
 	h.clientsMutex.Unlock()
@@ -205,29 +205,30 @@ func (h *Handler) Updates(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	for {
-		var tid string
 		select {
-		case tid = <-c:
+		case <-c:
 		case <-r.Context().Done(): // disconnect
 			return
 		}
-		tu, err := e2pg.TaskUpdate1(r.Context(), h.pgp, tid)
+		tus, err := e2pg.TaskUpdates(r.Context(), h.pgp)
 		if err != nil {
 			slog.ErrorContext(r.Context(), "json error", "e", err)
 			return
 		}
-		sjson, err := json.Marshal(tu)
-		if err != nil {
-			slog.ErrorContext(r.Context(), "json error", "e", err)
-			return
+		for i := range tus {
+			sjson, err := json.Marshal(tus[i])
+			if err != nil {
+				slog.ErrorContext(r.Context(), "json error", "e", err)
+				return
+			}
+			fmt.Fprintf(w, "data: %s\n\n", sjson)
+			flusher, ok := w.(http.Flusher)
+			if !ok {
+				http.Error(w, "Streaming unsupported", http.StatusInternalServerError)
+				return
+			}
+			flusher.Flush()
 		}
-		fmt.Fprintf(w, "data: %s\n\n", sjson)
-		flusher, ok := w.(http.Flusher)
-		if !ok {
-			http.Error(w, "Streaming unsupported", http.StatusInternalServerError)
-			return
-		}
-		flusher.Flush()
 	}
 }
 

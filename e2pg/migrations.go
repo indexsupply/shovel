@@ -34,4 +34,15 @@ var Migrations = map[int]pgmig.Migration{
 			alter table e2pg.task add column dstat jsonb;
 		`,
 	},
+	11: pgmig.Migration{
+		SQL: `
+				delete from e2pg.task where insert_at < now() - '2 hours'::interval;
+				alter table e2pg.task add column backfill bool default false;
+				alter table e2pg.task add column src_name text;
+				update e2pg.task set src_name = split_part(id, '-', 1);
+				alter table e2pg.task drop column id;
+				create unique index on e2pg.task(src_name, num desc) where backfill = true;
+				create unique index on e2pg.task(src_name, num desc) where backfill = false;
+			`,
+	},
 }

@@ -60,13 +60,6 @@ func main() {
 		}
 		return "chain", fmt.Sprintf("%.5d", id)
 	})
-	lh.RegisterContext(func(ctx context.Context) (string, any) {
-		id := wctx.TaskID(ctx)
-		if id == "" {
-			return "", nil
-		}
-		return "task", id
-	})
 	slog.SetDefault(slog.New(lh.WithAttrs([]slog.Attr{
 		slog.Int("p", os.Getpid()),
 		slog.String("v", Commit),
@@ -126,7 +119,7 @@ func main() {
 		check(pprof.StartCPUProfile(&pbuf))
 	}
 
-	go mgr.Run()
+	check(mgr.Run())
 
 	switch profile {
 	case "cpu":

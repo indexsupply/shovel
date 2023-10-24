@@ -44,7 +44,6 @@ CREATE TABLE e2pg.sources (
 
 
 CREATE TABLE e2pg.task (
-    id text NOT NULL,
     num bigint,
     hash bytea,
     insert_at timestamp with time zone DEFAULT now(),
@@ -53,7 +52,9 @@ CREATE TABLE e2pg.task (
     nblocks numeric,
     nrows numeric,
     latency interval,
-    dstat jsonb
+    dstat jsonb,
+    backfill boolean DEFAULT false,
+    src_name text
 );
 
 
@@ -71,7 +72,11 @@ CREATE UNIQUE INDEX sources_name_idx ON e2pg.sources USING btree (name);
 
 
 
-CREATE INDEX task_id_number_idx ON e2pg.task USING btree (id, num DESC);
+CREATE INDEX task_src_name_num_idx ON e2pg.task USING btree (src_name, num DESC) WHERE (backfill = true);
+
+
+
+CREATE INDEX task_src_name_num_idx1 ON e2pg.task USING btree (src_name, num DESC) WHERE (backfill = false);
 
 
 

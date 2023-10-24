@@ -111,9 +111,8 @@
 		</div>
 		<div class="tasks">
 			{{ range $sc := .SourceConfigs -}}
-				{{ $tid  := (printf "%d-main" $sc.ChainID) -}}
-				{{ with $tu := (index $.TaskUpdates $tid) -}}
-				<div class="task" id="{{ $tid }}">
+				{{ with $tu := (index $.TaskUpdates $sc.Name) -}}
+				<div class="task" id="{{ $sc.Name }}">
 					<div class="source">
 						<div class="Name">{{ $sc.Name }}</div>
 						<div class="NRows">{{ $tu.NRows }}</div>
@@ -123,7 +122,7 @@
 					</div>
 					<div class="destinations" style="display:none;">
 						{{ range $name, $stat := $tu.Dstat -}}
-						<div class="destination" id="{{ $tu.ID }}-{{$name}}">
+						<div class="destination" id="{{ $tu.SrcName }}-{{$name}}">
 							<div class="Name">{{ $name }}</div>
 							<div class="NRows">{{ $stat.NRows }}</div>
 							<div class="Latency">{{ $stat.Latency }}</div>
@@ -160,13 +159,13 @@
 			let updates = new EventSource("/task-updates");
 			updates.onmessage = function(event) {
 				const tu = JSON.parse(event.data);
-				update(tu.ID, "Num", comma(tu.Num));
-				update(tu.ID, "Hash", tu.Hash);
-				update(tu.ID, "Latency", tu.Latency);
-				update(tu.ID, "NRows", tu.NRows);
+				update(tu.SrcName, "Num", comma(tu.Num));
+				update(tu.SrcName, "Hash", tu.Hash);
+				update(tu.SrcName, "Latency", tu.Latency);
+				update(tu.SrcName, "NRows", tu.NRows);
 				for (const [k1, v1] of Object.entries(tu.Dstat)) {
 					for (const [k2, v2] of Object.entries(v1)) {
-						update(`${tu.ID}-${k1}`, k2, v2);
+						update(`${tu.SrcName}-${k1}`, k2, v2);
 					}
 				}
 			};
