@@ -649,7 +649,7 @@ func (ig Integration) Insert(ctx context.Context, pg wpg.Conn, blocks []eth.Bloc
 		err  error
 		skip bool
 		rows [][]any
-		lwc  = &logWithCtx{ctx: ctx}
+		lwc  = &logWithCtx{ctx: wctx.WithIntgName(ctx, ig.Name())}
 	)
 	for bidx := range blocks {
 		lwc.b = &blocks[bidx]
@@ -693,8 +693,10 @@ type logWithCtx struct {
 
 func (lwc *logWithCtx) get(name string) any {
 	switch name {
-	case "task_id":
-		return wctx.TaskID(lwc.ctx)
+	case "src_name":
+		return wctx.SrcName(lwc.ctx)
+	case "intg_name":
+		return wctx.IntgName(lwc.ctx)
 	case "chain_id":
 		return wctx.ChainID(lwc.ctx)
 	case "block_hash":

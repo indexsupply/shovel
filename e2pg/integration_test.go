@@ -66,7 +66,7 @@ func (th *Helper) Process(dest Destination, n uint64) {
 	var (
 		geth = NewGeth(th.gt.FileCache, th.gt.Client)
 		task = NewTask(
-			WithSource(geth),
+			WithSource(0, "", geth),
 			WithPG(th.PG),
 			WithDestinations(dest),
 		)
