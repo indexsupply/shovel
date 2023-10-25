@@ -106,6 +106,7 @@ func WithDestinations(dests ...Destination) Option {
 		t.dests = dests
 		t.filter = filter
 		t.dstat = dstat
+		t.iub = newIUB(len(t.dests))
 	}
 }
 
@@ -143,6 +144,7 @@ type Task struct {
 
 	dstatMut sync.Mutex
 	dstat    map[string]Dstat
+	iub      *intgUpdateBuf
 
 	filter    [][]byte
 	batch     []eth.Block
@@ -367,6 +369,9 @@ func (task *Task) Converge(notx bool) error {
 			if err != nil {
 				return fmt.Errorf("updating task table: %w", err)
 			}
+			if err := task.iub.write(task.ctx, pg); err != nil {
+				return fmt.Errorf("updating integrations: %w", err)
+			}
 			if err := commit(); err != nil {
 				return fmt.Errorf("commit converge tx: %w", err)
 			}
@@ -425,9 +430,15 @@ func (task *Task) loadinsert(localHash []byte, pg wpg.Conn, delta uint64) (int64
 			for j := range task.dests {
 				j := j
 				eg3.Go(func() error {
-					t0 := time.Now()
+					start := time.Now()
 					count, err := task.dests[j].Insert(task.ctx, pg, blks)
-					task.dstatw(task.dests[j].Name(), count, time.Since(t0))
+					task.dstatw(task.dests[j].Name(), count, time.Since(start))
+					task.iub.updates[j].Name = task.dests[j].Name()
+					task.iub.updates[j].SrcName = task.srcName
+					task.iub.updates[j].Backfill = task.backfill
+					task.iub.updates[j].Num = task.batch[delta-1].Num()
+					task.iub.updates[j].NRows = count
+					task.iub.updates[j].Latency = time.Since(start)
 					nrows += count
 					return err
 				})
@@ -436,6 +447,108 @@ func (task *Task) loadinsert(localHash []byte, pg wpg.Conn, delta uint64) (int64
 		})
 	}
 	return nrows, eg2.Wait()
+}
+
+type intgUpdate struct {
+	Name     string        `db:"name"`
+	SrcName  string        `db:"src_name"`
+	Backfill bool          `db:"backfill"`
+	Num      uint64        `db:"num"`
+	Latency  time.Duration `db:"latency"`
+	NRows    int64         `db:"nrows"`
+}
+
+func newIUB(n int) *intgUpdateBuf {
+	iub := &intgUpdateBuf{}
+	iub.updates = make([]intgUpdate, n)
+	iub.table = pgx.Identifier{"e2pg", "intg"}
+	iub.cols = []string{"name", "src_name", "backfill", "num", "latency", "nrows"}
+	return iub
+}
+
+type intgUpdateBuf struct {
+	i       int
+	updates []intgUpdate
+	out     [6]any
+	table   pgx.Identifier
+	cols    []string
+}
+
+func (b *intgUpdateBuf) Next() bool {
+	return b.i < len(b.updates)
+}
+
+func (b *intgUpdateBuf) Err() error {
+	return nil
+}
+
+func (b *intgUpdateBuf) Values() ([]any, error) {
+	if b.i >= len(b.updates) {
+		return nil, fmt.Errorf("no intg_update at idx %d len=%d", b.i, len(b.updates))
+	}
+	b.out[0] = b.updates[b.i].Name
+	b.out[1] = b.updates[b.i].SrcName
+	b.out[2] = b.updates[b.i].Backfill
+	b.out[3] = b.updates[b.i].Num
+	b.out[4] = b.updates[b.i].Latency
+	b.out[5] = b.updates[b.i].NRows
+	b.i++
+	return b.out[:], nil
+}
+
+func (b *intgUpdateBuf) write(ctx context.Context, pg wpg.Conn) error {
+	_, err := pg.CopyFrom(ctx, b.table, b.cols, b)
+	b.i = 0 // reset
+	return err
+}
+
+func PruneTask(ctx context.Context, pg wpg.Conn, n int) error {
+	const q = `
+		delete from e2pg.task
+		where (src_name, backfill, num) not in (
+			select src_name, backfill, num
+			from (
+				select
+					src_name,
+					backfill,
+					num,
+					row_number() over(partition by src_name, backfill order by num desc) as rn
+				from e2pg.intg
+			) as s
+			where rn <= $1
+		)
+	`
+	cmd, err := pg.Exec(ctx, q, n)
+	if err != nil {
+		return fmt.Errorf("deleting e2pg.task: %w", err)
+	}
+	slog.InfoContext(ctx, "prune-task", "n", cmd.RowsAffected())
+	return nil
+}
+
+func PruneIntg(ctx context.Context, pg wpg.Conn, n int) error {
+	const q = `
+		delete from e2pg.intg
+		where (name, src_name, backfill, num) not in (
+			select name, src_name, backfill, num
+			from (
+				select
+					name,
+					src_name,
+					backfill,
+					num,
+					row_number() over(partition by name, src_name, backfill order by num desc) as rn
+				from e2pg.intg
+			) as s
+			where rn <= $1
+		)
+	`
+	cmd, err := pg.Exec(ctx, q, n)
+	if err != nil {
+		return fmt.Errorf("deleting e2pg.intg: %w", err)
+	}
+	slog.InfoContext(ctx, "prune-intg", "n", cmd.RowsAffected())
+	return nil
 }
 
 type jsonDuration time.Duration

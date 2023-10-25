@@ -36,13 +36,27 @@ var Migrations = map[int]pgmig.Migration{
 	},
 	11: pgmig.Migration{
 		SQL: `
-				delete from e2pg.task where insert_at < now() - '2 hours'::interval;
-				alter table e2pg.task add column backfill bool default false;
-				alter table e2pg.task add column src_name text;
-				update e2pg.task set src_name = split_part(id, '-', 1);
-				alter table e2pg.task drop column id;
-				create unique index on e2pg.task(src_name, num desc) where backfill = true;
-				create unique index on e2pg.task(src_name, num desc) where backfill = false;
-			`,
+			delete from e2pg.task where insert_at < now() - '2 hours'::interval;
+			alter table e2pg.task add column backfill bool default false;
+			alter table e2pg.task add column src_name text;
+			update e2pg.task set src_name = split_part(id, '-', 1);
+			alter table e2pg.task drop column id;
+			create unique index on e2pg.task(src_name, num desc) where backfill = true;
+			create unique index on e2pg.task(src_name, num desc) where backfill = false;
+		`,
+	},
+	12: pgmig.Migration{
+		SQL: `
+			create table e2pg.intg (
+				name text not null,
+				src_name text not null,
+				backfill bool default false,
+				num numeric not null,
+				latency interval,
+				nrows numeric
+			);
+			create unique index on e2pg.intg(name, src_name, num desc) where backfill;
+			create unique index on e2pg.intg(name, src_name, num desc) where not backfill;
+		`,
 	},
 }
