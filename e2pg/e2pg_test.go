@@ -302,3 +302,22 @@ func TestConverge_LocalAhead(t *testing.T) {
 
 	diff.Test(t, t.Errorf, task.Converge(true), ErrAhead)
 }
+
+func TestPruneTask(t *testing.T) {
+	pg := testpg(t)
+	it := func(n uint8) {
+		_, err := pg.Exec(context.Background(), `
+			insert into e2pg.task(src_name, backfill, num, hash)
+			values ($1, false, $2, $3)
+		`, "foo", n, hash(n))
+		if err != nil {
+			t.Fatalf("inserting task: %d", n)
+		}
+	}
+	for i := uint8(0); i < 10; i++ {
+		it(i)
+	}
+	checkQuery(t, pg, `select count(*) = 10 from e2pg.task`)
+	PruneTask(context.Background(), pg, 1)
+	checkQuery(t, pg, `select count(*) = 1 from e2pg.task`)
+}

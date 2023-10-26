@@ -513,7 +513,7 @@ func PruneTask(ctx context.Context, pg wpg.Conn, n int) error {
 					backfill,
 					num,
 					row_number() over(partition by src_name, backfill order by num desc) as rn
-				from e2pg.intg
+				from e2pg.task
 			) as s
 			where rn <= $1
 		)
