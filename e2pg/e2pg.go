@@ -221,27 +221,6 @@ func (task *Task) Setup() error {
 	return task.Insert(gethNum-1, h)
 }
 
-func (task *Task) Run1(updates chan<- uint64, notx bool) {
-	switch err := task.Converge(notx); {
-	case errors.Is(err, ErrDone):
-		return
-	case errors.Is(err, ErrNothingNew):
-		time.Sleep(time.Second)
-	case err != nil:
-		time.Sleep(time.Second)
-		slog.ErrorContext(task.ctx, "error", err)
-	default:
-		go func() {
-			// try out best to deliver update
-			// but don't stack up work
-			select {
-			case updates <- task.chainID:
-			default:
-			}
-		}()
-	}
-}
-
 var (
 	ErrNothingNew = errors.New("no new blocks")
 	ErrReorg      = errors.New("reorg")
@@ -647,17 +626,31 @@ func (tm *Manager) Updates() uint64 {
 	return <-tm.updates
 }
 
-func (tm *Manager) runTask(t *Task) error {
-	if err := t.Setup(); err != nil {
-		return fmt.Errorf("setting up task: %w", err)
-	}
+func (tm *Manager) runTask(t *Task) {
 	for {
 		select {
 		case <-tm.restart:
 			slog.Info("restart-task", "chain", t.chainID)
-			return nil
+			return
 		default:
-			t.Run1(tm.updates, false)
+			switch err := t.Converge(false); {
+			case errors.Is(err, ErrDone):
+				return
+			case errors.Is(err, ErrNothingNew):
+				time.Sleep(time.Second)
+			case err != nil:
+				time.Sleep(time.Second)
+				slog.ErrorContext(t.ctx, "error", err)
+			default:
+				go func() {
+					// try out best to deliver update
+					// but don't stack up work
+					select {
+					case tm.updates <- t.chainID:
+					default:
+					}
+				}()
+			}
 		}
 	}
 }
@@ -669,28 +662,35 @@ func (tm *Manager) Restart() {
 	go tm.Run()
 }
 
+func (tm *Manager) Load() (err error) {
+	tm.tasks, err = loadTasks(context.Background(), tm.pgp, tm.conf)
+	if err != nil {
+		return fmt.Errorf("loading tasks: %w", err)
+	}
+	for i := range tm.tasks {
+		if err = tm.tasks[i].Setup(); err != nil {
+			return fmt.Errorf("setting up task: %w", err)
+		}
+	}
+	return nil
+}
+
 // Loads ethereum sources and integrations from both the config file
 // and the database and assembles the nessecary tasks and runs all
 // tasks in a loop.
 //
 // Acquires a lock to ensure only on routine is running.
 // Releases lock on return
-func (tm *Manager) Run() error {
+func (tm *Manager) Run() {
 	tm.running.Lock()
 	defer tm.running.Unlock()
 	tm.restart = make(chan struct{})
-	tasks, err := loadTasks(context.Background(), tm.pgp, tm.conf)
-	if err != nil {
-		return fmt.Errorf("loading tasks: %w", err)
-	}
 	var eg errgroup.Group
-	for i := range tasks {
+	for i := range tm.tasks {
 		i := i
-		eg.Go(func() error {
-			return tm.runTask(tasks[i])
-		})
+		eg.Go(func() error { tm.runTask(tm.tasks[i]); return nil })
 	}
-	return eg.Wait()
+	eg.Wait()
 }
 
 func loadTasks(ctx context.Context, pgp *pgxpool.Pool, conf Config) ([]*Task, error) {

@@ -126,7 +126,9 @@ func main() {
 			time.Sleep(time.Minute * 10)
 		}
 	}()
-	check(mgr.Run())
+
+	check(mgr.Load())
+	mgr.Run()
 
 	switch profile {
 	case "cpu":
