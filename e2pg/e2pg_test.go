@@ -359,9 +359,9 @@ func TestPruneIntg(t *testing.T) {
 		diff.Test(t, t.Fatalf, err, nil)
 	}
 	checkQuery(t, pg, `select count(*) = 11 from e2pg.intg`)
-	err = PruneIntg(ctx, pg, 10)
+	err = PruneIntg(ctx, pg)
 	diff.Test(t, t.Fatalf, err, nil)
-	checkQuery(t, pg, `select count(*) = 10 from e2pg.intg`)
+	checkQuery(t, pg, `select count(*) = 2 from e2pg.intg`)
 
 	iub.updates[0].Name = "foo"
 	iub.updates[0].SrcName = "baz"
@@ -369,9 +369,9 @@ func TestPruneIntg(t *testing.T) {
 	err = iub.write(ctx, pg)
 	diff.Test(t, t.Fatalf, err, nil)
 	checkQuery(t, pg, `select count(*) = 1 from e2pg.intg where src_name = 'baz'`)
-	checkQuery(t, pg, `select count(*) = 11 from e2pg.intg`)
+	checkQuery(t, pg, `select count(*) = 3 from e2pg.intg`)
 
-	err = PruneIntg(ctx, pg, 10)
+	err = PruneIntg(ctx, pg)
 	diff.Test(t, t.Fatalf, err, nil)
-	checkQuery(t, pg, `select count(*) = 11 from e2pg.intg`)
+	checkQuery(t, pg, `select count(*) = 3 from e2pg.intg`)
 }

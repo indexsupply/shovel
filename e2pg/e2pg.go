@@ -526,24 +526,20 @@ func PruneTask(ctx context.Context, pg wpg.Conn, n int) error {
 	return nil
 }
 
-func PruneIntg(ctx context.Context, pg wpg.Conn, n int) error {
+func PruneIntg(ctx context.Context, pg wpg.Conn) error {
 	const q = `
 		delete from e2pg.intg
 		where (name, src_name, backfill, num) not in (
-			select name, src_name, backfill, num
-			from (
-				select
-					name,
-					src_name,
-					backfill,
-					num,
-					row_number() over(partition by name, src_name, backfill order by num desc) as rn
-				from e2pg.intg
-			) as s
-			where rn <= $1
+			select name, src_name, backfill, max(num)
+			from e2pg.intg
+			group by name, src_name, backfill
+			union
+			select name, src_name, backfill, min(num)
+			from e2pg.intg
+			group by name, src_name, backfill
 		)
 	`
-	cmd, err := pg.Exec(ctx, q, n)
+	cmd, err := pg.Exec(ctx, q)
 	if err != nil {
 		return fmt.Errorf("deleting e2pg.intg: %w", err)
 	}

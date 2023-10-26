@@ -121,7 +121,7 @@ func main() {
 
 	go func() {
 		for {
-			check(e2pg.PruneIntg(ctx, pg, 200))
+			check(e2pg.PruneIntg(ctx, pg))
 			check(e2pg.PruneTask(ctx, pg, 200))
 			time.Sleep(time.Minute * 10)
 		}
