@@ -59,4 +59,11 @@ var Migrations = map[int]pgmig.Migration{
 			create unique index on e2pg.intg(name, src_name, num desc) where not backfill;
 		`,
 	},
+	13: pgmig.Migration{
+		SQL: `
+			drop index e2pg.intg_name_src_name_num_idx;
+			drop index e2pg.intg_name_src_name_num_idx1;
+			create unique index on e2pg.intg(name, src_name, backfill, num desc);
+		`,
+	},
 }

@@ -197,7 +197,7 @@ func TestConverge_Reorg(t *testing.T) {
 		tg   = &testGeth{}
 		dest = newTestDestination()
 		task = NewTask(
-			WithSource(0, "1", tg),
+			WithSource(0, "", tg),
 			WithPG(pg),
 			WithDestinations(dest),
 		)
@@ -210,12 +210,41 @@ func TestConverge_Reorg(t *testing.T) {
 	dest.add(0, hash(0), hash(0))
 	dest.add(1, hash(2), hash(0))
 
-	task.Insert(0, hash(0))
-	task.Insert(1, hash(1))
+	taskAdd(t, pg, "", 0, hash(0), dest.Name())
+	taskAdd(t, pg, "", 1, hash(1), dest.Name())
 
 	diff.Test(t, t.Fatalf, task.Converge(false), nil)
 	diff.Test(t, t.Fatalf, task.Converge(false), nil)
 	diff.Test(t, t.Errorf, dest.blocks(), tg.blocks)
+}
+
+func taskAdd(
+	tb testing.TB,
+	pg wpg.Conn,
+	srcName string,
+	n uint64,
+	h []byte,
+	intgs ...string,
+) {
+	ctx := context.Background()
+	const q1 = `
+		insert into e2pg.task(src_name, backfill, num, hash)
+		values ($1, false, $2, $3)
+	`
+	_, err := pg.Exec(ctx, q1, srcName, n, h)
+	if err != nil {
+		tb.Fatalf("inserting task %d %.4x %s", n, h, err)
+	}
+	for i := range intgs {
+		const q1 = `
+			insert into e2pg.intg(name, src_name, backfill, num)
+			values ($1, $2, false, $3)
+		`
+		_, err := pg.Exec(ctx, q1, intgs[i], srcName, n)
+		if err != nil {
+			tb.Fatalf("inserting task %d %.4x %s", n, h, err)
+		}
+	}
 }
 
 func TestConverge_DeltaBatchSize(t *testing.T) {
@@ -349,7 +378,7 @@ func TestPruneIntg(t *testing.T) {
 	checkQuery(t, pg, `select count(*) = 1 from e2pg.intg`)
 
 	err = iub.write(ctx, pg)
-	if err == nil || !strings.Contains(err.Error(), "intg_name_src_name_num_idx1") {
+	if err == nil || !strings.Contains(err.Error(), "intg_name_src_name_backfill_num_idx") {
 		t.Errorf("expected 2nd write to return unique error")
 	}
 

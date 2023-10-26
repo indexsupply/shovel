@@ -319,13 +319,23 @@ func (task *Task) Converge(notx bool) error {
 		case errors.Is(err, ErrReorg):
 			reorgs++
 			slog.ErrorContext(task.ctx, "reorg", "n", localNum, "h", fmt.Sprintf("%.4x", localHash))
-			const dq = `
+			const rq1 = `
 				delete from e2pg.task
 				where src_name = $1
 				and backfill = $2
 				and num >= $3
 			`
-			_, err := pg.Exec(task.ctx, dq, task.srcName, task.backfill, localNum)
+			_, err := pg.Exec(task.ctx, rq1, task.srcName, task.backfill, localNum)
+			if err != nil {
+				return fmt.Errorf("deleting block from task table: %w", err)
+			}
+			const rq2 = `
+				delete from e2pg.intg
+				where src_name = $1
+				and backfill = $2
+				and num >= $3
+			`
+			_, err = pg.Exec(task.ctx, rq2, task.srcName, task.backfill, localNum)
 			if err != nil {
 				return fmt.Errorf("deleting block from task table: %w", err)
 			}

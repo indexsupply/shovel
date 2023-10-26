@@ -75,11 +75,7 @@ ALTER TABLE ONLY e2pg.migrations
 
 
 
-CREATE UNIQUE INDEX intg_name_src_name_num_idx ON e2pg.intg USING btree (name, src_name, num DESC) WHERE backfill;
-
-
-
-CREATE UNIQUE INDEX intg_name_src_name_num_idx1 ON e2pg.intg USING btree (name, src_name, num DESC) WHERE (NOT backfill);
+CREATE UNIQUE INDEX intg_name_src_name_backfill_num_idx ON e2pg.intg USING btree (name, src_name, backfill, num DESC);
 
 
 
