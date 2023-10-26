@@ -69,14 +69,14 @@ func (th *Helper) Process(dest Destination, n uint64) {
 			WithSource(0, "", geth),
 			WithPG(th.PG),
 			WithDestinations(dest),
+			WithRange(n, n+1),
 		)
 	)
 	cur, err := geth.Hash(n)
 	check(th.tb, err)
-	prev, err := geth.Hash(n - 1)
-	check(th.tb, err)
 	th.gt.SetLatest(n, cur)
-	check(th.tb, task.Insert(n-1, prev))
+
+	check(th.tb, task.Setup())
 	check(th.tb, task.Converge(true))
 }
 

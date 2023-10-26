@@ -143,7 +143,7 @@ func TestSetup(t *testing.T) {
 		tg   = &testGeth{}
 		pg   = testpg(t)
 		task = NewTask(
-			WithSource(0, "1", tg),
+			WithSource(0, "foo", tg),
 			WithPG(pg),
 			WithDestinations(newTestDestination()),
 		)
@@ -153,10 +153,13 @@ func TestSetup(t *testing.T) {
 	tg.add(2, hash(2), hash(1))
 	diff.Test(t, t.Errorf, task.Setup(), nil)
 
-	n, h, err := task.Latest()
-	diff.Test(t, t.Errorf, err, nil)
-	diff.Test(t, t.Errorf, n, uint64(1))
-	diff.Test(t, t.Errorf, h, hash(1))
+	checkQuery(t, pg, `
+		select true
+		from e2pg.task
+		where src_name = 'foo'
+		and hash = $1
+		and num = $2
+	`, hash(1), uint64(1))
 }
 
 func TestConverge_Zero(t *testing.T) {
@@ -164,7 +167,7 @@ func TestConverge_Zero(t *testing.T) {
 		tg   = &testGeth{}
 		pg   = testpg(t)
 		task = NewTask(
-			WithSource(0, "1", tg),
+			WithSource(0, "foo", tg),
 			WithPG(pg),
 			WithDestinations(newTestDestination()),
 		)
@@ -178,7 +181,7 @@ func TestConverge_EmptyDestination(t *testing.T) {
 		tg   = &testGeth{}
 		dest = newTestDestination()
 		task = NewTask(
-			WithSource(0, "1", tg),
+			WithSource(0, "foo", tg),
 			WithPG(pg),
 			WithDestinations(dest),
 		)
@@ -186,7 +189,7 @@ func TestConverge_EmptyDestination(t *testing.T) {
 	tg.add(0, hash(0), hash(0))
 	tg.add(1, hash(1), hash(0))
 	dest.add(0, hash(0), hash(0))
-	task.Insert(0, hash(0))
+	taskAdd(t, pg, "foo", 0, hash(0))
 	diff.Test(t, t.Fatalf, task.Converge(true), nil)
 	diff.Test(t, t.Errorf, dest.blocks(), tg.blocks)
 }
@@ -197,7 +200,7 @@ func TestConverge_Reorg(t *testing.T) {
 		tg   = &testGeth{}
 		dest = newTestDestination()
 		task = NewTask(
-			WithSource(0, "", tg),
+			WithSource(0, "foo", tg),
 			WithPG(pg),
 			WithDestinations(dest),
 		)
@@ -210,8 +213,8 @@ func TestConverge_Reorg(t *testing.T) {
 	dest.add(0, hash(0), hash(0))
 	dest.add(1, hash(2), hash(0))
 
-	taskAdd(t, pg, "", 0, hash(0), dest.Name())
-	taskAdd(t, pg, "", 1, hash(1), dest.Name())
+	taskAdd(t, pg, "foo", 0, hash(0), dest.Name())
+	taskAdd(t, pg, "foo", 1, hash(1), dest.Name())
 
 	diff.Test(t, t.Fatalf, task.Converge(false), nil)
 	diff.Test(t, t.Fatalf, task.Converge(false), nil)
@@ -257,7 +260,7 @@ func TestConverge_DeltaBatchSize(t *testing.T) {
 		tg   = &testGeth{}
 		dest = newTestDestination()
 		task = NewTask(
-			WithSource(0, "1", tg),
+			WithSource(0, "foo", tg),
 			WithPG(pg),
 			WithConcurrency(workers, batchSize),
 			WithDestinations(dest),
@@ -266,7 +269,7 @@ func TestConverge_DeltaBatchSize(t *testing.T) {
 
 	tg.add(0, hash(0), hash(0))
 	dest.add(0, hash(0), hash(0))
-	task.Insert(0, hash(0))
+	taskAdd(t, pg, "foo", 0, hash(0))
 
 	for i := uint64(1); i <= batchSize+1; i++ {
 		tg.add(i, hash(byte(i)), hash(byte(i-1)))
@@ -286,14 +289,13 @@ func TestConverge_MultipleTasks(t *testing.T) {
 		dest1 = newTestDestination()
 		dest2 = newTestDestination()
 		task1 = NewTask(
-			WithSource(0, "1", tg),
+			WithSource(0, "a", tg),
 			WithPG(pg),
 			WithConcurrency(1, 3),
 			WithDestinations(dest1),
 		)
 		task2 = NewTask(
-			WithSource(0, "1", tg),
-			WithBackfill(true),
+			WithSource(0, "b", tg),
 			WithPG(pg),
 			WithConcurrency(1, 3),
 			WithDestinations(dest2),
@@ -302,8 +304,8 @@ func TestConverge_MultipleTasks(t *testing.T) {
 	tg.add(1, hash(1), hash(0))
 	tg.add(2, hash(2), hash(1))
 
-	task1.Insert(0, hash(0))
-	task2.Insert(0, hash(0))
+	taskAdd(t, pg, "a", 0, hash(0))
+	taskAdd(t, pg, "b", 0, hash(0))
 
 	diff.Test(t, t.Errorf, task1.Converge(true), nil)
 	diff.Test(t, t.Errorf, dest1.blocks(), tg.blocks)
@@ -318,7 +320,7 @@ func TestConverge_LocalAhead(t *testing.T) {
 		pg   = testpg(t)
 		dest = newTestDestination()
 		task = NewTask(
-			WithSource(0, "1", tg),
+			WithSource(0, "foo", tg),
 			WithPG(pg),
 			WithConcurrency(1, 3),
 			WithDestinations(dest),
@@ -326,16 +328,16 @@ func TestConverge_LocalAhead(t *testing.T) {
 	)
 	tg.add(1, hash(1), hash(0))
 
-	task.Insert(0, hash(0))
-	task.Insert(1, hash(1))
-	task.Insert(2, hash(2))
+	taskAdd(t, pg, "foo", 0, hash(0))
+	taskAdd(t, pg, "foo", 1, hash(1))
+	taskAdd(t, pg, "foo", 2, hash(2))
 
 	diff.Test(t, t.Errorf, task.Converge(true), ErrAhead)
 }
 
-func checkQuery(tb testing.TB, pg wpg.Conn, query string) {
+func checkQuery(tb testing.TB, pg wpg.Conn, query string, args ...any) {
 	var found bool
-	err := pg.QueryRow(context.Background(), query).Scan(&found)
+	err := pg.QueryRow(context.Background(), query, args...).Scan(&found)
 	diff.Test(tb, tb.Fatalf, err, nil)
 	if !found {
 		tb.Errorf("query\n%s\nreturned false", query)

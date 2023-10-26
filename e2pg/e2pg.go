@@ -163,62 +163,60 @@ func (t *Task) dstatw(name string, n int64, d time.Duration) {
 	t.dstat[name] = s
 }
 
-func (task *Task) Insert(n uint64, h []byte) error {
-	const q = `
-		insert into e2pg.task (src_name, backfill, num, hash)
-		values ($1, $2, $3, $4)
-	`
-	_, err := task.pgp.Exec(task.ctx, q,
-		task.srcName,
-		task.backfill,
-		n,
-		h,
-	)
-	return err
-}
-
-func (task *Task) Latest() (uint64, []byte, error) {
-	const q = `
-		select num, hash
+func (task *Task) Setup() error {
+	const q1 = `
+		select true
 		from e2pg.task
 		where src_name = $1
 		and backfill = $2
-		order by num desc
 		limit 1
 	`
-	var n, h = uint64(0), []byte{}
-	err := task.pgp.QueryRow(task.ctx, q, task.srcName, task.backfill).Scan(&n, &h)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return n, nil, nil
+	var f bool
+	err := task.pgp.QueryRow(task.ctx, q1, task.srcName, task.backfill).Scan(&f)
+	switch {
+	case errors.Is(err, pgx.ErrNoRows):
+		break
+	case err != nil:
+		return fmt.Errorf("querying for latest task update: %w", err)
+	default:
+		return nil // already setup
 	}
-	return n, h, err
-}
-
-func (task *Task) Setup() error {
-	_, localHash, err := task.Latest()
-	if err != nil {
-		return err
-	}
-	if len(localHash) > 0 {
-		// already setup
-		return nil
-	}
-	if task.start > 0 {
+	const insertQuery = `
+		insert into e2pg.task(src_name, backfill, hash, num)
+		values ($1, $2, $3, $4)
+	`
+	switch {
+	case task.start > 0:
 		h, err := task.src.Hash(task.start - 1)
 		if err != nil {
 			return err
 		}
-		return task.Insert(task.start-1, h)
-	}
-	gethNum, _, err := task.src.Latest()
-	if err != nil {
+		_, err = task.pgp.Exec(task.ctx,
+			insertQuery,
+			task.srcName,
+			task.backfill,
+			h,
+			task.start-1,
+		)
+		return err
+	default:
+		gethNum, _, err := task.src.Latest()
+		if err != nil {
+			return err
+		}
+		h, err := task.src.Hash(gethNum - 1)
+		if err != nil {
+			return fmt.Errorf("getting hash for %d: %w", gethNum-1, err)
+		}
+		_, err = task.pgp.Exec(task.ctx,
+			insertQuery,
+			task.srcName,
+			task.backfill,
+			h,
+			gethNum-1,
+		)
 		return err
 	}
-	h, err := task.src.Hash(gethNum - 1)
-	if err != nil {
-		return fmt.Errorf("getting hash for %d: %w", gethNum-1, err)
-	}
-	return task.Insert(gethNum-1, h)
 }
 
 var (
