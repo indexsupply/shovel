@@ -167,6 +167,34 @@ func (t *Task) dstatw(name string, n int64, d time.Duration) {
 
 func (t *Task) Setup() error {
 	switch {
+	case t.backfill:
+		var maxStart uint64
+		for i, d := range t.dests {
+			err := t.destRanges[i].load(t.ctx, t.pgp, d.Name(), t.srcName)
+			if err != nil {
+				return fmt.Errorf("loading dest range for %s/%s: %w", d.Name(), t.srcName, err)
+			}
+			if maxStart == 0 || maxStart < t.destRanges[i].start {
+				maxStart = t.destRanges[i].start
+			}
+		}
+		h, err := t.src.Hash(maxStart)
+		if err != nil {
+			return fmt.Errorf("getting hash for %d: %w", maxStart, err)
+		}
+		const dq = `delete from e2pg.task where src_name = $1 and backfill`
+		if _, err := t.pgp.Exec(t.ctx, dq, t.srcName); err != nil {
+			return fmt.Errorf("resetting backfill task %s: %q", t.srcName, err)
+		}
+		const iq = `
+			insert into e2pg.task(src_name, backfill, num, hash)
+			values ($1, $2, $3, $4)
+		`
+		_, err = t.pgp.Exec(t.ctx, iq, t.srcName, t.backfill, maxStart, h)
+		if err != nil {
+			return fmt.Errorf("inserting into task table: %w", err)
+		}
+		return nil
 	case t.start > 0:
 		h, err := t.src.Hash(t.start - 1)
 		if err != nil {
@@ -175,6 +203,7 @@ func (t *Task) Setup() error {
 		if err := t.initRows(t.start-1, h); err != nil {
 			return fmt.Errorf("init rows for user start: %w", err)
 		}
+		return nil
 	default:
 		gethNum, _, err := t.src.Latest()
 		if err != nil {
@@ -187,17 +216,8 @@ func (t *Task) Setup() error {
 		if err := t.initRows(gethNum-1, h); err != nil {
 			return fmt.Errorf("init rows for latest: %w", err)
 		}
-	}
-	if !t.backfill {
 		return nil
 	}
-	for i, d := range t.dests {
-		err := t.destRanges[i].load(t.ctx, t.pgp, d.Name(), t.srcName)
-		if err != nil {
-			return fmt.Errorf("loading dest range for %s/%s: %w", d.Name(), t.srcName, err)
-		}
-	}
-	return nil
 }
 
 // inserts an e2pg.task unless one with {src_name,backfill} already exists
@@ -797,7 +817,11 @@ func loadTasks(ctx context.Context, pgp *pgxpool.Pool, conf Config) ([]*Task, er
 	}
 
 	// Start per-source main tasks
-	destBySourceName := map[string][]Destination{}
+	var (
+		dests   = map[string][]Destination{}
+		destsBF = map[string][]Destination{}
+		startBF = map[string]uint64{}
+	)
 	for _, ig := range allIntgs {
 		if !ig.Enabled {
 			continue
@@ -807,27 +831,54 @@ func loadTasks(ctx context.Context, pgp *pgxpool.Pool, conf Config) ([]*Task, er
 			return nil, fmt.Errorf("unable to build integration %s: %w", ig.Name, err)
 		}
 		for _, sc := range ig.SourceConfigs {
-			destBySourceName[sc.Name] = append(destBySourceName[sc.Name], dest)
+			dests[sc.Name] = append(dests[sc.Name], dest)
+			if sc.Start == 0 {
+				continue
+			}
+			const iq = `
+				insert into e2pg.intg(name, src_name, backfill, num)
+				values ($1, $2, $3, $4)
+				on conflict (name, src_name, backfill, num)
+				do nothing
+			`
+			_, err = pgp.Exec(ctx, iq, ig.Name, sc.Name, true, sc.Start)
+			if err != nil {
+				return nil, fmt.Errorf("initial intg record: %w", err)
+			}
+			destsBF[sc.Name] = append(destsBF[sc.Name], dest)
+			if startBF[sc.Name] == 0 || startBF[sc.Name] > sc.Start {
+				startBF[sc.Name] = sc.Start
+			}
 		}
 	}
+
 	allSources, err := conf.AllSourceConfigs(ctx, pgp)
 	if err != nil {
 		return nil, fmt.Errorf("loading source configs: %w", err)
 	}
-
 	var tasks []*Task
 	for _, sc := range allSources {
 		src, err := getSource(sc)
 		if err != nil {
 			return nil, fmt.Errorf("unkown source: %s", sc.Name)
 		}
-		dests := destBySourceName[sc.Name]
 		tasks = append(tasks, NewTask(
 			WithSource(sc.ChainID, sc.Name, src),
 			WithPG(pgp),
 			WithRange(sc.Start, sc.Stop),
-			WithConcurrency(1, 512),
-			WithDestinations(dests...),
+			WithConcurrency(1, 100),
+			WithDestinations(dests[sc.Name]...),
+		))
+		if len(destsBF[sc.Name]) == 0 {
+			continue
+		}
+		tasks = append(tasks, NewTask(
+			WithBackfill(true),
+			WithSource(sc.ChainID, sc.Name, src),
+			WithPG(pgp),
+			WithRange(startBF[sc.Name], 0),
+			WithConcurrency(1, 100),
+			WithDestinations(destsBF[sc.Name]...),
 		))
 	}
 	return tasks, nil

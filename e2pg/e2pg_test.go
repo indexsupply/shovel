@@ -9,6 +9,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/indexsupply/x/abi2"
 	"github.com/indexsupply/x/eth"
 	"github.com/indexsupply/x/geth"
 	"github.com/indexsupply/x/tc"
@@ -582,4 +583,116 @@ func TestDestRanges_Filter(t *testing.T) {
 		got := tc.r.filter(tc.input)
 		diff.Test(t, t.Errorf, got, tc.want)
 	}
+}
+
+func TestLoadTasks(t *testing.T) {
+	ctx := context.Background()
+	pqxtest.CreateDB(t, Schema)
+	pg, err := pgxpool.New(ctx, pqxtest.DSNForTest(t))
+	diff.Test(t, t.Fatalf, err, nil)
+
+	conf := Config{
+		PGURL: pqxtest.DSNForTest(t),
+		SourceConfigs: []SourceConfig{
+			SourceConfig{
+				Name:    "foo",
+				ChainID: 888,
+				URL:     "http://foo",
+			},
+		},
+		Integrations: []Integration{
+			Integration{
+				Enabled: true,
+				Name:    "bar",
+				Table: abi2.Table{
+					Name: "bar",
+					Cols: []abi2.Column{
+						abi2.Column{Name: "block_hash", Type: "bytea"},
+					},
+				},
+				Block: []abi2.BlockData{
+					abi2.BlockData{
+						Name:   "block_hash",
+						Column: "block_hash",
+					},
+				},
+				SourceConfigs: []SourceConfig{
+					SourceConfig{Name: "foo"},
+				},
+			},
+		},
+	}
+	tasks, err := loadTasks(ctx, pg, conf)
+	diff.Test(t, t.Fatalf, err, nil)
+	diff.Test(t, t.Fatalf, len(tasks), 1)
+
+	diff.Test(t, t.Fatalf, tasks[0].backfill, false)
+	diff.Test(t, t.Fatalf, tasks[0].start, uint64(0))
+}
+
+func TestLoadTasks_Backfill(t *testing.T) {
+	ctx := context.Background()
+	pqxtest.CreateDB(t, Schema)
+	pg, err := pgxpool.New(ctx, pqxtest.DSNForTest(t))
+	diff.Test(t, t.Fatalf, err, nil)
+
+	conf := Config{
+		PGURL: pqxtest.DSNForTest(t),
+		SourceConfigs: []SourceConfig{
+			SourceConfig{
+				Name:    "foo",
+				ChainID: 888,
+				URL:     "http://foo",
+			},
+		},
+		Integrations: []Integration{
+			Integration{
+				Enabled: true,
+				Name:    "bar",
+				Table: abi2.Table{
+					Name: "bar",
+					Cols: []abi2.Column{
+						abi2.Column{Name: "block_hash", Type: "bytea"},
+					},
+				},
+				Block: []abi2.BlockData{
+					abi2.BlockData{
+						Name:   "block_hash",
+						Column: "block_hash",
+					},
+				},
+				SourceConfigs: []SourceConfig{
+					SourceConfig{Name: "foo", Start: 42},
+				},
+			},
+			Integration{
+				Enabled: true,
+				Name:    "baz",
+				Table: abi2.Table{
+					Name: "baz",
+					Cols: []abi2.Column{
+						abi2.Column{Name: "block_hash", Type: "bytea"},
+					},
+				},
+				Block: []abi2.BlockData{
+					abi2.BlockData{
+						Name:   "block_hash",
+						Column: "block_hash",
+					},
+				},
+				SourceConfigs: []SourceConfig{
+					SourceConfig{Name: "foo", Start: 41},
+				},
+			},
+		},
+	}
+	tasks, err := loadTasks(ctx, pg, conf)
+	diff.Test(t, t.Fatalf, err, nil)
+	diff.Test(t, t.Fatalf, len(tasks), 2)
+
+	diff.Test(t, t.Fatalf, tasks[0].backfill, false)
+	diff.Test(t, t.Fatalf, tasks[0].start, uint64(0))
+
+	diff.Test(t, t.Fatalf, tasks[1].backfill, true)
+	diff.Test(t, t.Fatalf, tasks[1].start, uint64(41))
 }
