@@ -411,7 +411,6 @@ func TestPruneIntg(t *testing.T) {
 
 func TestInitRows(t *testing.T) {
 	ctx := context.Background()
-
 	pqxtest.CreateDB(t, Schema)
 	pg, err := pgxpool.New(ctx, pqxtest.DSNForTest(t))
 	diff.Test(t, t.Fatalf, err, nil)
@@ -491,4 +490,96 @@ func TestInitRows(t *testing.T) {
 		and src_name = 'foo'
 		and backfill = false
 	`)
+}
+
+func TestDestRanges_Load(t *testing.T) {
+	ctx := context.Background()
+	pqxtest.CreateDB(t, Schema)
+	pg, err := pgxpool.New(ctx, pqxtest.DSNForTest(t))
+	diff.Test(t, t.Fatalf, err, nil)
+
+	task1 := NewTask(
+		WithPG(pg),
+		WithSource(0, "foo", &testGeth{}),
+		WithDestinations(newTestDestination("bar")),
+	)
+	task2 := NewTask(
+		WithPG(pg),
+		WithBackfill(true),
+		WithSource(0, "foo", &testGeth{}),
+		WithDestinations(newTestDestination("bar")),
+	)
+	err = task1.initRows(42, hash(42))
+	diff.Test(t, t.Fatalf, err, nil)
+	err = task2.initRows(10, hash(10))
+	diff.Test(t, t.Fatalf, err, nil)
+
+	diff.Test(t, t.Fatalf, len(task2.destRanges), 1)
+	err = task2.destRanges[0].load(ctx, pg, "bar", "foo")
+	diff.Test(t, t.Fatalf, err, nil)
+	diff.Test(t, t.Errorf, task2.destRanges[0].start, uint64(10))
+	diff.Test(t, t.Errorf, task2.destRanges[0].stop, uint64(42))
+}
+
+func TestDestRanges_Filter(t *testing.T) {
+	br := func(l, h uint64) (res []eth.Block) {
+		for i := l; i <= h; i++ {
+			res = append(res, eth.Block{Header: eth.Header{Number: eth.Uint64(i)}})
+		}
+		return
+	}
+
+	cases := []struct {
+		desc  string
+		input []eth.Block
+		r     destRange
+		want  []eth.Block
+	}{
+		{
+			desc:  "empty input",
+			input: []eth.Block{},
+			r:     destRange{},
+			want:  []eth.Block{},
+		},
+		{
+			desc: "empty range",
+			input: []eth.Block{
+				eth.Block{Header: eth.Header{Number: 42}},
+				eth.Block{Header: eth.Header{Number: 43}},
+			},
+			r: destRange{},
+			want: []eth.Block{
+				eth.Block{Header: eth.Header{Number: 42}},
+				eth.Block{Header: eth.Header{Number: 43}},
+			},
+		},
+		{
+			desc:  "[0, 10] -> [1,9]",
+			input: br(0, 10),
+			r:     destRange{start: 1, stop: 9},
+			want:  br(1, 9),
+		},
+		{
+			desc:  "[0, 10] -> [0,5]",
+			input: br(0, 10),
+			r:     destRange{start: 0, stop: 5},
+			want:  br(0, 5),
+		},
+		{
+			desc:  "[0, 10] -> [5,10]",
+			input: br(0, 10),
+			r:     destRange{start: 5, stop: 10},
+			want:  br(5, 10),
+		},
+		{
+			desc:  "[0, 10] -> [10, 15]",
+			input: br(0, 10),
+			r:     destRange{start: 10, stop: 15},
+			want:  br(10, 10),
+		},
+	}
+	for _, tc := range cases {
+		got := tc.r.filter(tc.input)
+		diff.Test(t, t.Errorf, got, tc.want)
+	}
 }

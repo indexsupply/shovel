@@ -107,6 +107,7 @@ func WithDestinations(dests ...Destination) Option {
 		t.filter = filter
 		t.dstat = dstat
 		t.iub = newIUB(len(t.dests))
+		t.destRanges = make([]destRange, len(t.dests))
 	}
 }
 
@@ -140,6 +141,7 @@ type Task struct {
 
 	pgp         *pgxpool.Pool
 	dests       []Destination
+	destRanges  []destRange
 	start, stop uint64
 
 	dstatMut sync.Mutex
@@ -163,25 +165,39 @@ func (t *Task) dstatw(name string, n int64, d time.Duration) {
 	t.dstat[name] = s
 }
 
-func (task *Task) Setup() error {
+func (t *Task) Setup() error {
 	switch {
-	case task.start > 0:
-		h, err := task.src.Hash(task.start - 1)
+	case t.start > 0:
+		h, err := t.src.Hash(t.start - 1)
 		if err != nil {
 			return err
 		}
-		return task.initRows(task.start-1, h)
+		if err := t.initRows(t.start-1, h); err != nil {
+			return fmt.Errorf("init rows for user start: %w", err)
+		}
 	default:
-		gethNum, _, err := task.src.Latest()
+		gethNum, _, err := t.src.Latest()
 		if err != nil {
 			return err
 		}
-		h, err := task.src.Hash(gethNum - 1)
+		h, err := t.src.Hash(gethNum - 1)
 		if err != nil {
 			return fmt.Errorf("getting hash for %d: %w", gethNum-1, err)
 		}
-		return task.initRows(gethNum-1, h)
+		if err := t.initRows(gethNum-1, h); err != nil {
+			return fmt.Errorf("init rows for latest: %w", err)
+		}
 	}
+	if !t.backfill {
+		return nil
+	}
+	for i, d := range t.dests {
+		err := t.destRanges[i].load(t.ctx, t.pgp, d.Name(), t.srcName)
+		if err != nil {
+			return fmt.Errorf("loading dest range for %s/%s: %w", d.Name(), t.srcName, err)
+		}
+	}
+	return nil
 }
 
 // inserts an e2pg.task unless one with {src_name,backfill} already exists
@@ -439,12 +455,13 @@ func (task *Task) loadinsert(localHash []byte, pg wpg.Conn, delta uint64) (int64
 				j := j
 				eg3.Go(func() error {
 					start := time.Now()
+					blks = task.destRanges[j].filter(blks)
 					count, err := task.dests[j].Insert(task.ctx, pg, blks)
 					task.dstatw(task.dests[j].Name(), count, time.Since(start))
 					task.iub.updates[j].Name = task.dests[j].Name()
 					task.iub.updates[j].SrcName = task.srcName
 					task.iub.updates[j].Backfill = task.backfill
-					task.iub.updates[j].Num = task.batch[delta-1].Num()
+					task.iub.updates[j].Num = blks[len(blks)-1].Num()
 					task.iub.updates[j].NRows = count
 					task.iub.updates[j].Latency = time.Since(start)
 					nrows += count
@@ -455,6 +472,60 @@ func (task *Task) loadinsert(localHash []byte, pg wpg.Conn, delta uint64) (int64
 		})
 	}
 	return nrows, eg2.Wait()
+}
+
+type destRange struct{ start, stop uint64 }
+
+func (r *destRange) load(ctx context.Context, pg wpg.Conn, name, srcName string) error {
+	const startQuery = `
+	   select num
+	   from e2pg.intg
+	   where name = $1
+	   and src_name = $2
+	   and backfill = true
+	   order by num desc
+	   limit 1
+	`
+	err := pg.QueryRow(ctx, startQuery, name, srcName).Scan(&r.start)
+	if err != nil {
+		return fmt.Errorf("start for %s/%s: %w", name, srcName, err)
+	}
+	const stopQuery = `
+	   select num
+	   from e2pg.intg
+	   where name = $1
+	   and src_name = $2
+	   and backfill = false
+	   order by num asc
+	   limit 1
+	`
+	err = pg.QueryRow(ctx, stopQuery, name, srcName).Scan(&r.stop)
+	if err != nil {
+		return fmt.Errorf("stop for %s/%s: %w", name, srcName, err)
+	}
+	return nil
+}
+
+func (r *destRange) filter(blks []eth.Block) []eth.Block {
+	switch {
+	case r.stop == 0:
+		return blks
+	case len(blks) == 0:
+		return blks
+	case blks[0].Num() >= r.start && blks[len(blks)-1].Num() <= r.stop:
+		return blks
+	default:
+		var n, m = 0, len(blks)
+		for i := range blks {
+			switch blks[i].Num() {
+			case r.start:
+				n = i
+			case r.stop:
+				m = i + 1
+			}
+		}
+		return blks[n:m]
+	}
 }
 
 type intgUpdate struct {
