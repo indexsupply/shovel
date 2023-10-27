@@ -27,11 +27,13 @@ func TestMain(m *testing.M) {
 
 type testDestination struct {
 	sync.Mutex
+	name  string
 	chain map[uint64]eth.Block
 }
 
-func newTestDestination() *testDestination {
+func newTestDestination(name string) *testDestination {
 	return &testDestination{
+		name:  name,
 		chain: make(map[uint64]eth.Block),
 	}
 }
@@ -80,7 +82,7 @@ func (dest *testDestination) Events(_ context.Context) [][]byte {
 }
 
 func (dest *testDestination) Name() string {
-	return "test"
+	return dest.name
 }
 
 type testGeth struct {
@@ -145,7 +147,7 @@ func TestSetup(t *testing.T) {
 		task = NewTask(
 			WithSource(0, "foo", tg),
 			WithPG(pg),
-			WithDestinations(newTestDestination()),
+			WithDestinations(newTestDestination("foo")),
 		)
 	)
 	tg.add(0, hash(0), hash(0))
@@ -169,7 +171,7 @@ func TestConverge_Zero(t *testing.T) {
 		task = NewTask(
 			WithSource(0, "foo", tg),
 			WithPG(pg),
-			WithDestinations(newTestDestination()),
+			WithDestinations(newTestDestination("foo")),
 		)
 	)
 	diff.Test(t, t.Errorf, task.Converge(false), ErrNothingNew)
@@ -179,7 +181,7 @@ func TestConverge_EmptyDestination(t *testing.T) {
 	var (
 		pg   = testpg(t)
 		tg   = &testGeth{}
-		dest = newTestDestination()
+		dest = newTestDestination("foo")
 		task = NewTask(
 			WithSource(0, "foo", tg),
 			WithPG(pg),
@@ -198,7 +200,7 @@ func TestConverge_Reorg(t *testing.T) {
 	var (
 		pg   = testpg(t)
 		tg   = &testGeth{}
-		dest = newTestDestination()
+		dest = newTestDestination("foo")
 		task = NewTask(
 			WithSource(0, "foo", tg),
 			WithPG(pg),
@@ -258,7 +260,7 @@ func TestConverge_DeltaBatchSize(t *testing.T) {
 	var (
 		pg   = testpg(t)
 		tg   = &testGeth{}
-		dest = newTestDestination()
+		dest = newTestDestination("foo")
 		task = NewTask(
 			WithSource(0, "foo", tg),
 			WithPG(pg),
@@ -286,8 +288,8 @@ func TestConverge_MultipleTasks(t *testing.T) {
 	var (
 		tg    = &testGeth{}
 		pg    = testpg(t)
-		dest1 = newTestDestination()
-		dest2 = newTestDestination()
+		dest1 = newTestDestination("foo")
+		dest2 = newTestDestination("bar")
 		task1 = NewTask(
 			WithSource(0, "a", tg),
 			WithPG(pg),
@@ -318,7 +320,7 @@ func TestConverge_LocalAhead(t *testing.T) {
 	var (
 		tg   = &testGeth{}
 		pg   = testpg(t)
-		dest = newTestDestination()
+		dest = newTestDestination("foo")
 		task = NewTask(
 			WithSource(0, "foo", tg),
 			WithPG(pg),
@@ -405,4 +407,88 @@ func TestPruneIntg(t *testing.T) {
 	err = PruneIntg(ctx, pg)
 	diff.Test(t, t.Fatalf, err, nil)
 	checkQuery(t, pg, `select count(*) = 3 from e2pg.intg`)
+}
+
+func TestInitRows(t *testing.T) {
+	ctx := context.Background()
+
+	pqxtest.CreateDB(t, Schema)
+	pg, err := pgxpool.New(ctx, pqxtest.DSNForTest(t))
+	diff.Test(t, t.Fatalf, err, nil)
+
+	task := NewTask(
+		WithPG(pg),
+		WithSource(0, "foo", &testGeth{}),
+		WithDestinations(newTestDestination("bar")),
+	)
+	err = task.initRows(42, hash(42))
+	diff.Test(t, t.Fatalf, err, nil)
+	checkQuery(t, pg, `select count(*) = 1 from e2pg.intg`)
+	checkQuery(t, pg, `select count(*) = 1 from e2pg.task`)
+
+	err = task.initRows(42, hash(42))
+	diff.Test(t, t.Fatalf, err, nil)
+	checkQuery(t, pg, `select count(*) = 1 from e2pg.intg`)
+	checkQuery(t, pg, `select count(*) = 1 from e2pg.task`)
+
+	task = NewTask(
+		WithPG(pg),
+		WithSource(0, "foo", &testGeth{}),
+		WithDestinations(newTestDestination("bar"), newTestDestination("baz")),
+	)
+	err = task.initRows(42, hash(42))
+	diff.Test(t, t.Fatalf, err, nil)
+	checkQuery(t, pg, `select count(*) = 2 from e2pg.intg`)
+	checkQuery(t, pg, `select count(*) = 1 from e2pg.task`)
+
+	task = NewTask(
+		WithPG(pg),
+		WithBackfill(true),
+		WithSource(0, "foo", &testGeth{}),
+		WithDestinations(newTestDestination("bar"), newTestDestination("baz")),
+	)
+	err = task.initRows(42, hash(42))
+	diff.Test(t, t.Fatalf, err, nil)
+	checkQuery(t, pg, `select count(*) = 4 from e2pg.intg`)
+	checkQuery(t, pg, `select count(*) = 2 from e2pg.task`)
+	checkQuery(t, pg, `
+		select count(*) = 1
+		from e2pg.task
+		where src_name = 'foo'
+		and backfill = false
+	`)
+	checkQuery(t, pg, `
+		select count(*) = 1
+		from e2pg.task
+		where src_name = 'foo'
+		and backfill = true
+	`)
+	checkQuery(t, pg, `
+		select count(*) = 1
+		from e2pg.intg
+		where name = 'bar'
+		and src_name = 'foo'
+		and backfill = true
+	`)
+	checkQuery(t, pg, `
+		select count(*) = 1
+		from e2pg.intg
+		where name = 'bar'
+		and src_name = 'foo'
+		and backfill = false
+	`)
+	checkQuery(t, pg, `
+		select count(*) = 1
+		from e2pg.intg
+		where name = 'baz'
+		and src_name = 'foo'
+		and backfill = true
+	`)
+	checkQuery(t, pg, `
+		select count(*) = 1
+		from e2pg.intg
+		where name = 'baz'
+		and src_name = 'foo'
+		and backfill = false
+	`)
 }

@@ -164,41 +164,13 @@ func (t *Task) dstatw(name string, n int64, d time.Duration) {
 }
 
 func (task *Task) Setup() error {
-	const q1 = `
-		select true
-		from e2pg.task
-		where src_name = $1
-		and backfill = $2
-		limit 1
-	`
-	var f bool
-	err := task.pgp.QueryRow(task.ctx, q1, task.srcName, task.backfill).Scan(&f)
-	switch {
-	case errors.Is(err, pgx.ErrNoRows):
-		break
-	case err != nil:
-		return fmt.Errorf("querying for latest task update: %w", err)
-	default:
-		return nil // already setup
-	}
-	const insertQuery = `
-		insert into e2pg.task(src_name, backfill, hash, num)
-		values ($1, $2, $3, $4)
-	`
 	switch {
 	case task.start > 0:
 		h, err := task.src.Hash(task.start - 1)
 		if err != nil {
 			return err
 		}
-		_, err = task.pgp.Exec(task.ctx,
-			insertQuery,
-			task.srcName,
-			task.backfill,
-			h,
-			task.start-1,
-		)
-		return err
+		return task.initRows(task.start-1, h)
 	default:
 		gethNum, _, err := task.src.Latest()
 		if err != nil {
@@ -208,15 +180,64 @@ func (task *Task) Setup() error {
 		if err != nil {
 			return fmt.Errorf("getting hash for %d: %w", gethNum-1, err)
 		}
-		_, err = task.pgp.Exec(task.ctx,
-			insertQuery,
-			task.srcName,
-			task.backfill,
-			h,
-			gethNum-1,
-		)
-		return err
+		return task.initRows(gethNum-1, h)
 	}
+}
+
+// inserts an e2pg.task unless one with {src_name,backfill} already exists
+// inserts a e2pg.intg for each t.dests[i] unless one with
+// {name,src_name,backfill} already exists.
+//
+// There is no db transaction because this function can be called many
+// times with varying degrees of success without overall problems.
+func (t *Task) initRows(n uint64, h []byte) error {
+	var exists bool
+	const eq = `
+		select true
+		from e2pg.task
+		where src_name = $1
+		and backfill = $2
+		limit 1
+	`
+	err := t.pgp.QueryRow(t.ctx, eq, t.srcName, t.backfill).Scan(&exists)
+	switch {
+	case errors.Is(err, pgx.ErrNoRows):
+		const iq = `
+			insert into e2pg.task(src_name, backfill, num, hash)
+			values ($1, $2, $3, $4)
+		`
+		_, err := t.pgp.Exec(t.ctx, iq, t.srcName, t.backfill, n, h)
+		if err != nil {
+			return fmt.Errorf("inserting into task table: %w", err)
+		}
+	case err != nil:
+		return fmt.Errorf("querying for existing task: %w", err)
+	}
+	for _, d := range t.dests {
+		const eq = `
+			select true
+			from e2pg.intg
+			where name = $1
+			and src_name = $2
+			and backfill = $3
+			limit 1
+		`
+		err := t.pgp.QueryRow(t.ctx, eq, d.Name(), t.srcName, t.backfill).Scan(&exists)
+		switch {
+		case errors.Is(err, pgx.ErrNoRows):
+			const iq = `
+				insert into e2pg.intg(name, src_name, backfill, num)
+				values ($1, $2, $3, $4)
+			`
+			_, err := t.pgp.Exec(t.ctx, iq, d.Name(), t.srcName, t.backfill, n)
+			if err != nil {
+				return fmt.Errorf("inserting into intg table: %w", err)
+			}
+		case err != nil:
+			return fmt.Errorf("querying for existing intg: %w", err)
+		}
+	}
+	return nil
 }
 
 var (
