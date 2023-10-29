@@ -476,6 +476,9 @@ func (task *Task) loadinsert(localHash []byte, pg wpg.Conn, delta uint64) (int64
 				eg3.Go(func() error {
 					start := time.Now()
 					blks = task.destRanges[j].filter(blks)
+					if len(blks) == 0 {
+						return nil
+					}
 					count, err := task.dests[j].Insert(task.ctx, pg, blks)
 					task.dstatw(task.dests[j].Name(), count, time.Since(start))
 					task.iub.updates[j].Name = task.dests[j].Name()
@@ -532,6 +535,8 @@ func (r *destRange) filter(blks []eth.Block) []eth.Block {
 		return blks
 	case len(blks) == 0:
 		return blks
+	case r.start > r.stop:
+		return nil
 	case blks[0].Num() >= r.start && blks[len(blks)-1].Num() <= r.stop:
 		return blks
 	default:
