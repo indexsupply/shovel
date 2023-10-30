@@ -28,6 +28,21 @@
 				font-family: system-ui;
 				text-transform: capitalize;
 			}
+			.backfill h2 {
+				letter-spacing: 90%;
+				font-size: large;
+				font-weight: normal;
+				font-style: italic;
+				color: dimgray;
+				margin: 0 0 5px 0;
+			}
+			.backfill .Name {
+				font-size: medium;
+			}
+			.backfill .NRows, .backfill .Latency , .backfill .Hash, .backfill .Num {
+				font-family: monospace;
+				font-size: medium;
+			}
 			.task {
 				margin-bottom: 10px;
 				padding-bottom: 10px;
@@ -66,7 +81,7 @@
 			.NRows {
 				width: 10%;
 				text-transform: lowercase;
-				text-align: right;
+				text-align: left;
 				font-family: monospace;
 			}
 			.Latency {
@@ -83,7 +98,7 @@
 				padding-left: 20px;
 			}
 			.Hash {
-				width: 20%;
+				width: 24%;
 				text-transform: lowercase;
 				text-align: left;
 				font-family: monospace;
@@ -96,13 +111,13 @@
 		<div class="header">
 			<h1>E2PG</h1>
 			<div>
-				<a href="/add-source">Add Source</a>,
-				<a href="/add-integration">Add Integration</a>
+				<a href="/add-source">+Source</a>,
+				<a href="/add-integration">+Integration</a>
 			</div>
 		</div>
 		<div class="taskHeader">
 			{{ if (gt (len .SourceConfigs) 0) -}}
-			<div class="Name"></div>
+			<div class="Name">Source</div>
 			<div class="NRows">Rows</div>
 			<div class="Latency"><span>Latency</span></div>
 			<div class="Hash"><span>Hash</span></div>
@@ -133,8 +148,42 @@
 				{{ end -}}
 			{{ end -}}
 		</div>
+		<div class="backfill">
+			<h2>Backfill Tasks</h2>
+			<div class="backfill-tasks">
+				{{ range $sc := .SourceConfigs -}}
+				{{ with $tu := (index $.TaskUpdatesBF $sc.Name) -}}
+				<div class="task" id="{{ printf "%s-backfill" $sc.Name }}">
+					<div class="source">
+						<div class="Name">{{ $sc.Name }}</div>
+						<div class="NRows">{{ $tu.NRows }}</div>
+						<div class="Latency">{{ $tu.Latency }}</div>
+						<div class="Hash">{{(printf "0x%x" $tu.Hash)}}</div>
+						<div class="Num addComma">{{ $tu.Num }}</div>
+					</div>
+					<div class="destinations" style="display:none;">
+						{{ range $name, $stat := $tu.Dstat -}}
+						<div class="destination" id="{{ $tu.SrcName }}-{{$name}}">
+							<div class="Name">{{ $name }}</div>
+							<div class="NRows">{{ $stat.NRows }}</div>
+							<div class="Latency">{{ $stat.Latency }}</div>
+						</div>
+						{{ end -}}
+					</div>
+				</div>
+				{{ end -}}
+				{{ end -}}
+			</div>
+		</div>
 	</body>
 	<script>
+		function tuid(tu) {
+			if (tu.Backfill) {
+				return tu.SrcName + "-backfill";
+			} else {
+				return tu.SrcName;
+			}
+		};
 		function comma(s) {
 			return Number(s).toLocaleString();
 		};
@@ -159,13 +208,13 @@
 			let updates = new EventSource("/task-updates");
 			updates.onmessage = function(event) {
 				const tu = JSON.parse(event.data);
-				update(tu.SrcName, "Num", comma(tu.Num));
-				update(tu.SrcName, "Hash", tu.Hash);
-				update(tu.SrcName, "Latency", tu.Latency);
-				update(tu.SrcName, "NRows", tu.NRows);
+				update(tuid(tu), "Num", comma(tu.Num));
+				update(tuid(tu), "Hash", tu.Hash);
+				update(tuid(tu), "Latency", tu.Latency);
+				update(tuid(tu), "NRows", tu.NRows);
 				for (const [k1, v1] of Object.entries(tu.Dstat)) {
 					for (const [k2, v2] of Object.entries(v1)) {
-						update(`${tu.SrcName}-${k1}`, k2, v2);
+						update(`${tuid(tu)}-${k1}`, k2, v2);
 					}
 				}
 			};

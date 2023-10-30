@@ -157,6 +157,7 @@ func (h *Handler) AddIntegration(w http.ResponseWriter, r *http.Request) {
 
 type IndexView struct {
 	TaskUpdates   map[string]e2pg.TaskUpdate
+	TaskUpdatesBF map[string]e2pg.TaskUpdate
 	SourceConfigs []e2pg.SourceConfig
 }
 
@@ -172,7 +173,15 @@ func (h *Handler) Index(w http.ResponseWriter, r *http.Request) {
 	}
 	view.TaskUpdates = make(map[string]e2pg.TaskUpdate)
 	for _, tu := range tus {
-		view.TaskUpdates[tu.SrcName] = tu
+		if !tu.Backfill {
+			view.TaskUpdates[tu.SrcName] = tu
+		}
+	}
+	view.TaskUpdatesBF = make(map[string]e2pg.TaskUpdate)
+	for _, tu := range tus {
+		if tu.Backfill {
+			view.TaskUpdatesBF[tu.SrcName] = tu
+		}
 	}
 	view.SourceConfigs, err = h.conf.AllSourceConfigs(ctx, h.pgp)
 	if err != nil {
