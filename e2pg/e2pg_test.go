@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"fmt"
 	"sort"
-	"strings"
 	"sync"
 	"testing"
 
@@ -374,21 +373,13 @@ func TestPruneIntg(t *testing.T) {
 	diff.Test(t, t.Fatalf, err, nil)
 
 	iub := newIUB(1)
-	iub.updates[0].Name = "foo"
-	iub.updates[0].SrcName = "bar"
-	iub.updates[0].Num = 1
-
+	iub.update(0, "foo", "bar", true, 1, 0, 0)
 	err = iub.write(ctx, pg)
 	diff.Test(t, t.Fatalf, err, nil)
 	checkQuery(t, pg, `select count(*) = 1 from e2pg.intg`)
 
-	err = iub.write(ctx, pg)
-	if err == nil || !strings.Contains(err.Error(), "intg_name_src_name_backfill_num_idx") {
-		t.Errorf("expected 2nd write to return unique error")
-	}
-
 	for i := 0; i < 10; i++ {
-		iub.updates[0].Num = uint64(i + 2)
+		iub.update(0, "foo", "bar", true, uint64(i+2), 0, 0)
 		err := iub.write(ctx, pg)
 		diff.Test(t, t.Fatalf, err, nil)
 	}
@@ -397,9 +388,7 @@ func TestPruneIntg(t *testing.T) {
 	diff.Test(t, t.Fatalf, err, nil)
 	checkQuery(t, pg, `select count(*) = 2 from e2pg.intg`)
 
-	iub.updates[0].Name = "foo"
-	iub.updates[0].SrcName = "baz"
-	iub.updates[0].Num = 1
+	iub.update(0, "foo", "baz", true, 1, 0, 0)
 	err = iub.write(ctx, pg)
 	diff.Test(t, t.Fatalf, err, nil)
 	checkQuery(t, pg, `select count(*) = 1 from e2pg.intg where src_name = 'baz'`)

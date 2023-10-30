@@ -481,12 +481,14 @@ func (task *Task) loadinsert(localHash []byte, pg wpg.Conn, delta uint64) (int64
 					}
 					count, err := task.dests[j].Insert(task.ctx, pg, blks)
 					task.dstatw(task.dests[j].Name(), count, time.Since(start))
-					task.iub.updates[j].Name = task.dests[j].Name()
-					task.iub.updates[j].SrcName = task.srcName
-					task.iub.updates[j].Backfill = task.backfill
-					task.iub.updates[j].Num = blks[len(blks)-1].Num()
-					task.iub.updates[j].NRows = count
-					task.iub.updates[j].Latency = time.Since(start)
+					task.iub.update(j,
+						task.dests[j].Name(),
+						task.srcName,
+						task.backfill,
+						blks[len(blks)-1].Num(),
+						time.Since(start),
+						count,
+					)
 					nrows += count
 					return err
 				})
@@ -554,6 +556,7 @@ func (r *destRange) filter(blks []eth.Block) []eth.Block {
 }
 
 type intgUpdate struct {
+	changed  bool
 	Name     string        `db:"name"`
 	SrcName  string        `db:"src_name"`
 	Backfill bool          `db:"backfill"`
@@ -578,8 +581,32 @@ type intgUpdateBuf struct {
 	cols    []string
 }
 
+func (b *intgUpdateBuf) update(
+	j int,
+	name string,
+	srcName string,
+	backfill bool,
+	num uint64,
+	lat time.Duration,
+	nrows int64,
+) {
+	b.updates[j].changed = true
+	b.updates[j].Name = name
+	b.updates[j].SrcName = srcName
+	b.updates[j].Backfill = backfill
+	b.updates[j].Num = num
+	b.updates[j].Latency = lat
+	b.updates[j].NRows = nrows
+}
+
 func (b *intgUpdateBuf) Next() bool {
-	return b.i < len(b.updates)
+	for i := b.i; i < len(b.updates); i++ {
+		if b.updates[i].changed {
+			b.i = i
+			return true
+		}
+	}
+	return false
 }
 
 func (b *intgUpdateBuf) Err() error {
@@ -596,6 +623,7 @@ func (b *intgUpdateBuf) Values() ([]any, error) {
 	b.out[3] = b.updates[b.i].Num
 	b.out[4] = b.updates[b.i].Latency
 	b.out[5] = b.updates[b.i].NRows
+	b.updates[b.i].changed = false
 	b.i++
 	return b.out[:], nil
 }
