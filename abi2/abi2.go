@@ -775,9 +775,15 @@ func (ig Integration) processLog(rows [][]any, lwc *logWithCtx) ([][]any, error)
 					row[j] = dbtype(def.Input.Type, d)
 					ictr++
 				case !def.BlockData.Empty():
-					d := lwc.get(def.BlockData.Name)
-					if b, ok := d.([]byte); ok && !def.BlockData.Accept(b) {
-						return rows, nil
+					var d any
+					switch {
+					case def.BlockData.Name == "abi_idx":
+						d = i
+					default:
+						d = lwc.get(def.BlockData.Name)
+						if b, ok := d.([]byte); ok && !def.BlockData.Accept(b) {
+							return rows, nil
+						}
 					}
 					row[j] = d
 				default:
