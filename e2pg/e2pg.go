@@ -177,6 +177,9 @@ func (t *Task) Setup() error {
 			if maxStart == 0 || maxStart < t.destRanges[i].start {
 				maxStart = t.destRanges[i].start
 			}
+			if t.stop < t.destRanges[i].stop {
+				t.stop = t.destRanges[i].stop
+			}
 		}
 		h, err := t.src.Hash(maxStart)
 		if err != nil {
