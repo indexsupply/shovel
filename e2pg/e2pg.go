@@ -711,10 +711,18 @@ func (d jsonDuration) MarshalJSON() ([]byte, error) {
 }
 
 func (d jsonDuration) String() string {
-	return time.Duration(d).Round(time.Millisecond).String()
+	switch td := time.Duration(d); {
+	case td < 10*time.Millisecond:
+		return td.Truncate(10 * time.Millisecond).String()
+	case td < 100*time.Millisecond:
+		return td.Truncate(100 * time.Millisecond).String()
+	default:
+		return td.Round(time.Second).String()
+	}
 }
 
 type TaskUpdate struct {
+	DOMID    string           `db:"-"`
 	SrcName  string           `db:"src_name"`
 	Backfill bool             `db:"backfill"`
 	Num      uint64           `db:"num"`
@@ -752,7 +760,76 @@ func TaskUpdates(ctx context.Context, pg wpg.Conn) ([]TaskUpdate, error) {
 		and e2pg.task.backfill = f.backfill
 		and e2pg.task.num = f.num;
     `)
-	return pgx.CollectRows(rows, pgx.RowToStructByName[TaskUpdate])
+	tus, err := pgx.CollectRows(rows, pgx.RowToStructByName[TaskUpdate])
+	if err != nil {
+		return nil, fmt.Errorf("querying for task updates: %w", err)
+	}
+	for i := range tus {
+		switch {
+		case tus[i].Backfill:
+			tus[i].DOMID = fmt.Sprintf("%s-backfill", tus[i].SrcName)
+		default:
+			tus[i].DOMID = fmt.Sprintf("%s-main", tus[i].SrcName)
+		}
+	}
+	return tus, nil
+}
+
+type IntgUpdate struct {
+	DOMID    string       `db:"-"`
+	Name     string       `db:"name"`
+	SrcName  string       `db:"src_name"`
+	Backfill bool         `db:"backfill"`
+	Num      uint64       `db:"num"`
+	Stop     uint64       `db:"stop"`
+	NRows    uint64       `db:"nrows"`
+	Latency  jsonDuration `db:"latency"`
+}
+
+func (iu IntgUpdate) TaskID() string {
+	switch {
+	case iu.Backfill:
+		return fmt.Sprintf("%s-backfill", iu.SrcName)
+	default:
+		return fmt.Sprintf("%s-main", iu.SrcName)
+	}
+}
+
+func IntgUpdates(ctx context.Context, pg wpg.Conn) ([]IntgUpdate, error) {
+	rows, _ := pg.Query(ctx, `
+        with f as (
+            select name, src_name, backfill, max(num) num
+            from e2pg.intg
+			group by 1, 2, 3
+        ) select
+			f.name,
+			f.src_name,
+			f.backfill,
+			f.num,
+			stop,
+			coalesce(nrows, 0) nrows,
+			coalesce(latency, '0')::interval latency
+        from f
+
+        left join e2pg.intg latest
+		on latest.name = f.name
+		and latest.src_name = f.src_name
+		and latest.backfill = f.backfill
+		and latest.num = f.num
+    `)
+	ius, err := pgx.CollectRows(rows, pgx.RowToStructByName[IntgUpdate])
+	if err != nil {
+		return nil, fmt.Errorf("querying for intg updates: %w", err)
+	}
+	for i := range ius {
+		switch {
+		case ius[i].Backfill:
+			ius[i].DOMID = fmt.Sprintf("%s-backfill-%s", ius[i].SrcName, ius[i].Name)
+		default:
+			ius[i].DOMID = fmt.Sprintf("%s-main-%s", ius[i].SrcName, ius[i].Name)
+		}
+	}
+	return ius, nil
 }
 
 var compiled = map[string]Destination{}
@@ -790,6 +867,7 @@ func (tm *Manager) runTask(t *Task) {
 		default:
 			switch err := t.Converge(false); {
 			case errors.Is(err, ErrDone):
+				slog.InfoContext(t.ctx, "done")
 				return
 			case errors.Is(err, ErrNothingNew):
 				time.Sleep(time.Second)

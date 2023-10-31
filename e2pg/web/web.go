@@ -157,7 +157,7 @@ func (h *Handler) AddIntegration(w http.ResponseWriter, r *http.Request) {
 
 type IndexView struct {
 	TaskUpdates   map[string]e2pg.TaskUpdate
-	TaskUpdatesBF map[string]e2pg.TaskUpdate
+	IntgUpdates   map[string][]e2pg.IntgUpdate
 	SourceConfigs []e2pg.SourceConfig
 }
 
@@ -171,24 +171,29 @@ func (h *Handler) Index(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	view.TaskUpdates = make(map[string]e2pg.TaskUpdate)
-	for _, tu := range tus {
-		if !tu.Backfill {
-			view.TaskUpdates[tu.SrcName] = tu
-		}
-	}
-	view.TaskUpdatesBF = make(map[string]e2pg.TaskUpdate)
-	for _, tu := range tus {
-		if tu.Backfill {
-			view.TaskUpdatesBF[tu.SrcName] = tu
-		}
-	}
-	view.SourceConfigs, err = h.conf.AllSourceConfigs(ctx, h.pgp)
+	ius, err := e2pg.IntgUpdates(ctx, h.pgp)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
+	view.IntgUpdates = make(map[string][]e2pg.IntgUpdate)
+	for _, iu := range ius {
+		view.IntgUpdates[iu.TaskID()] = append(
+			view.IntgUpdates[iu.TaskID()],
+			iu,
+		)
+	}
+	view.TaskUpdates = make(map[string]e2pg.TaskUpdate)
+	for _, tu := range tus {
+		view.TaskUpdates[tu.DOMID] = tu
+	}
+
+	view.SourceConfigs, err = h.conf.AllSourceConfigs(ctx, h.pgp)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 	t, err := h.template("index")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)

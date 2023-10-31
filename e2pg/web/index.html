@@ -24,9 +24,12 @@
 				margin-bottom: 10px;
 				color: dimgray;
 			}
-			.taskHeader .NRows, .taskHeader .Latency , .taskHeader .Hash, .taskHeader .Num {
+			.taskHeader .Progress, .taskHeader .NRows, .taskHeader .Latency , .taskHeader .Hash, .taskHeader .Num {
 				font-family: system-ui;
 				text-transform: capitalize;
+			}
+			.backfill {
+				margin: 30px 0 0 0;
 			}
 			.backfill h2 {
 				letter-spacing: 90%;
@@ -34,12 +37,12 @@
 				font-weight: normal;
 				font-style: italic;
 				color: dimgray;
-				margin: 0 0 5px 0;
+				margin: 0 0 10px 0;
 			}
 			.backfill .Name {
 				font-size: medium;
 			}
-			.backfill .NRows, .backfill .Latency , .backfill .Hash, .backfill .Num {
+			.backfill .Progress, .backfill .NRows, .backfill .Latency , .backfill .Hash, .backfill .Num {
 				font-family: monospace;
 				font-size: medium;
 			}
@@ -79,7 +82,7 @@
 				text-transform: capitalize;
 			}
 			.NRows {
-				width: 10%;
+				width: 5%;
 				text-transform: lowercase;
 				text-align: left;
 				font-family: monospace;
@@ -95,15 +98,20 @@
 				text-transform: lowercase;
 				text-align: left;
 				font-family: monospace;
-				padding-left: 20px;
 			}
 			.Hash {
-				width: 24%;
+				width: 20%;
 				text-transform: lowercase;
 				text-align: left;
 				font-family: monospace;
 				overflow: hidden;
 				text-overflow: ellipsis;
+			}
+			.Progress {
+				width: 5%;
+				text-transform: lowercase;
+				text-align: right;
+				font-family: monospace;
 			}
 		</style>
 	</head>
@@ -122,25 +130,30 @@
 			<div class="Latency"><span>Latency</span></div>
 			<div class="Hash"><span>Hash</span></div>
 			<div class="Num"><span>Number</span></div>
+			<div class="Progress"><span>Sync</span></div>
 			{{ end -}}
 		</div>
 		<div class="tasks">
 			{{ range $sc := .SourceConfigs -}}
-				{{ with $tu := (index $.TaskUpdates $sc.Name) -}}
-				<div class="task" id="{{ $sc.Name }}">
+				{{ with $tu := (index $.TaskUpdates (printf "%s-main" $sc.Name)) -}}
+				<div class="task" id="{{ $tu.DOMID }}">
 					<div class="source">
 						<div class="Name">{{ $sc.Name }}</div>
 						<div class="NRows">{{ $tu.NRows }}</div>
 						<div class="Latency">{{ $tu.Latency }}</div>
 						<div class="Hash">{{(printf "0x%x" $tu.Hash)}}</div>
 						<div class="Num addComma">{{ $tu.Num }}</div>
+						<div class="Progress">-</div>
 					</div>
 					<div class="destinations" style="display:none;">
-						{{ range $name, $stat := $tu.Dstat -}}
-						<div class="destination" id="{{ $tu.SrcName }}-{{$name}}">
-							<div class="Name">{{ $name }}</div>
-							<div class="NRows">{{ $stat.NRows }}</div>
-							<div class="Latency">{{ $stat.Latency }}</div>
+						{{ range $iu := (index $.IntgUpdates $tu.DOMID) -}}
+						<div class="destination" id="{{ $iu.DOMID }}">
+							<div class="Name">{{ $iu.Name }}</div>
+							<div class="NRows">{{ $iu.NRows }}</div>
+							<div class="Latency">{{ $iu.Latency }}</div>
+							<div class="Hash"></div>
+							<div class="Num"></div>
+							<div class="Progress"></div>
 						</div>
 						{{ end -}}
 					</div>
@@ -152,21 +165,25 @@
 			<h2>Backfill Tasks</h2>
 			<div class="backfill-tasks">
 				{{ range $sc := .SourceConfigs -}}
-				{{ with $tu := (index $.TaskUpdatesBF $sc.Name) -}}
-				<div class="task" id="{{ printf "%s-backfill" $sc.Name }}">
+				{{ with $tu := (index $.TaskUpdates (printf "%s-backfill" $sc.Name)) -}}
+				<div class="task" id="{{ $tu.DOMID }}">
 					<div class="source">
 						<div class="Name">{{ $sc.Name }}</div>
 						<div class="NRows">{{ $tu.NRows }}</div>
 						<div class="Latency">{{ $tu.Latency }}</div>
 						<div class="Hash">{{(printf "0x%x" $tu.Hash)}}</div>
 						<div class="Num addComma">{{ $tu.Num }}</div>
+						<div class="Progress">-</div>
 					</div>
 					<div class="destinations" style="display:none;">
-						{{ range $name, $stat := $tu.Dstat -}}
-						<div class="destination" id="{{ $tu.SrcName }}-{{$name}}">
-							<div class="Name">{{ $name }}</div>
-							<div class="NRows">{{ $stat.NRows }}</div>
-							<div class="Latency">{{ $stat.Latency }}</div>
+						{{ range $iu := (index $.IntgUpdates $tu.DOMID) -}}
+						<div class="destination" id="{{ $iu.DOMID }}">
+							<div class="Name">{{ $iu.Name }}</div>
+							<div class="NRows">{{ $iu.NRows }}</div>
+							<div class="Latency">{{ $iu.Latency }}</div>
+							<div class="Hash"></div>
+							<div class="Num addComma">{{ $iu.Num }}</div>
+							<div class="Progress"></div>
 						</div>
 						{{ end -}}
 					</div>
@@ -177,11 +194,15 @@
 		</div>
 	</body>
 	<script>
-		function tuid(tu) {
-			if (tu.Backfill) {
-				return tu.SrcName + "-backfill";
+		function progress(start, stop) {
+			if (stop == 0) {
+				return "100%";
+			}
+			const p = (start / stop) * 100;
+			if (p == 100) {
+				return "100%";
 			} else {
-				return tu.SrcName;
+				return `${p.toFixed(2)}%`;
 			}
 		};
 		function comma(s) {
@@ -208,15 +229,11 @@
 			let updates = new EventSource("/task-updates");
 			updates.onmessage = function(event) {
 				const tu = JSON.parse(event.data);
-				update(tuid(tu), "Num", comma(tu.Num));
-				update(tuid(tu), "Hash", tu.Hash);
-				update(tuid(tu), "Latency", tu.Latency);
-				update(tuid(tu), "NRows", tu.NRows);
-				for (const [k1, v1] of Object.entries(tu.Dstat)) {
-					for (const [k2, v2] of Object.entries(v1)) {
-						update(`${tuid(tu)}-${k1}`, k2, v2);
-					}
-				}
+				update(tu.DOMID, "Num", comma(tu.Num));
+				update(tu.DOMID, "Hash", tu.Hash);
+				update(tu.DOMID, "Latency", tu.Latency);
+				update(tu.DOMID, "NRows", tu.NRows);
+				update(tu.DOMID, "Progress", progress(tu.Num, tu.Stop));
 			};
 		});
 	</script>
