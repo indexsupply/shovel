@@ -33,7 +33,8 @@ CREATE TABLE e2pg.intg (
     backfill boolean DEFAULT false,
     num numeric NOT NULL,
     latency interval,
-    nrows numeric
+    nrows numeric,
+    stop numeric
 );
 
 
@@ -65,7 +66,8 @@ CREATE TABLE e2pg.task (
     latency interval,
     dstat jsonb,
     backfill boolean DEFAULT false,
-    src_name text
+    src_name text,
+    stop numeric
 );
 
 

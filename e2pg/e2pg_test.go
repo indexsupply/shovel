@@ -373,13 +373,13 @@ func TestPruneIntg(t *testing.T) {
 	diff.Test(t, t.Fatalf, err, nil)
 
 	iub := newIUB(1)
-	iub.update(0, "foo", "bar", true, 1, 0, 0)
+	iub.update(0, "foo", "bar", true, 1, 0, 0, 0)
 	err = iub.write(ctx, pg)
 	diff.Test(t, t.Fatalf, err, nil)
 	checkQuery(t, pg, `select count(*) = 1 from e2pg.intg`)
 
 	for i := 0; i < 10; i++ {
-		iub.update(0, "foo", "bar", true, uint64(i+2), 0, 0)
+		iub.update(0, "foo", "bar", true, uint64(i+2), 0, 0, 0)
 		err := iub.write(ctx, pg)
 		diff.Test(t, t.Fatalf, err, nil)
 	}
@@ -388,7 +388,7 @@ func TestPruneIntg(t *testing.T) {
 	diff.Test(t, t.Fatalf, err, nil)
 	checkQuery(t, pg, `select count(*) = 2 from e2pg.intg`)
 
-	iub.update(0, "foo", "baz", true, 1, 0, 0)
+	iub.update(0, "foo", "baz", true, 1, 0, 0, 0)
 	err = iub.write(ctx, pg)
 	diff.Test(t, t.Fatalf, err, nil)
 	checkQuery(t, pg, `select count(*) = 1 from e2pg.intg where src_name = 'baz'`)

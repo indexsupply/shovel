@@ -66,4 +66,10 @@ var Migrations = map[int]pgmig.Migration{
 			create unique index on e2pg.intg(name, src_name, backfill, num desc);
 		`,
 	},
+	14: pgmig.Migration{
+		SQL: `
+			alter table e2pg.intg add column stop numeric;
+			alter table e2pg.task add column stop numeric;
+		`,
+	},
 }
