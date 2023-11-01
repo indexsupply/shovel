@@ -120,6 +120,16 @@ func TestIntegrations(t *testing.T) {
 				where order_hash = '\xdaf50b59a508ee06e269125af28e796477ebf55d22a3c6a24e42d038d9d8d8ee'
 				and tx_hash = '\x713df81a2ab53db1d01531106fc5de43012a401ddc3e0586d522e5c55a162d42'
 				and log_idx = 3
+				and abi_idx = 0
+				and offer_token = '\x57f1887a8bf19b14fc0df6fd9b2acc9af147ea85'
+				and consideration_recipient is null
+				`,
+				`
+				select true from seaport_test
+				where order_hash = '\xdaf50b59a508ee06e269125af28e796477ebf55d22a3c6a24e42d038d9d8d8ee'
+				and tx_hash = '\x713df81a2ab53db1d01531106fc5de43012a401ddc3e0586d522e5c55a162d42'
+				and log_idx = 3
+				and abi_idx = 1
 				and offer_token is null
 				and consideration_recipient = '\x5e97a8773122bde31d44756f271c87893991a6ea'
 				`,
@@ -128,16 +138,9 @@ func TestIntegrations(t *testing.T) {
 				where order_hash = '\xdaf50b59a508ee06e269125af28e796477ebf55d22a3c6a24e42d038d9d8d8ee'
 				and tx_hash = '\x713df81a2ab53db1d01531106fc5de43012a401ddc3e0586d522e5c55a162d42'
 				and log_idx = 3
+				and abi_idx = 2
 				and offer_token is null
 				and consideration_recipient = '\x0000a26b00c1f0df003000390027140000faa719'
-				`,
-				`
-				select true from seaport_test
-				where order_hash = '\xdaf50b59a508ee06e269125af28e796477ebf55d22a3c6a24e42d038d9d8d8ee'
-				and tx_hash = '\x713df81a2ab53db1d01531106fc5de43012a401ddc3e0586d522e5c55a162d42'
-				and log_idx = 3
-				and offer_token = '\x57f1887a8bf19b14fc0df6fd9b2acc9af147ea85'
-				and consideration_recipient is null
 				`,
 			},
 		},
