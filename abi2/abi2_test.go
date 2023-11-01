@@ -311,3 +311,48 @@ func TestNumIndexed(t *testing.T) {
 	}
 	diff.Test(t, t.Errorf, 3, event.numIndexed())
 }
+
+func TestValidate_AddRequired(t *testing.T) {
+	ig := Integration{
+		name: "foo",
+		Table: Table{
+			Name: "foo",
+			Cols: []Column{
+				Column{Name: "b", Type: "bytea"},
+				Column{Name: "c", Type: "bytea"},
+			},
+		},
+		Event: Event{
+			Name: "bar",
+			Inputs: []Input{
+				Input{Indexed: true, Name: "a"},
+				Input{Indexed: true, Name: "b", Column: "b"},
+				Input{Indexed: true, Name: "c", Column: "c"},
+			},
+		},
+	}
+	diff.Test(t, t.Errorf, nil, ig.validate())
+	diff.Test(t, t.Errorf, 5, len(ig.Table.Cols))
+}
+
+func TestValidate_MissingCols(t *testing.T) {
+	ig := Integration{
+		name: "foo",
+		Table: Table{
+			Name: "foo",
+			Cols: []Column{
+				Column{Name: "c", Type: "bytea"},
+			},
+		},
+		Event: Event{
+			Name: "bar",
+			Inputs: []Input{
+				Input{Indexed: true, Name: "a"},
+				Input{Indexed: true, Name: "b", Column: "b"},
+				Input{Indexed: true, Name: "c", Column: "c"},
+			},
+		},
+	}
+	const want = "validating columns: missing column for b"
+	diff.Test(t, t.Errorf, want, ig.validate().Error())
+}
