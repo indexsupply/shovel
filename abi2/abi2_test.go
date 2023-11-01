@@ -299,3 +299,15 @@ func TestSelected(t *testing.T) {
 	}
 	diff.Test(t, t.Errorf, want, event.Selected())
 }
+
+func TestNumIndexed(t *testing.T) {
+	event := Event{
+		Name: "",
+		Inputs: []Input{
+			Input{Indexed: true, Name: "a"},
+			Input{Indexed: true, Name: "b", Column: "b"},
+			Input{Indexed: true, Name: "c", Column: "c"},
+		},
+	}
+	diff.Test(t, t.Errorf, 3, event.numIndexed())
+}

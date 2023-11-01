@@ -537,7 +537,7 @@ func (e Event) Selected() []Input {
 
 func (e Event) numIndexed() int {
 	var res int
-	for _, inp := range e.Selected() {
+	for _, inp := range e.Inputs {
 		if inp.Indexed {
 			res++
 		}
