@@ -603,7 +603,7 @@ func New(name string, ev Event, bd []BlockData, table Table) (Integration, error
 		return ig, fmt.Errorf("validating %s: %w", name, err)
 	}
 	for _, input := range ev.Selected() {
-		c, err := col(table, input.Column)
+		c, err := col(ig.Table, input.Column)
 		if err != nil {
 			return ig, err
 		}
@@ -614,8 +614,8 @@ func New(name string, ev Event, bd []BlockData, table Table) (Integration, error
 		})
 		ig.numSelected++
 	}
-	for _, data := range bd {
-		c, err := col(table, data.Column)
+	for _, data := range ig.Block {
+		c, err := col(ig.Table, data.Column)
 		if err != nil {
 			return ig, err
 		}
@@ -677,6 +677,7 @@ func (ig *Integration) validateCols() error {
 		}
 		ucols   = map[string]struct{}{}
 		uinputs = map[string]struct{}{}
+		ubd     = map[string]struct{}{}
 	)
 	for _, c := range ig.Table.Cols {
 		if _, ok := ucols[c.Name]; ok {
@@ -690,6 +691,12 @@ func (ig *Integration) validateCols() error {
 		}
 		uinputs[inp.Name] = struct{}{}
 	}
+	for _, bd := range ig.Block {
+		if _, ok := ubd[bd.Name]; ok {
+			return fmt.Errorf("duplicate block data field: %s", bd.Name)
+		}
+		ubd[bd.Name] = struct{}{}
+	}
 	for name, cfg := range required {
 		switch {
 		case len(cfg.i.Name) > 0:
@@ -697,7 +704,7 @@ func (ig *Integration) validateCols() error {
 				ig.Event.Inputs = append(ig.Event.Inputs, cfg.i)
 			}
 		case len(cfg.b.Name) > 0:
-			if _, ok := uinputs[name]; !ok {
+			if _, ok := ubd[name]; !ok {
 				ig.Block = append(ig.Block, cfg.b)
 			}
 		}

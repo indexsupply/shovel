@@ -312,6 +312,33 @@ func TestNumIndexed(t *testing.T) {
 	diff.Test(t, t.Errorf, 3, event.numIndexed())
 }
 
+func TestNew(t *testing.T) {
+	var (
+		table = Table{
+			Name: "foo",
+			Cols: []Column{
+				Column{Name: "block_num", Type: "numeric"},
+				Column{Name: "b", Type: "bytea"},
+				Column{Name: "c", Type: "bytea"},
+			},
+		}
+		block = []BlockData{
+			BlockData{Name: "block_num", Column: "block_num"},
+		}
+		event = Event{
+			Name: "bar",
+			Inputs: []Input{
+				Input{Indexed: true, Name: "a"},
+				Input{Indexed: true, Name: "b", Column: "b"},
+				Input{Indexed: true, Name: "c", Column: "c"},
+			},
+		}
+	)
+	ig, err := New("foo", event, block, table)
+	diff.Test(t, t.Errorf, nil, err)
+	diff.Test(t, t.Errorf, 5, len(ig.Columns))
+}
+
 func TestValidate_AddRequired(t *testing.T) {
 	ig := Integration{
 		name: "foo",
