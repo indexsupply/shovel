@@ -1020,8 +1020,8 @@ func getDest(pgp *pgxpool.Pool, ig Integration) (Destination, error) {
 		if err != nil {
 			return nil, fmt.Errorf("building abi integration: %w", err)
 		}
-		if err := abi2.CreateTable(context.Background(), pgp, aig.Table); err != nil {
-			return nil, fmt.Errorf("setting up table for abi integration: %w", err)
+		if err := aig.Table.Create(context.Background(), pgp); err != nil {
+			return nil, fmt.Errorf("create intg table: %w", err)
 		}
 		return aig, nil
 	}

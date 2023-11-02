@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/indexsupply/x/bint"
 	"github.com/indexsupply/x/eth"
@@ -555,6 +556,7 @@ type coldef struct {
 type Integration struct {
 	name    string
 	Event   Event
+	Block   []BlockData
 	Table   Table
 	Columns []string
 	coldefs []coldef
@@ -588,20 +590,19 @@ type Integration struct {
 //	{"name": "my_column", "type": "db_type", "filter_op": "contains", "filter_arg": ["0x000"]}
 func New(name string, ev Event, bd []BlockData, table Table) (Integration, error) {
 	ig := Integration{
-		name:       name,
-		Event:      ev,
-		Table:      table,
-		numIndexed: ev.numIndexed(),
-	}
-	ig.resultCache = NewResult(ev.ABIType())
-	ig.sighash = ev.SignatureHash()
+		name:  name,
+		Event: ev,
+		Block: bd,
+		Table: table,
 
-	selected := ev.Selected()
-	if len(table.Cols) != len(selected)+len(bd) {
-		return ig, fmt.Errorf("number of columns in table definitino must equal number of selected columns + metadata columns")
+		numIndexed:  ev.numIndexed(),
+		resultCache: NewResult(ev.ABIType()),
+		sighash:     ev.SignatureHash(),
 	}
-
-	for _, input := range selected {
+	if err := ig.validate(); err != nil {
+		return ig, fmt.Errorf("validating %s: %w", name, err)
+	}
+	for _, input := range ev.Selected() {
 		c, err := col(table, input.Column)
 		if err != nil {
 			return ig, err
@@ -625,8 +626,124 @@ func New(name string, ev Event, bd []BlockData, table Table) (Integration, error
 		})
 		ig.numBDSelected++
 	}
-
 	return ig, nil
+}
+
+func (ig *Integration) validate() error {
+	if err := ig.validateCols(); err != nil {
+		return fmt.Errorf("validating columns: %w", err)
+	}
+	if err := ig.validateSQL(); err != nil {
+		return fmt.Errorf("validating sql input: %w", err)
+	}
+	return nil
+}
+
+func (ig *Integration) validateSQL() error {
+	if err := validateString(ig.name); err != nil {
+		return fmt.Errorf("invalid ig name %s: %w", ig.name, err)
+	}
+	for _, c := range ig.Table.Cols {
+		if err := validateString(c.Name); err != nil {
+			return fmt.Errorf("invalid col name %s: %w", c.Name, err)
+		}
+		if err := validateString(c.Type); err != nil {
+			return fmt.Errorf("invalid col type%s: %w", c.Type, err)
+		}
+	}
+	return nil
+}
+
+func (ig *Integration) validateCols() error {
+	type config struct {
+		c Column
+		i Input
+		b BlockData
+	}
+	var (
+		required = map[string]config{
+			"src_name": config{
+				c: Column{Name: "src_name", Type: "text"},
+				b: BlockData{Name: "src_name", Column: "src_name"},
+			},
+			"intg_name": config{
+				c: Column{Name: "intg_name", Type: "text"},
+				b: BlockData{Name: "intg_name", Column: "intg_name"},
+			},
+			"block_num": config{
+				c: Column{Name: "block_num", Type: "numeric"},
+				b: BlockData{Name: "block_num", Column: "block_num"},
+			},
+		}
+		ucols   = map[string]struct{}{}
+		uinputs = map[string]struct{}{}
+	)
+	for _, c := range ig.Table.Cols {
+		if _, ok := ucols[c.Name]; ok {
+			return fmt.Errorf("duplicate column: %s", c.Name)
+		}
+		ucols[c.Name] = struct{}{}
+	}
+	for _, inp := range ig.Event.Inputs {
+		if _, ok := uinputs[inp.Name]; ok {
+			return fmt.Errorf("duplicate input: %s", inp.Name)
+		}
+		uinputs[inp.Name] = struct{}{}
+	}
+	for name, cfg := range required {
+		switch {
+		case len(cfg.i.Name) > 0:
+			if _, ok := uinputs[name]; !ok {
+				ig.Event.Inputs = append(ig.Event.Inputs, cfg.i)
+			}
+		case len(cfg.b.Name) > 0:
+			if _, ok := uinputs[name]; !ok {
+				ig.Block = append(ig.Block, cfg.b)
+			}
+		}
+		if _, ok := ucols[name]; !ok {
+			ig.Table.Cols = append(ig.Table.Cols, cfg.c)
+		}
+	}
+
+	// Every selected input must have a coresponding column
+	for _, inp := range ig.Event.Selected() {
+		var found bool
+		for _, c := range ig.Table.Cols {
+			if c.Name == inp.Column {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return fmt.Errorf("missing column for %s", inp.Name)
+		}
+	}
+	for _, bd := range ig.Block {
+		if len(bd.Column) == 0 {
+			return fmt.Errorf("missing column for block.%s", bd.Name)
+		}
+		var found bool
+		for _, c := range ig.Table.Cols {
+			if c.Name == bd.Column {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return fmt.Errorf("missing column for block.%s", bd.Name)
+		}
+	}
+	return nil
+}
+
+func validateString(s string) error {
+	for _, r := range s {
+		if !(unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_' || r == '-') {
+			return errors.New("must be: 'a-z', 'A-Z', '0-9', '_', or '-'")
+		}
+	}
+	return nil
 }
 
 func col(t Table, name string) (Column, error) {
@@ -912,7 +1029,7 @@ type Table struct {
 	Cols []Column `json:"columns"`
 }
 
-func CreateTable(ctx context.Context, pg wpg.Conn, t Table) error {
+func (t *Table) Create(ctx context.Context, pg wpg.Conn) error {
 	var s strings.Builder
 	s.WriteString(fmt.Sprintf("create table if not exists %s(", t.Name))
 	for i := range t.Cols {
