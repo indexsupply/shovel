@@ -766,7 +766,25 @@ func (ig Integration) Name() string { return ig.name }
 
 func (ig Integration) Events(context.Context) [][]byte { return [][]byte{} }
 
-func (ig Integration) Delete(context.Context, wpg.Conn, uint64) error { return nil }
+func (ig Integration) Delete(ctx context.Context, pg wpg.Conn, n uint64) error {
+	const q = `
+		delete from %s
+		where src_name = $1
+		and intg_name = $2
+		and block_num >= $3
+	`
+	_, err := pg.Exec(ctx,
+		ig.tname(q),
+		wctx.SrcName(ctx),
+		ig.name,
+		n,
+	)
+	return err
+}
+
+func (ig Integration) tname(query string) string {
+	return fmt.Sprintf(query, ig.Table.Name)
+}
 
 func (ig Integration) Insert(ctx context.Context, pg wpg.Conn, blocks []eth.Block) (int64, error) {
 	var (
