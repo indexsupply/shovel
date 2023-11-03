@@ -3,6 +3,7 @@ package e2pg
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"sort"
 	"sync"
@@ -518,7 +519,6 @@ func TestDestRanges_Filter(t *testing.T) {
 		}
 		return
 	}
-
 	cases := []struct {
 		desc  string
 		input []eth.Block
@@ -696,4 +696,63 @@ func TestLoadTasks_Backfill(t *testing.T) {
 
 	diff.Test(t, t.Fatalf, tasks[1].backfill, true)
 	diff.Test(t, t.Fatalf, tasks[1].start, uint64(41))
+}
+
+func TestValidateChain(t *testing.T) {
+	cases := []struct {
+		parent []byte
+		blks   []eth.Block
+		want   error
+	}{
+		{
+			[]byte{},
+			[]eth.Block{
+				{Header: eth.Header{}},
+			},
+			errors.New("corrupt parent: "),
+		},
+		{
+			hash(0),
+			[]eth.Block{
+				{Header: eth.Header{Hash: hash(1), Parent: hash(0)}},
+			},
+			nil,
+		},
+		{
+			hash(0),
+			[]eth.Block{
+				{Header: eth.Header{Hash: hash(2), Parent: hash(1)}},
+			},
+			ErrReorg,
+		},
+		{
+			hash(0),
+			[]eth.Block{
+				{Header: eth.Header{Hash: hash(1), Parent: hash(0)}},
+				{Header: eth.Header{Hash: hash(2), Parent: hash(1)}},
+			},
+			nil,
+		},
+		{
+			hash(0),
+			[]eth.Block{
+				{Header: eth.Header{Hash: hash(1), Parent: hash(0)}},
+				{Header: eth.Header{Hash: hash(2), Parent: hash(1)}},
+				{Header: eth.Header{Hash: hash(3), Parent: hash(2)}},
+			},
+			nil,
+		},
+		{
+			hash(0),
+			[]eth.Block{
+				{Header: eth.Header{Hash: hash(1), Parent: hash(0)}},
+				{Header: eth.Header{Hash: hash(4), Parent: hash(3)}},
+				{Header: eth.Header{Hash: hash(3), Parent: hash(2)}},
+			},
+			errors.New("invalid chain. prev={0 00000000 01000000} curr={0 03000000 04000000}"),
+		},
+	}
+	for _, tc := range cases {
+		diff.Test(t, t.Errorf, tc.want, validateChain(tc.parent, tc.blks))
+	}
 }

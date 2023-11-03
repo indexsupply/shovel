@@ -460,11 +460,9 @@ func (task *Task) loadinsert(localHash []byte, pg wpg.Conn, delta uint64) (int64
 	if err := eg1.Wait(); err != nil {
 		return 0, err
 	}
-	if len(task.batch[0].Header.Parent) != 32 {
-		return 0, fmt.Errorf("corrupt parent: %x\n", task.batch[0].Header.Parent)
-	}
-	if !bytes.Equal(localHash, task.batch[0].Header.Parent) {
-		return 0, ErrReorg
+	if err := validateChain(localHash, task.batch[:delta]); err != nil {
+		fmt.Println(err)
+		return 0, fmt.Errorf("validating new chain: %w", err)
 	}
 	var eg2 errgroup.Group
 	for i := uint64(0); i < task.workers && i*wsize < delta; i++ {
@@ -503,6 +501,25 @@ func (task *Task) loadinsert(localHash []byte, pg wpg.Conn, delta uint64) (int64
 		})
 	}
 	return nrows, eg2.Wait()
+}
+
+func validateChain(parent []byte, blks []eth.Block) error {
+	if len(blks[0].Header.Parent) != 32 {
+		return fmt.Errorf("corrupt parent: %x", blks[0].Header.Parent)
+	}
+	if !bytes.Equal(parent, blks[0].Header.Parent) {
+		return ErrReorg
+	}
+	if len(blks) <= 1 {
+		return nil
+	}
+	for i := 1; i < len(blks); i++ {
+		prev, curr := blks[i-1], blks[i]
+		if !bytes.Equal(curr.Header.Parent, prev.Hash()) {
+			return fmt.Errorf("invalid chain. prev=%s curr=%s", prev, curr)
+		}
+	}
+	return nil
 }
 
 type destRange struct{ start, stop uint64 }
