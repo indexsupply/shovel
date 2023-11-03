@@ -72,6 +72,19 @@ func (h *Handler) PushUpdates() error {
 				c <- j
 			}
 		}
+		ius, err := e2pg.IntgUpdates(ctx, h.pgp)
+		if err != nil {
+			return fmt.Errorf("querying intg updates: %w", err)
+		}
+		for _, update := range ius {
+			j, err := json.Marshal(update)
+			if err != nil {
+				return fmt.Errorf("marshaling intg update: %w", err)
+			}
+			for _, c := range h.clients {
+				c <- j
+			}
+		}
 	}
 }
 

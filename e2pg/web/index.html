@@ -231,11 +231,17 @@
 			let updates = new EventSource("/task-updates");
 			updates.onmessage = function(event) {
 				const tu = JSON.parse(event.data);
-				update(tu.DOMID, "Num", comma(tu.Num));
-				update(tu.DOMID, "Hash", tu.Hash);
-				update(tu.DOMID, "Latency", tu.Latency);
-				update(tu.DOMID, "NRows", tu.NRows);
-				update(tu.DOMID, "Progress", progress(tu.Num, tu.Stop));
+				if (tu.Hash) {
+					update(tu.DOMID, "Num", comma(tu.Num));
+					update(tu.DOMID, "Hash", tu.Hash);
+					update(tu.DOMID, "Latency", tu.Latency);
+					update(tu.DOMID, "NRows", tu.NRows);
+					update(tu.DOMID, "Progress", progress(tu.Num, tu.Stop));
+				} else {
+					update(tu.DOMID, "Latency", tu.Latency);
+					update(tu.DOMID, "NRows", tu.NRows);
+					update(tu.DOMID, "Progress", progress(tu.Num, tu.Stop));
+				}
 			};
 		});
 	</script>
