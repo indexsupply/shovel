@@ -88,10 +88,7 @@ func WithConcurrency(workers, batch uint64) Option {
 
 func WithDestinations(dests ...Destination) Option {
 	return func(t *Task) {
-		var (
-			filter [][]byte
-			dstat  = make(map[string]Dstat)
-		)
+		var filter [][]byte
 		for i := range dests {
 			e := dests[i].Events(t.ctx)
 			// if one integration has no filter
@@ -101,11 +98,9 @@ func WithDestinations(dests ...Destination) Option {
 				break
 			}
 			filter = append(filter, e...)
-			dstat[dests[i].Name()] = Dstat{}
 		}
 		t.dests = dests
 		t.filter = filter
-		t.dstat = dstat
 		t.iub = newIUB(len(t.dests))
 		t.destRanges = make([]destRange, len(t.dests))
 	}
@@ -126,11 +121,6 @@ func NewTask(opts ...Option) *Task {
 	return t
 }
 
-type Dstat struct {
-	NRows   int64
-	Latency jsonDuration
-}
-
 type Task struct {
 	ctx      context.Context
 	backfill bool
@@ -144,25 +134,13 @@ type Task struct {
 	destRanges  []destRange
 	start, stop uint64
 
-	dstatMut sync.Mutex
-	dstat    map[string]Dstat
-	iub      *intgUpdateBuf
+	iub *intgUpdateBuf
 
 	filter    [][]byte
 	batch     []eth.Block
 	buffs     []geth.Buffer
 	batchSize uint64
 	workers   uint64
-}
-
-func (t *Task) dstatw(name string, n int64, d time.Duration) {
-	t.dstatMut.Lock()
-	defer t.dstatMut.Unlock()
-
-	s := t.dstat[name]
-	s.NRows = n
-	s.Latency = jsonDuration(d)
-	t.dstat[name] = s
 }
 
 func (t *Task) Setup() error {
@@ -397,10 +375,9 @@ func (task *Task) Converge(notx bool) error {
 					src_hash,
 					nblocks,
 					nrows,
-					latency,
-					dstat
+					latency
 				)
-				values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+				values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 			`
 			_, err := pg.Exec(task.ctx, uq,
 				task.srcName,
@@ -413,7 +390,6 @@ func (task *Task) Converge(notx bool) error {
 				delta,
 				nrows,
 				time.Since(start),
-				task.dstat,
 			)
 			if err != nil {
 				return fmt.Errorf("updating task table: %w", err)
@@ -483,7 +459,6 @@ func (task *Task) loadinsert(localHash []byte, pg wpg.Conn, delta uint64) (int64
 						return nil
 					}
 					count, err := task.dests[j].Insert(task.ctx, pg, blks)
-					task.dstatw(task.dests[j].Name(), count, time.Since(start))
 					task.iub.update(j,
 						task.dests[j].Name(),
 						task.srcName,
@@ -739,18 +714,17 @@ func (d jsonDuration) String() string {
 }
 
 type TaskUpdate struct {
-	DOMID    string           `db:"-"`
-	SrcName  string           `db:"src_name"`
-	Backfill bool             `db:"backfill"`
-	Num      uint64           `db:"num"`
-	Stop     uint64           `db:"stop"`
-	Hash     eth.Bytes        `db:"hash"`
-	SrcNum   uint64           `db:"src_num"`
-	SrcHash  eth.Bytes        `db:"src_hash"`
-	NBlocks  uint64           `db:"nblocks"`
-	NRows    uint64           `db:"nrows"`
-	Latency  jsonDuration     `db:"latency"`
-	Dstat    map[string]Dstat `db:"dstat"`
+	DOMID    string       `db:"-"`
+	SrcName  string       `db:"src_name"`
+	Backfill bool         `db:"backfill"`
+	Num      uint64       `db:"num"`
+	Stop     uint64       `db:"stop"`
+	Hash     eth.Bytes    `db:"hash"`
+	SrcNum   uint64       `db:"src_num"`
+	SrcHash  eth.Bytes    `db:"src_hash"`
+	NBlocks  uint64       `db:"nblocks"`
+	NRows    uint64       `db:"nrows"`
+	Latency  jsonDuration `db:"latency"`
 }
 
 func TaskUpdates(ctx context.Context, pg wpg.Conn) ([]TaskUpdate, error) {
@@ -769,8 +743,7 @@ func TaskUpdates(ctx context.Context, pg wpg.Conn) ([]TaskUpdate, error) {
 			coalesce(src_hash, '\x00') src_hash,
 			coalesce(nblocks, 0) nblocks,
 			coalesce(nrows, 0) nrows,
-			coalesce(latency, '0')::interval latency,
-			coalesce(dstat, '{}') dstat
+			coalesce(latency, '0')::interval latency
         from f
         left join e2pg.task
 		on e2pg.task.src_name = f.src_name

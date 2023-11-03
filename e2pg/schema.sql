@@ -64,7 +64,6 @@ CREATE TABLE e2pg.task (
     nblocks numeric,
     nrows numeric,
     latency interval,
-    dstat jsonb,
     backfill boolean DEFAULT false,
     src_name text,
     stop numeric
