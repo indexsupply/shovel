@@ -399,6 +399,16 @@ func TestValidate_MissingCols(t *testing.T) {
 			},
 		},
 	}
-	const want = "validating columns: missing column for b"
-	diff.Test(t, t.Errorf, want, ig.validate().Error())
+	const want = "missing column for b"
+	diff.Test(t, t.Errorf, want, ig.validateCols().Error())
+}
+
+func TestAddUniqueIndex(t *testing.T) {
+	ig := Integration{}
+	ig.addRequiredFields()
+	ig.setCols()
+	ig.addUniqueIndex()
+	want := []string{"intg_name", "src_name", "block_num", "tx_idx"}
+	diff.Test(t, t.Fatalf, 1, len(ig.Table.Unique))
+	diff.Test(t, t.Errorf, want, ig.Table.Unique[0])
 }
