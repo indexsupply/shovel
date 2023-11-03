@@ -330,13 +330,23 @@ func TestNew(t *testing.T) {
 			Inputs: []Input{
 				Input{Indexed: true, Name: "a"},
 				Input{Indexed: true, Name: "b", Column: "b"},
-				Input{Indexed: true, Name: "c", Column: "c"},
+				Input{Indexed: false, Name: "c", Column: "c"},
 			},
 		}
 	)
 	ig, err := New("foo", event, block, table)
 	diff.Test(t, t.Errorf, nil, err)
-	diff.Test(t, t.Errorf, 5, len(ig.Columns))
+	want := []string{
+		"b",
+		"c",
+		"block_num",
+		"intg_name",
+		"src_name",
+		"tx_idx",
+		"log_idx",
+		"abi_idx",
+	}
+	diff.Test(t, t.Errorf, want, ig.Columns)
 }
 
 func TestValidate_AddRequired(t *testing.T) {
@@ -358,8 +368,17 @@ func TestValidate_AddRequired(t *testing.T) {
 			},
 		},
 	}
-	diff.Test(t, t.Errorf, nil, ig.validate())
-	diff.Test(t, t.Errorf, 5, len(ig.Table.Cols))
+	ig.addRequiredFields()
+	want := []Column{
+		{Name: "b", Type: "bytea"},
+		{Name: "c", Type: "bytea"},
+		{Name: "intg_name", Type: "text"},
+		{Name: "src_name", Type: "text"},
+		{Name: "block_num", Type: "numeric"},
+		{Name: "tx_idx", Type: "int4"},
+		{Name: "log_idx", Type: "int2"},
+	}
+	diff.Test(t, t.Errorf, want, ig.Table.Cols)
 }
 
 func TestValidate_MissingCols(t *testing.T) {

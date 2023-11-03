@@ -599,6 +599,7 @@ func New(name string, ev Event, bd []BlockData, table Table) (Integration, error
 		resultCache: NewResult(ev.ABIType()),
 		sighash:     ev.SignatureHash(),
 	}
+	ig.addRequiredFields()
 	if err := ig.validate(); err != nil {
 		return ig, fmt.Errorf("validating %s: %w", name, err)
 	}
@@ -661,20 +662,6 @@ func (ig *Integration) validateCols() error {
 		b BlockData
 	}
 	var (
-		required = map[string]config{
-			"src_name": config{
-				c: Column{Name: "src_name", Type: "text"},
-				b: BlockData{Name: "src_name", Column: "src_name"},
-			},
-			"intg_name": config{
-				c: Column{Name: "intg_name", Type: "text"},
-				b: BlockData{Name: "intg_name", Column: "intg_name"},
-			},
-			"block_num": config{
-				c: Column{Name: "block_num", Type: "numeric"},
-				b: BlockData{Name: "block_num", Column: "block_num"},
-			},
-		}
 		ucols   = map[string]struct{}{}
 		uinputs = map[string]struct{}{}
 		ubd     = map[string]struct{}{}
@@ -697,22 +684,6 @@ func (ig *Integration) validateCols() error {
 		}
 		ubd[bd.Name] = struct{}{}
 	}
-	for name, cfg := range required {
-		switch {
-		case len(cfg.i.Name) > 0:
-			if _, ok := uinputs[name]; !ok {
-				ig.Event.Inputs = append(ig.Event.Inputs, cfg.i)
-			}
-		case len(cfg.b.Name) > 0:
-			if _, ok := ubd[name]; !ok {
-				ig.Block = append(ig.Block, cfg.b)
-			}
-		}
-		if _, ok := ucols[name]; !ok {
-			ig.Table.Cols = append(ig.Table.Cols, cfg.c)
-		}
-	}
-
 	// Every selected input must have a coresponding column
 	for _, inp := range ig.Event.Selected() {
 		var found bool
@@ -726,6 +697,7 @@ func (ig *Integration) validateCols() error {
 			return fmt.Errorf("missing column for %s", inp.Name)
 		}
 	}
+	// Every selected block field must have a coresponding column
 	for _, bd := range ig.Block {
 		if len(bd.Column) == 0 {
 			return fmt.Errorf("missing column for block.%s", bd.Name)
@@ -742,6 +714,47 @@ func (ig *Integration) validateCols() error {
 		}
 	}
 	return nil
+}
+
+func (ig *Integration) addRequiredFields() {
+	hasBD := func(name string) bool {
+		for _, bd := range ig.Block {
+			if bd.Name == name {
+				return true
+			}
+		}
+		return false
+	}
+	hasCol := func(name string) bool {
+		for _, c := range ig.Table.Cols {
+			if c.Name == name {
+				return true
+			}
+		}
+		return false
+	}
+	add := func(name, t string) {
+		if !hasBD(name) {
+			ig.Block = append(ig.Block, BlockData{Name: name, Column: name})
+		}
+		if !hasCol(name) {
+			ig.Table.Cols = append(ig.Table.Cols, Column{Name: name, Type: t})
+		}
+	}
+
+	add("intg_name", "text")
+	add("src_name", "text")
+	add("block_num", "numeric")
+	add("tx_idx", "int4")
+
+	if len(ig.Event.Selected()) > 0 {
+		add("log_idx", "int2")
+	}
+	for _, inp := range ig.Event.Selected() {
+		if !inp.Indexed {
+			add("abi_idx", "int2")
+		}
+	}
 }
 
 func validateString(s string) error {
