@@ -120,6 +120,10 @@ func main() {
 	}
 
 	go func() {
+		check(wh.PushUpdates())
+	}()
+
+	go func() {
 		for {
 			check(e2pg.PruneIntg(ctx, pg))
 			check(e2pg.PruneTask(ctx, pg, 200))
