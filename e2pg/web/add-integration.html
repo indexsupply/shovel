@@ -234,7 +234,7 @@
 				<td class="arrow"></td>
 				<td class="dbName"></td>
 				<td class="dbType"></td>
-				<td class="checkbox"><input type="checkbox"></td>
+				<td class="checkbox nocheck"><input type="checkbox"></td>
 				</tr>
 			`;
 		};
@@ -278,7 +278,7 @@
 						<option>numeric</option>
 					</select>
 				</td>
-				<td class="checkbox"><input type="checkbox"></td>
+				<td class="checkbox nocheck"><input type="checkbox"></td>
 				</tr>
 			`;
 		};
@@ -291,7 +291,7 @@
 				<td class="arrow">→</td>
 				<td class="dbName"><span>${dbName(parent, field)}</span></td>
 				<td class="dbType"><span>${dbType(field.type)}</span></td>
-				<td class="checkbox"><input type="checkbox"></td>
+				<td class="checkbox nocheck"><input type="checkbox"></td>
 				</tr>
 			`;
 		};
@@ -303,8 +303,8 @@
 				<td class="lpad-0">${src.chain_id}</td>
 				<td></td>
 				<td></td>
-				<td></td>
-				<td class="checkbox"><input type="checkbox"></td>
+				<td class="nocheck"><input class="start" type="number" placeholder="Backfill Start"/></td>
+				<td class="checkbox nocheck"><input type="checkbox"></td>
 				</tr>
 			`;
 		};
@@ -449,7 +449,7 @@
 		}
 
 		function addListeners() {
-			document.querySelectorAll('.eventMapping table td:not(.checkbox)').forEach(r =>  {
+			document.querySelectorAll('.eventMapping table td:not(.nocheck)').forEach(r =>  {
 				r.addEventListener('click', c => {
 					let row = r.closest('tr');
 					let cb = row.querySelector('input[type="checkbox"]');
@@ -556,8 +556,14 @@
 					if (!cb || !cb.checked) {
 						return;
 					}
-					let n = row.querySelector("td.name").textContent.trim()
-					res.push({name: n});
+					let src = {};
+					src.name = row.querySelector("td.name").textContent.trim();
+
+					const s = row.querySelector(`input[type="number"]`).valueAsNumber;
+					if (s > 0) {
+						src.start = s;
+					}
+					res.push(src);
 				});
 				return res;
 			}
