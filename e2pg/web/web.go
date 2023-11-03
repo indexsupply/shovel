@@ -159,6 +159,7 @@ type IndexView struct {
 	TaskUpdates   map[string]e2pg.TaskUpdate
 	IntgUpdates   map[string][]e2pg.IntgUpdate
 	SourceConfigs []e2pg.SourceConfig
+	ShowBackfill  bool
 }
 
 func (h *Handler) Index(w http.ResponseWriter, r *http.Request) {
@@ -187,6 +188,13 @@ func (h *Handler) Index(w http.ResponseWriter, r *http.Request) {
 	view.TaskUpdates = make(map[string]e2pg.TaskUpdate)
 	for _, tu := range tus {
 		view.TaskUpdates[tu.DOMID] = tu
+	}
+
+	for _, tu := range view.TaskUpdates {
+		if tu.Backfill {
+			view.ShowBackfill = true
+			break
+		}
 	}
 
 	view.SourceConfigs, err = h.conf.AllSourceConfigs(ctx, h.pgp)

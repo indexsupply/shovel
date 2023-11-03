@@ -162,6 +162,7 @@
 			{{ end -}}
 		</div>
 		<div class="backfill">
+			{{ if .ShowBackfill -}}
 			<h2>Backfill Tasks</h2>
 			<div class="backfill-tasks">
 				{{ range $sc := .SourceConfigs -}}
@@ -191,6 +192,7 @@
 				{{ end -}}
 				{{ end -}}
 			</div>
+			{{ end -}}
 		</div>
 	</body>
 	<script>

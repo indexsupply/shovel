@@ -806,7 +806,7 @@ func IntgUpdates(ctx context.Context, pg wpg.Conn) ([]IntgUpdate, error) {
 			f.src_name,
 			f.backfill,
 			f.num,
-			stop,
+			coalesce(stop, 0) stop,
 			coalesce(nrows, 0) nrows,
 			coalesce(latency, '0')::interval latency
         from f
