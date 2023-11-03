@@ -713,11 +713,11 @@ func (d jsonDuration) MarshalJSON() ([]byte, error) {
 func (d jsonDuration) String() string {
 	switch td := time.Duration(d); {
 	case td < 10*time.Millisecond:
-		return td.Truncate(10 * time.Millisecond).String()
-	case td < 100*time.Millisecond:
+		return td.Truncate(time.Millisecond).String()
+	case td < 900*time.Millisecond:
 		return td.Truncate(100 * time.Millisecond).String()
 	default:
-		return td.Round(time.Second).String()
+		return td.Truncate(time.Second).String()
 	}
 }
 
