@@ -131,8 +131,7 @@ func main() {
 		}
 	}()
 
-	check(mgr.Load())
-	mgr.Run()
+	go mgr.Run()
 
 	switch profile {
 	case "cpu":

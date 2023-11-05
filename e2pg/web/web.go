@@ -138,12 +138,12 @@ func (h *Handler) SaveIntegration(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	if err := h.mgr.Load(); err != nil {
+	h.mgr.Restart()
+	if err := h.mgr.Err(); err != nil {
 		slog.ErrorContext(ctx, "inserting integration", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	h.mgr.Restart()
 	json.NewEncoder(w).Encode("ok")
 }
 
@@ -313,11 +313,11 @@ func (h *Handler) SaveSource(w http.ResponseWriter, r *http.Request) {
 		slog.ErrorContext(ctx, "inserting task", err)
 		return
 	}
-	if err := h.mgr.Load(); err != nil {
+	h.mgr.Restart()
+	if err := h.mgr.Err(); err != nil {
 		slog.ErrorContext(ctx, "inserting integration", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	h.mgr.Restart()
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
