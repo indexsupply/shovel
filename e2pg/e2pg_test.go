@@ -281,10 +281,15 @@ func TestConverge_DeltaBatchSize(t *testing.T) {
 		tg.add(i, hash(byte(i)), hash(byte(i-1)))
 	}
 
-	diff.Test(t, t.Errorf, nil, task.Converge(false))
+	var err error
+	err = task.Converge(false)
+	fmt.Println(err)
+	diff.Test(t, t.Errorf, nil, err)
 	diff.Test(t, t.Errorf, dest.blocks(), tg.blocks[:batchSize+1])
 
-	diff.Test(t, t.Errorf, nil, task.Converge(false))
+	err = task.Converge(false)
+	fmt.Println(err)
+	diff.Test(t, t.Errorf, nil, err)
 	diff.Test(t, t.Errorf, dest.blocks(), tg.blocks)
 }
 
@@ -765,6 +770,58 @@ func TestValidateChain(t *testing.T) {
 	}
 	for _, tc := range cases {
 		diff.Test(t, t.Errorf, tc.want, validateChain(tc.parent, tc.blks))
+	}
+}
+
+func TestParts(t *testing.T) {
+	cases := []struct {
+		numParts  int
+		batchSize int
+		want      []part
+	}{
+		{
+			1,
+			1,
+			[]part{part{m: 0, n: 1}},
+		},
+		{
+			1,
+			3,
+			[]part{part{m: 0, n: 3}},
+		},
+		{
+			3,
+			3,
+			[]part{
+				part{m: 0, n: 1},
+				part{m: 1, n: 2},
+				part{m: 2, n: 3},
+			},
+		},
+		{
+			3,
+			10,
+			[]part{
+				part{m: 0, n: 3},
+				part{m: 3, n: 6},
+				part{m: 6, n: 10},
+			},
+		},
+		{
+			5,
+			42,
+			[]part{
+				part{m: 0, n: 8},
+				part{m: 8, n: 16},
+				part{m: 16, n: 24},
+				part{m: 24, n: 32},
+				part{m: 32, n: 42},
+			},
+		},
+	}
+	for _, tc := range cases {
+		got := parts(tc.numParts, tc.batchSize)
+		diff.Test(t, t.Errorf, tc.want, got)
 	}
 }
 

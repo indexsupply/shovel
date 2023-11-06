@@ -132,6 +132,13 @@ func main() {
 	}()
 
 	go mgr.Run()
+	go func() {
+		for {
+			if err := mgr.Err(); err != nil {
+				slog.ErrorContext(ctx, "error", err)
+			}
+		}
+	}()
 
 	switch profile {
 	case "cpu":
