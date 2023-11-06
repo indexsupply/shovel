@@ -257,6 +257,21 @@ func (t *Task) initRows(n uint64, h []byte) error {
 	return nil
 }
 
+// lockid accepts a uint64 because, per eip155, a chain id can
+// be: floor(MAX_UINT64 / 2) - 36. Since pg_advisory_xact_lock
+// requires a 32 bit id, and since we are using a bit to indicate
+// wheather a task is backfill or not, we simply panic for large chain
+// ids. If this ever becomes a problem we can find another solution.
+func lockid(x uint64, backfill bool) uint32 {
+	if x > ((1 << 31) - 1) {
+		panic("lockid input too big")
+	}
+	if backfill {
+		return uint32((x << 1) | 1)
+	}
+	return uint32((x << 1) &^ 1)
+}
+
 var (
 	ErrNothingNew = errors.New("no new blocks")
 	ErrReorg      = errors.New("reorg")
@@ -286,7 +301,7 @@ func (task *Task) Converge(notx bool) error {
 		pg = wpg.NewTxLocker(pgTx)
 		//crc32(task) == 1384045349
 		const lockq = `select pg_advisory_xact_lock(1384045349, $1)`
-		_, err = pg.Exec(task.ctx, lockq, task.chainID)
+		_, err = pg.Exec(task.ctx, lockq, lockid(task.chainID, task.backfill))
 		if err != nil {
 			return fmt.Errorf("task lock %d: %w", task.chainID, err)
 		}

@@ -756,3 +756,20 @@ func TestValidateChain(t *testing.T) {
 		diff.Test(t, t.Errorf, tc.want, validateChain(tc.parent, tc.blks))
 	}
 }
+
+func TestLockID(t *testing.T) {
+	cases := []struct {
+		chid     uint64
+		backfill bool
+		want     uint32
+	}{
+		{1, true, 0b00000000000000000000000000000011},
+		{1, false, 0b00000000000000000000000000000010},
+		{1024, true, 0b00000000000000000000100000000001},
+		{1024, false, 0b00000000000000000000100000000000},
+	}
+	for _, tc := range cases {
+		got := lockid(tc.chid, tc.backfill)
+		diff.Test(t, t.Errorf, tc.want, got)
+	}
+}
