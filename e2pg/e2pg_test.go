@@ -145,7 +145,8 @@ func TestSetup(t *testing.T) {
 		tg   = &testGeth{}
 		pg   = testpg(t)
 		task = NewTask(
-			WithSource(0, "foo", tg),
+			WithSourceConfig(SourceConfig{Name: "foo"}),
+			WithSourceFactory(func(SourceConfig) Source { return tg }),
 			WithPG(pg),
 			WithDestinations(newTestDestination("foo")),
 		)
@@ -166,10 +167,10 @@ func TestSetup(t *testing.T) {
 
 func TestConverge_Zero(t *testing.T) {
 	var (
-		tg   = &testGeth{}
 		pg   = testpg(t)
 		task = NewTask(
-			WithSource(0, "foo", tg),
+			WithSourceConfig(SourceConfig{Name: "foo"}),
+			WithSourceFactory(func(SourceConfig) Source { return &testGeth{} }),
 			WithPG(pg),
 			WithDestinations(newTestDestination("foo")),
 		)
@@ -183,7 +184,8 @@ func TestConverge_EmptyDestination(t *testing.T) {
 		tg   = &testGeth{}
 		dest = newTestDestination("foo")
 		task = NewTask(
-			WithSource(0, "foo", tg),
+			WithSourceConfig(SourceConfig{Name: "foo"}),
+			WithSourceFactory(func(SourceConfig) Source { return tg }),
 			WithPG(pg),
 			WithDestinations(dest),
 		)
@@ -202,7 +204,8 @@ func TestConverge_Reorg(t *testing.T) {
 		tg   = &testGeth{}
 		dest = newTestDestination("foo")
 		task = NewTask(
-			WithSource(0, "foo", tg),
+			WithSourceConfig(SourceConfig{Name: "foo"}),
+			WithSourceFactory(func(SourceConfig) Source { return tg }),
 			WithPG(pg),
 			WithDestinations(dest),
 		)
@@ -262,7 +265,8 @@ func TestConverge_DeltaBatchSize(t *testing.T) {
 		tg   = &testGeth{}
 		dest = newTestDestination("foo")
 		task = NewTask(
-			WithSource(0, "foo", tg),
+			WithSourceConfig(SourceConfig{Name: "foo"}),
+			WithSourceFactory(func(SourceConfig) Source { return tg }),
 			WithPG(pg),
 			WithConcurrency(workers, batchSize),
 			WithDestinations(dest),
@@ -291,13 +295,15 @@ func TestConverge_MultipleTasks(t *testing.T) {
 		dest1 = newTestDestination("foo")
 		dest2 = newTestDestination("bar")
 		task1 = NewTask(
-			WithSource(0, "a", tg),
+			WithSourceConfig(SourceConfig{Name: "a"}),
+			WithSourceFactory(func(SourceConfig) Source { return tg }),
 			WithPG(pg),
 			WithConcurrency(1, 3),
 			WithDestinations(dest1),
 		)
 		task2 = NewTask(
-			WithSource(0, "b", tg),
+			WithSourceConfig(SourceConfig{Name: "b"}),
+			WithSourceFactory(func(SourceConfig) Source { return tg }),
 			WithPG(pg),
 			WithConcurrency(1, 3),
 			WithDestinations(dest2),
@@ -322,7 +328,8 @@ func TestConverge_LocalAhead(t *testing.T) {
 		pg   = testpg(t)
 		dest = newTestDestination("foo")
 		task = NewTask(
-			WithSource(0, "foo", tg),
+			WithSourceConfig(SourceConfig{Name: "foo"}),
+			WithSourceFactory(func(SourceConfig) Source { return tg }),
 			WithPG(pg),
 			WithConcurrency(1, 3),
 			WithDestinations(dest),
@@ -407,7 +414,8 @@ func TestInitRows(t *testing.T) {
 
 	task := NewTask(
 		WithPG(pg),
-		WithSource(0, "foo", &testGeth{}),
+		WithSourceConfig(SourceConfig{Name: "foo"}),
+		WithSourceFactory(func(SourceConfig) Source { return &testGeth{} }),
 		WithDestinations(newTestDestination("bar")),
 	)
 	err = task.initRows(42, hash(42))
@@ -422,7 +430,8 @@ func TestInitRows(t *testing.T) {
 
 	task = NewTask(
 		WithPG(pg),
-		WithSource(0, "foo", &testGeth{}),
+		WithSourceConfig(SourceConfig{Name: "foo"}),
+		WithSourceFactory(func(SourceConfig) Source { return &testGeth{} }),
 		WithDestinations(newTestDestination("bar"), newTestDestination("baz")),
 	)
 	err = task.initRows(42, hash(42))
@@ -433,7 +442,8 @@ func TestInitRows(t *testing.T) {
 	task = NewTask(
 		WithPG(pg),
 		WithBackfill(true),
-		WithSource(0, "foo", &testGeth{}),
+		WithSourceConfig(SourceConfig{Name: "foo"}),
+		WithSourceFactory(func(SourceConfig) Source { return &testGeth{} }),
 		WithDestinations(newTestDestination("bar"), newTestDestination("baz")),
 	)
 	err = task.initRows(42, hash(42))
@@ -490,13 +500,15 @@ func TestDestRanges_Load(t *testing.T) {
 
 	task1 := NewTask(
 		WithPG(pg),
-		WithSource(0, "foo", &testGeth{}),
+		WithSourceConfig(SourceConfig{Name: "foo"}),
+		WithSourceFactory(func(SourceConfig) Source { return &testGeth{} }),
 		WithDestinations(newTestDestination("bar")),
 	)
 	task2 := NewTask(
 		WithPG(pg),
 		WithBackfill(true),
-		WithSource(0, "foo", &testGeth{}),
+		WithSourceConfig(SourceConfig{Name: "foo"}),
+		WithSourceFactory(func(SourceConfig) Source { return &testGeth{} }),
 		WithDestinations(newTestDestination("bar")),
 	)
 	err = task1.initRows(42, hash(42))

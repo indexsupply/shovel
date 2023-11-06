@@ -67,7 +67,8 @@ func (th *Helper) Process(dest Destination, n uint64) {
 	var (
 		geth = NewGeth(th.gt.FileCache, th.gt.Client)
 		task = NewTask(
-			WithSource(0, "testhelper", geth),
+			WithSourceConfig(SourceConfig{Name: "testhelper"}),
+			WithSourceFactory(func(SourceConfig) Source { return geth }),
 			WithPG(th.PG),
 			WithDestinations(dest),
 			WithRange(n, n+1),
