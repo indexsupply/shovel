@@ -77,11 +77,10 @@ func WithRange(start, stop uint64) Option {
 	}
 }
 
-func WithConcurrency(workers, batch uint64) Option {
+func WithConcurrency(numParts, batchSize int) Option {
 	return func(t *Task) {
-		t.workers = workers
-		t.batchSize = batch
-		t.batch = make([]eth.Block, t.batchSize)
+		t.batch = make([]eth.Block, batchSize)
+		t.parts = parts(numParts, batchSize)
 	}
 }
 
@@ -109,14 +108,15 @@ func NewTask(opts ...Option) *Task {
 	t := &Task{
 		ctx:        context.Background(),
 		batch:      make([]eth.Block, 1),
-		batchSize:  1,
-		workers:    1,
+		parts:      parts(1, 1),
 		srcFactory: getSource,
 	}
 	for _, opt := range opts {
 		opt(t)
 	}
-	t.src = t.srcFactory(t.srcConfig)
+	for i := range t.parts {
+		t.parts[i].src = t.srcFactory(t.srcConfig)
+	}
 	slog.InfoContext(t.ctx, "starting task", "dest-count", len(t.dests))
 	return t
 }
@@ -127,7 +127,6 @@ type Task struct {
 
 	srcFactory func(SourceConfig) Source
 	srcConfig  SourceConfig
-	src        Source
 
 	pgp         *pgxpool.Pool
 	dests       []Destination
@@ -136,10 +135,48 @@ type Task struct {
 
 	iub *intgUpdateBuf
 
-	filter    [][]byte
-	batch     []eth.Block
-	batchSize uint64
-	workers   uint64
+	filter [][]byte
+	batch  []eth.Block
+	parts  []part
+}
+
+// Depending on WithConcurrency, a Task may be configured with
+// concurrent parts. This allows a task to concurrently download
+// block data from its Source.
+//
+// m and n are used to slice the task's batch: task.batch[m:n]
+//
+// Each part has its own source since the Source may have buffers
+// that aren't safe to share across go-routines.
+type part struct {
+	m, n int
+	src  Source
+}
+
+func parts(numParts, batchSize int) []part {
+	var (
+		p         = make([]part, numParts)
+		size      = batchSize / numParts
+		remainder = batchSize % numParts
+	)
+	for i := range p {
+		p[i].m = size * i
+		p[i].n = size + p[i].m
+	}
+	if remainder > 0 {
+		p[numParts-1].n += remainder
+	}
+	if p[numParts-1].n != batchSize {
+		panic(fmt.Sprintf("batchSize error want: %d got: %d", batchSize, p[numParts-1].n))
+	}
+	return p
+}
+
+func (p *part) slice(delta uint64, b []eth.Block) []eth.Block {
+	if int(delta) < p.m {
+		return nil
+	}
+	return b[p.m:min(p.n, int(delta))]
 }
 
 func (t *Task) Setup() error {
@@ -158,7 +195,7 @@ func (t *Task) Setup() error {
 				t.stop = t.destRanges[i].stop
 			}
 		}
-		h, err := t.src.Hash(maxStart)
+		h, err := t.parts[0].src.Hash(maxStart)
 		if err != nil {
 			return fmt.Errorf("getting hash for %d: %w", maxStart, err)
 		}
@@ -176,7 +213,7 @@ func (t *Task) Setup() error {
 		}
 		return nil
 	case t.start > 0:
-		h, err := t.src.Hash(t.start - 1)
+		h, err := t.parts[0].src.Hash(t.start - 1)
 		if err != nil {
 			return err
 		}
@@ -185,11 +222,11 @@ func (t *Task) Setup() error {
 		}
 		return nil
 	default:
-		gethNum, _, err := t.src.Latest()
+		gethNum, _, err := t.parts[0].src.Latest()
 		if err != nil {
 			return err
 		}
-		h, err := t.src.Hash(gethNum - 1)
+		h, err := t.parts[0].src.Hash(gethNum - 1)
 		if err != nil {
 			return fmt.Errorf("getting hash for %d: %w", gethNum-1, err)
 		}
@@ -278,7 +315,7 @@ var (
 	ErrAhead      = errors.New("ahead")
 )
 
-// Indexes at most task.batchSize of the delta between min(g, limit) and pg.
+// Indexes at most len(task.batch) of the delta between min(g, limit) and pg.
 // If pg contains an invalid latest block (ie reorg) then [ErrReorg]
 // is returned and the caller may rollback the transaction resulting
 // in no side-effects.
@@ -322,7 +359,7 @@ func (task *Task) Converge(notx bool) error {
 		if task.stop > 0 && localNum >= task.stop { //don't sync past task.stop
 			return ErrDone
 		}
-		gethNum, gethHash, err := task.src.Latest()
+		gethNum, gethHash, err := task.parts[0].src.Latest()
 		if err != nil {
 			return fmt.Errorf("getting latest from eth: %w", err)
 		}
@@ -335,7 +372,7 @@ func (task *Task) Converge(notx bool) error {
 		if localNum == gethNum {
 			return ErrNothingNew
 		}
-		delta := min(gethNum-localNum, task.batchSize)
+		delta := min(gethNum-localNum, uint64(len(task.batch)))
 		if delta == 0 {
 			return ErrNothingNew
 		}
@@ -431,33 +468,31 @@ func (task *Task) Converge(notx bool) error {
 // The reading of block data and indexing of integrations happens concurrently
 // with the number of go routines controlled by c.
 func (task *Task) loadinsert(localHash []byte, pg wpg.Conn, delta uint64) (int64, error) {
-	var (
-		nrows int64
-		eg1   = errgroup.Group{}
-		wsize = task.batchSize / task.workers
-	)
-	for i := uint64(0); i < task.workers && i*wsize < delta; i++ {
-		n := i * wsize
-		m := n + wsize
-		blks := task.batch[n:min(int(m), int(delta))]
-		if len(blks) == 0 {
+	var eg1 errgroup.Group
+	for i := range task.parts {
+		i := i
+		b := task.parts[i].slice(delta, task.batch)
+		if len(b) == 0 {
 			continue
 		}
-		eg1.Go(func() error { return task.src.LoadBlocks(task.filter, blks) })
+		eg1.Go(func() error {
+			return task.parts[i].src.LoadBlocks(task.filter, b)
+		})
 	}
 	if err := eg1.Wait(); err != nil {
 		return 0, err
 	}
 	if err := validateChain(localHash, task.batch[:delta]); err != nil {
-		fmt.Println(err)
 		return 0, fmt.Errorf("validating new chain: %w", err)
 	}
-	var eg2 errgroup.Group
-	for i := uint64(0); i < task.workers && i*wsize < delta; i++ {
-		n := i * wsize
-		m := n + wsize
-		blks := task.batch[n:min(int(m), int(delta))]
-		if len(blks) == 0 {
+	var (
+		nrows int64
+		eg2   errgroup.Group
+	)
+	for i := range task.parts {
+		i := i
+		b := task.parts[i].slice(delta, task.batch)
+		if len(b) == 0 {
 			continue
 		}
 		eg2.Go(func() error {
@@ -465,17 +500,19 @@ func (task *Task) loadinsert(localHash []byte, pg wpg.Conn, delta uint64) (int64
 			for j := range task.dests {
 				j := j
 				eg3.Go(func() error {
-					start := time.Now()
-					blks = task.destRanges[j].filter(blks)
-					if len(blks) == 0 {
+					var (
+						start = time.Now()
+						bdst  = task.destRanges[j].filter(b)
+					)
+					if len(bdst) == 0 {
 						return nil
 					}
-					count, err := task.dests[j].Insert(task.ctx, pg, blks)
+					count, err := task.dests[j].Insert(task.ctx, pg, bdst)
 					task.iub.update(j,
 						task.dests[j].Name(),
 						task.srcConfig.Name,
 						task.backfill,
-						blks[len(blks)-1].Num(),
+						bdst[len(bdst)-1].Num(),
 						task.stop,
 						time.Since(start),
 						count,
@@ -1020,7 +1057,7 @@ func loadTasks(ctx context.Context, pgp *pgxpool.Pool, conf Config) ([]*Task, er
 			WithSourceConfig(sc),
 			WithPG(pgp),
 			WithRange(startBF[sc.Name], 0),
-			WithConcurrency(1, 100),
+			WithConcurrency(10, 100),
 			WithDestinations(destsBF[sc.Name]...),
 		))
 	}
