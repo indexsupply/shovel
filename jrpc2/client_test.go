@@ -42,7 +42,7 @@ func TestNoLogs(t *testing.T) {
 
 	blocks := []eth.Block{eth.Block{Header: eth.Header{Number: 1000001}}}
 	c := New(0, ts.URL)
-	err := c.LoadBlocks(nil, nil, blocks)
+	err := c.LoadBlocks(nil, blocks)
 	diff.Test(t, t.Errorf, nil, err)
 
 	b := blocks[0]
@@ -70,7 +70,7 @@ func TestLatest(t *testing.T) {
 
 	blocks := []eth.Block{eth.Block{Header: eth.Header{Number: 18000000}}}
 	c := New(0, ts.URL)
-	err := c.LoadBlocks(nil, nil, blocks)
+	err := c.LoadBlocks(nil, blocks)
 	diff.Test(t, t.Errorf, nil, err)
 
 	b := blocks[0]

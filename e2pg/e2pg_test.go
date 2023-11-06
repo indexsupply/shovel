@@ -11,7 +11,6 @@ import (
 
 	"github.com/indexsupply/x/abi2"
 	"github.com/indexsupply/x/eth"
-	"github.com/indexsupply/x/geth"
 	"github.com/indexsupply/x/tc"
 	"github.com/indexsupply/x/wpg"
 
@@ -107,10 +106,10 @@ func (tg *testGeth) Latest() (uint64, []byte, error) {
 	return b.Num(), b.Hash(), nil
 }
 
-func (tg *testGeth) LoadBlocks(filter [][]byte, bufs []geth.Buffer, blks []eth.Block) error {
-	for i := range bufs {
+func (tg *testGeth) LoadBlocks(filter [][]byte, blks []eth.Block) error {
+	for i := range blks {
 		for j := range tg.blocks {
-			if bufs[i].Number == tg.blocks[j].Num() {
+			if blks[i].Num() == tg.blocks[j].Num() {
 				blks[i].Header = tg.blocks[j].Header
 			}
 		}

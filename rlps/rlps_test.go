@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/indexsupply/x/eth"
-	"github.com/indexsupply/x/geth"
 	"github.com/indexsupply/x/geth/gethtest"
 	"kr.dev/diff"
 )
@@ -40,13 +39,9 @@ func TestServerErrors(t *testing.T) {
 	diff.Test(t, t.Fatalf, n, uint64(0))
 	diff.Test(t, t.Fatalf, len(h), 0)
 
-	var (
-		buffers = []geth.Buffer{geth.Buffer{Number: 16000000}}
-		blocks  = make([]eth.Block, 1)
-	)
-	err = cli.LoadBlocks(nil, buffers, blocks)
+	var blocks = []eth.Block{{Header: eth.Header{Number: 16000000}}}
+	err = cli.LoadBlocks(nil, blocks)
 	diff.Test(t, t.Fatalf, err.Error(), "unable to get hash for 16000000: rlps error: an error\n")
-	diff.Test(t, t.Fatalf, blocks[0].Num(), uint64(0))
 	diff.Test(t, t.Fatalf, len(blocks[0].Hash()), 0)
 	diff.Test(t, t.Fatalf, len(blocks[0].Txs), 0)
 }
@@ -97,11 +92,8 @@ func TestLoadBlocks(t *testing.T) {
 	)
 	defer ts.Close()
 
-	var (
-		buffers = []geth.Buffer{geth.Buffer{Number: 16000000}}
-		blocks  = make([]eth.Block, 1)
-	)
-	err := cli.LoadBlocks(nil, buffers, blocks)
+	var blocks = []eth.Block{{Header: eth.Header{Number: 16000000}}}
+	err := cli.LoadBlocks(nil, blocks)
 	diff.Test(t, t.Fatalf, err, nil)
 	diff.Test(t, t.Fatalf, blocks[0].Num(), uint64(16000000))
 	diff.Test(t, t.Fatalf, blocks[0].Hash(), h2b("3dc4ef568ae2635db1419c5fec55c4a9322c05302ae527cd40bff380c1d465dd"))
@@ -129,11 +121,10 @@ func TestLoadBlocks_Filter(t *testing.T) {
 	defer ts.Close()
 
 	var (
-		buffers = []geth.Buffer{geth.Buffer{Number: 16000000}}
-		blocks  = make([]eth.Block, 1)
-		filter  = [][]byte{repeat('2', 32)}
+		blocks = []eth.Block{{Header: eth.Header{Number: 16000000}}}
+		filter = [][]byte{repeat('2', 32)}
 	)
-	err := cli.LoadBlocks(filter, buffers, blocks)
+	err := cli.LoadBlocks(filter, blocks)
 	diff.Test(t, t.Fatalf, err, nil)
 	diff.Test(t, t.Fatalf, blocks[0].Num(), uint64(16000000))
 	diff.Test(t, t.Fatalf, blocks[0].Hash(), h2b("3dc4ef568ae2635db1419c5fec55c4a9322c05302ae527cd40bff380c1d465dd"))
@@ -153,11 +144,10 @@ func TestLoadBlocks_Filter_Error(t *testing.T) {
 	defer ts.Close()
 
 	var (
-		buffers = []geth.Buffer{geth.Buffer{Number: 16000000}}
-		blocks  = make([]eth.Block, 1)
-		filter  = [][]byte{repeat('2', 33)}
+		blocks = []eth.Block{{Header: eth.Header{Number: 16000000}}}
+		filter = [][]byte{repeat('2', 33)}
 	)
-	err := cli.LoadBlocks(filter, buffers, blocks)
+	err := cli.LoadBlocks(filter, blocks)
 	const want = "rlps error: filter item must be 32 bytes. got: 33\n"
 	diff.Test(t, t.Fatalf, err.Error(), want)
 }

@@ -48,7 +48,12 @@ func skip(filter [][]byte, bf bloom.Filter) bool {
 	return true
 }
 
-func (g *Geth) LoadBlocks(filter [][]byte, bfs []geth.Buffer, blks []eth.Block) error {
+func (g *Geth) LoadBlocks(filter [][]byte, blks []eth.Block) error {
+	//TODO(r): this is a garbage factory and should be refactored
+	bfs := make([]geth.Buffer, len(blks))
+	for i := range blks {
+		bfs[i].Number = blks[i].Num()
+	}
 	err := geth.Load(filter, bfs, g.fc, g.rc)
 	if err != nil {
 		return fmt.Errorf("loading data: %w", err)

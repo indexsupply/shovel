@@ -16,7 +16,6 @@ import (
 
 	"github.com/indexsupply/x/abi2"
 	"github.com/indexsupply/x/eth"
-	"github.com/indexsupply/x/geth"
 	"github.com/indexsupply/x/jrpc2"
 	"github.com/indexsupply/x/rlps"
 	"github.com/indexsupply/x/wctx"
@@ -32,7 +31,7 @@ import (
 var Schema string
 
 type Source interface {
-	LoadBlocks([][]byte, []geth.Buffer, []eth.Block) error
+	LoadBlocks([][]byte, []eth.Block) error
 	Latest() (uint64, []byte, error)
 	Hash(uint64) ([]byte, error)
 }
@@ -82,7 +81,6 @@ func WithConcurrency(workers, batch uint64) Option {
 		t.workers = workers
 		t.batchSize = batch
 		t.batch = make([]eth.Block, t.batchSize)
-		t.buffs = make([]geth.Buffer, t.batchSize)
 	}
 }
 
@@ -110,7 +108,6 @@ func NewTask(opts ...Option) *Task {
 	t := &Task{
 		ctx:       context.Background(),
 		batch:     make([]eth.Block, 1),
-		buffs:     make([]geth.Buffer, 1),
 		batchSize: 1,
 		workers:   1,
 	}
@@ -138,7 +135,6 @@ type Task struct {
 
 	filter    [][]byte
 	batch     []eth.Block
-	buffs     []geth.Buffer
 	batchSize uint64
 	workers   uint64
 }
@@ -343,7 +339,6 @@ func (task *Task) Converge(notx bool) error {
 		for i := uint64(0); i < delta; i++ {
 			task.batch[i].Reset()
 			task.batch[i].SetNum(localNum + i + 1)
-			task.buffs[i].Number = task.batch[i].Num()
 		}
 		switch nrows, err := task.loadinsert(localHash, pg, delta); {
 		case errors.Is(err, ErrReorg):
@@ -441,12 +436,11 @@ func (task *Task) loadinsert(localHash []byte, pg wpg.Conn, delta uint64) (int64
 	for i := uint64(0); i < task.workers && i*wsize < delta; i++ {
 		n := i * wsize
 		m := n + wsize
-		bfs := task.buffs[n:min(int(m), int(delta))]
 		blks := task.batch[n:min(int(m), int(delta))]
 		if len(blks) == 0 {
 			continue
 		}
-		eg1.Go(func() error { return task.src.LoadBlocks(task.filter, bfs, blks) })
+		eg1.Go(func() error { return task.src.LoadBlocks(task.filter, blks) })
 	}
 	if err := eg1.Wait(); err != nil {
 		return 0, err

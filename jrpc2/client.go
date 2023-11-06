@@ -15,7 +15,6 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/indexsupply/x/eth"
-	"github.com/indexsupply/x/geth"
 )
 
 func New(chainID uint64, url string) *Client {
@@ -114,7 +113,7 @@ func (c *Client) Hash(n uint64) ([]byte, error) {
 	return bresp.Hash(), nil
 }
 
-func (c *Client) LoadBlocks(f [][]byte, _ []geth.Buffer, blocks []eth.Block) error {
+func (c *Client) LoadBlocks(f [][]byte, blocks []eth.Block) error {
 	if err := c.blocks(blocks); err != nil {
 		return fmt.Errorf("getting blocks: %w", err)
 	}
