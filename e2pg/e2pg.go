@@ -605,6 +605,9 @@ func (b *intgUpdateBuf) update(
 	lat time.Duration,
 	nrows int64,
 ) {
+	if num <= b.updates[j].Num {
+		return
+	}
 	b.updates[j].changed = true
 	b.updates[j].Name = name
 	b.updates[j].SrcName = srcName
