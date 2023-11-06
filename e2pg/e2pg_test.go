@@ -281,15 +281,10 @@ func TestConverge_DeltaBatchSize(t *testing.T) {
 		tg.add(i, hash(byte(i)), hash(byte(i-1)))
 	}
 
-	var err error
-	err = task.Converge(false)
-	fmt.Println(err)
-	diff.Test(t, t.Errorf, nil, err)
+	diff.Test(t, t.Errorf, nil, task.Converge(false))
 	diff.Test(t, t.Errorf, dest.blocks(), tg.blocks[:batchSize+1])
 
-	err = task.Converge(false)
-	fmt.Println(err)
-	diff.Test(t, t.Errorf, nil, err)
+	diff.Test(t, t.Errorf, nil, task.Converge(false))
 	diff.Test(t, t.Errorf, dest.blocks(), tg.blocks)
 }
 
