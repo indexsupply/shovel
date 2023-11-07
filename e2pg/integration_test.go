@@ -21,10 +21,11 @@ func check(t testing.TB, err error) {
 }
 
 type Helper struct {
-	tb  testing.TB
-	ctx context.Context
-	PG  *pgxpool.Pool
-	gt  *gethtest.Helper
+	tb   testing.TB
+	ctx  context.Context
+	PG   *pgxpool.Pool
+	gt   *gethtest.Helper
+	task *Task
 }
 
 // jrpc.Client is required when testdata isn't
@@ -63,24 +64,28 @@ func (th *Helper) Done() {
 // In the case that it needs to fetch the data, an RPC
 // client will be used. The RPC endpoint needs to support
 // the debug_dbAncient and debug_dbGet methods.
-func (th *Helper) Process(dest Destination, n uint64) {
-	var (
-		geth = NewGeth(th.gt.FileCache, th.gt.Client)
-		task = NewTask(
-			WithSourceConfig(SourceConfig{Name: "testhelper"}),
-			WithSourceFactory(func(SourceConfig) Source { return geth }),
-			WithPG(th.PG),
-			WithDestinations(dest),
-			WithRange(n, n+1),
-		)
+func (th *Helper) Process(ig Integration, n uint64) {
+	geth := NewGeth(th.gt.FileCache, th.gt.Client)
+	var err error
+	th.task, err = NewTask(
+		WithPG(th.PG),
+		WithSourceConfig(SourceConfig{Name: "testhelper"}),
+		WithSourceFactory(func(SourceConfig) Source { return geth }),
+		WithIntegrations(ig),
+		WithRange(n, n+1),
 	)
+	check(th.tb, err)
 	th.ctx = wctx.WithSrcName(th.ctx, "testhelper")
 	cur, err := geth.Hash(n)
 	check(th.tb, err)
 	th.gt.SetLatest(n, cur)
 
-	check(th.tb, task.Setup())
-	check(th.tb, task.Converge(true))
+	check(th.tb, th.task.Setup())
+	check(th.tb, th.task.Converge(true))
+}
+
+func (th *Helper) delete(n uint64) {
+	check(th.tb, th.task.Delete(th.PG, n))
 }
 
 func TestIntegrations(t *testing.T) {
@@ -156,9 +161,7 @@ func TestIntegrations(t *testing.T) {
 		th.Reset()
 		ig := Integration{}
 		decode(t, read(t, tc.config), &ig)
-		dest, err := getDest(th.PG, ig)
-		diff.Test(t, t.Errorf, nil, err)
-		th.Process(dest, tc.blockNum)
+		th.Process(ig, tc.blockNum)
 		for i, q := range tc.queries {
 			var found bool
 			err := th.PG.QueryRow(th.Context(), q).Scan(&found)
@@ -171,9 +174,9 @@ func TestIntegrations(t *testing.T) {
 			}
 		}
 
-		diff.Test(t, t.Errorf, nil, dest.Delete(th.Context(), th.PG, tc.blockNum))
+		th.task.Delete(th.PG, tc.blockNum)
 		var deleted bool
-		err = th.PG.QueryRow(th.Context(), tc.deleteQuery).Scan(&deleted)
+		err := th.PG.QueryRow(th.Context(), tc.deleteQuery).Scan(&deleted)
 		diff.Test(t, t.Errorf, nil, err)
 		if !deleted {
 			t.Errorf("%s was not cleaned up after ig.Delete", tc.config)
