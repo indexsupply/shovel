@@ -344,6 +344,46 @@ func TestConverge_LocalAhead(t *testing.T) {
 	diff.Test(t, t.Errorf, task.Converge(true), ErrAhead)
 }
 
+func TestConverge_Done(t *testing.T) {
+	var (
+		ctx  = context.Background()
+		pg   = testpg(t)
+		tg   = &testGeth{}
+		task = NewTask(
+			WithSourceConfig(SourceConfig{Name: "foo"}),
+			WithSourceFactory(func(SourceConfig) Source { return tg }),
+			WithPG(pg),
+			WithConcurrency(1, 1),
+			WithDestinations(newTestDestination("foo")),
+		)
+		taskBF = NewTask(
+			WithBackfill(true),
+			WithSourceConfig(SourceConfig{Name: "foo"}),
+			WithSourceFactory(func(SourceConfig) Source { return tg }),
+			WithPG(pg),
+			WithConcurrency(1, 1),
+			WithDestinations(newTestDestination("foo")),
+		)
+	)
+	diff.Test(t, t.Errorf, nil, task.initRows(0, hash(0)))
+
+	tg.add(1, hash(1), hash(0))
+	tg.add(2, hash(2), hash(1))
+
+	diff.Test(t, t.Errorf, nil, task.Converge(true))
+
+	// manually setup the first record.
+	// this is typically done in loadTasks
+	const q = `
+		insert into e2pg.intg(name, src_name, backfill, num)
+		values ($1, $2, $3, $4)
+	`
+	_, err := pg.Exec(ctx, q, "foo", "foo", true, 0)
+	diff.Test(t, t.Errorf, nil, err)
+	diff.Test(t, t.Errorf, nil, taskBF.destRanges[0].load(ctx, pg, "foo", "foo"))
+	diff.Test(t, t.Errorf, ErrDone, taskBF.Converge(true))
+}
+
 func checkQuery(tb testing.TB, pg wpg.Conn, query string, args ...any) {
 	var found bool
 	err := pg.QueryRow(context.Background(), query, args...).Scan(&found)

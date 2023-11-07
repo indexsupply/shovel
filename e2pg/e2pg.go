@@ -357,14 +357,14 @@ func (task *Task) Converge(notx bool) error {
 		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 			return fmt.Errorf("getting latest from task: %w", err)
 		}
-		if task.stop > 0 && localNum >= task.stop { //don't sync past task.stop
+		if task.backfill && localNum >= task.stop { //don't sync past task.stop
 			return ErrDone
 		}
 		gethNum, gethHash, err := task.parts[0].src.Latest()
 		if err != nil {
 			return fmt.Errorf("getting latest from eth: %w", err)
 		}
-		if task.stop > 0 && gethNum > task.stop {
+		if task.backfill && gethNum > task.stop {
 			gethNum = task.stop
 		}
 		if localNum > gethNum {
