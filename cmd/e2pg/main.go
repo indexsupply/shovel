@@ -60,6 +60,13 @@ func main() {
 		}
 		return "chain", fmt.Sprintf("%.5d", id)
 	})
+	lh.RegisterContext(func(ctx context.Context) (string, any) {
+		b := 0
+		if wctx.Backfill(ctx) {
+			b = 1
+		}
+		return "bf", fmt.Sprintf("%d", b)
+	})
 	slog.SetDefault(slog.New(lh.WithAttrs([]slog.Attr{
 		slog.Int("p", os.Getpid()),
 		slog.String("v", Commit),

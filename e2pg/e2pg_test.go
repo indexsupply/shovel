@@ -760,11 +760,11 @@ func TestValidateChain(t *testing.T) {
 				{Header: eth.Header{Hash: hash(4), Parent: hash(3)}},
 				{Header: eth.Header{Hash: hash(3), Parent: hash(2)}},
 			},
-			errors.New("invalid chain. prev={0 00000000 01000000} curr={0 03000000 04000000}"),
+			errors.New("corrupt chain segment"),
 		},
 	}
 	for _, tc := range cases {
-		diff.Test(t, t.Errorf, tc.want, validateChain(tc.parent, tc.blks))
+		diff.Test(t, t.Errorf, tc.want, validateChain(context.Background(), tc.parent, tc.blks))
 	}
 }
 

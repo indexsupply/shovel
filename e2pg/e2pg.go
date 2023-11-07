@@ -62,6 +62,7 @@ func WithSourceConfig(sc SourceConfig) Option {
 func WithBackfill(b bool) Option {
 	return func(t *Task) {
 		t.backfill = b
+		t.ctx = wctx.WithBackfill(t.ctx, b)
 	}
 }
 
@@ -482,7 +483,7 @@ func (task *Task) loadinsert(localHash []byte, pg wpg.Conn, delta uint64) (int64
 	if err := eg1.Wait(); err != nil {
 		return 0, err
 	}
-	if err := validateChain(localHash, task.batch[:delta]); err != nil {
+	if err := validateChain(task.ctx, localHash, task.batch[:delta]); err != nil {
 		return 0, fmt.Errorf("validating new chain: %w", err)
 	}
 	var (
@@ -527,7 +528,7 @@ func (task *Task) loadinsert(localHash []byte, pg wpg.Conn, delta uint64) (int64
 	return nrows, eg2.Wait()
 }
 
-func validateChain(parent []byte, blks []eth.Block) error {
+func validateChain(ctx context.Context, parent []byte, blks []eth.Block) error {
 	if len(blks[0].Header.Parent) != 32 {
 		return fmt.Errorf("corrupt parent: %x", blks[0].Header.Parent)
 	}
@@ -540,7 +541,14 @@ func validateChain(parent []byte, blks []eth.Block) error {
 	for i := 1; i < len(blks); i++ {
 		prev, curr := blks[i-1], blks[i]
 		if !bytes.Equal(curr.Header.Parent, prev.Hash()) {
-			return fmt.Errorf("invalid chain. prev=%s curr=%s", prev, curr)
+			slog.ErrorContext(ctx, "corrupt-chain-segment",
+				"num", prev.Num(),
+				"hash", fmt.Sprintf("%.4x", prev.Header.Hash),
+				"next-num", curr.Num(),
+				"next-parent", fmt.Sprintf("%.4x", curr.Header.Parent),
+				"next-hash", fmt.Sprintf("%.4x", curr.Header.Hash),
+			)
+			return fmt.Errorf("corrupt chain segment")
 		}
 	}
 	return nil
@@ -925,7 +933,7 @@ func (tm *Manager) runTask(t *Task) {
 				time.Sleep(time.Second)
 			case err != nil:
 				time.Sleep(time.Second)
-				slog.ErrorContext(t.ctx, "error", err)
+				slog.ErrorContext(t.ctx, "converge", "error", err)
 			default:
 				go func() {
 					// try out best to deliver update
