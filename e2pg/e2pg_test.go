@@ -630,6 +630,12 @@ func TestDestRanges_Filter(t *testing.T) {
 			r:     destRange{start: 15, stop: 10},
 			want:  []eth.Block(nil),
 		},
+		{
+			desc:  "[0, 10] -> [5, 0]",
+			input: br(0, 10),
+			r:     destRange{start: 5, stop: 0},
+			want:  []eth.Block(nil),
+		},
 	}
 	for _, tc := range cases {
 		got := tc.r.filter(tc.input)

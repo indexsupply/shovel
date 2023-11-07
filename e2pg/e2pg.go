@@ -588,7 +588,7 @@ func (r *destRange) load(ctx context.Context, pg wpg.Conn, name, srcName string)
 
 func (r *destRange) filter(blks []eth.Block) []eth.Block {
 	switch {
-	case r.stop == 0:
+	case r.start == 0 && r.stop == 0:
 		return blks
 	case len(blks) == 0:
 		return blks
