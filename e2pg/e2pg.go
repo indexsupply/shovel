@@ -1054,7 +1054,7 @@ func loadTasks(ctx context.Context, pgp *pgxpool.Pool, conf Config) ([]*Task, er
 			WithSourceConfig(sc),
 			WithPG(pgp),
 			WithRange(sc.Start, sc.Stop),
-			WithConcurrency(max(1, sc.Concurrenty), max(1, sc.BatchSize)),
+			WithConcurrency(max(1, sc.Concurrency), max(1, sc.BatchSize)),
 			WithDestinations(dests[sc.Name]...),
 		))
 		if len(destsBF[sc.Name]) == 0 {
@@ -1065,7 +1065,7 @@ func loadTasks(ctx context.Context, pgp *pgxpool.Pool, conf Config) ([]*Task, er
 			WithSourceConfig(sc),
 			WithPG(pgp),
 			WithRange(startBF[sc.Name], 0),
-			WithConcurrency(max(1, sc.Concurrenty), max(1, sc.BatchSize)),
+			WithConcurrency(max(1, sc.Concurrency), max(1, sc.BatchSize)),
 			WithDestinations(destsBF[sc.Name]...),
 		))
 	}
@@ -1151,7 +1151,7 @@ type SourceConfig struct {
 	URL         string `json:"url"`
 	Start       uint64 `json:"start"`
 	Stop        uint64 `json:"stop"`
-	Concurrenty int    `json:"concurrency"`
+	Concurrency int    `json:"concurrency"`
 	BatchSize   int    `json:"batch_size"`
 }
 
