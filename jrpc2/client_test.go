@@ -25,6 +25,30 @@ var (
 	logs1000001JSON string
 )
 
+func TestError(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		diff.Test(t, t.Fatalf, nil, err)
+		switch {
+		case strings.Contains(string(body), "eth_getBlockByNumber"):
+			_, err := w.Write([]byte(`
+				[{
+					"jsonrpc": "2.0",
+					"id": "1",
+					"error": {"code": -32012, "message": "credits"}
+				}]
+			`))
+			diff.Test(t, t.Fatalf, nil, err)
+		}
+	}))
+	defer ts.Close()
+
+	blocks := []eth.Block{eth.Block{Header: eth.Header{Number: 1000001}}}
+	c := New(0, ts.URL)
+	want := "getting blocks: rpc error: eth_getBlockByNumber -32012 credits"
+	diff.Test(t, t.Errorf, want, c.LoadBlocks(nil, blocks).Error())
+}
+
 func TestNoLogs(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, err := io.ReadAll(r.Body)

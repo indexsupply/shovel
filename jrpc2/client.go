@@ -157,6 +157,15 @@ func (c *Client) blocks(blocks []eth.Block) error {
 	if err := json.NewDecoder(c.debug(resp)).Decode(&resps); err != nil {
 		return fmt.Errorf("unable to decode json into response: %w", err)
 	}
+	for i := range resps {
+		if resps[i].Error.Code != 0 {
+			return fmt.Errorf("rpc error: %s %d %s",
+				"eth_getBlockByNumber",
+				resps[i].Error.Code,
+				resps[i].Error.Message,
+			)
+		}
+	}
 	return nil
 }
 
@@ -200,6 +209,13 @@ func (c *Client) logs(blocks []eth.Block) error {
 	lresp := logResp{}
 	if err := json.NewDecoder(c.debug(resp)).Decode(&lresp); err != nil {
 		return fmt.Errorf("unable to decode json into response: %w", err)
+	}
+	if lresp.Error.Code != 0 {
+		return fmt.Errorf("rpc error: %s %d %s",
+			"eth_getLogs",
+			lresp.Error.Code,
+			lresp.Error.Message,
+		)
 	}
 	slices.SortFunc(lresp.Result, func(a, b logResult) int {
 		return cmp.Compare(a.LogIdx, b.LogIdx)
