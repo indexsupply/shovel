@@ -93,9 +93,14 @@ func WithIntegrationFactory(f func(wpg.Conn, Integration) (Destination, error)) 
 
 func WithIntegrations(igs ...Integration) Option {
 	return func(t *Task) {
-		t.integrations = igs
-		t.iub = newIUB(len(igs))
-		t.igr = make([]igRange, len(igs))
+		for i := range igs {
+			if !igs[i].Enabled {
+				continue
+			}
+			t.integrations = append(t.integrations, igs[i])
+		}
+		t.iub = newIUB(len(t.integrations))
+		t.igr = make([]igRange, len(t.integrations))
 	}
 }
 

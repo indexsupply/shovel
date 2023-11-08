@@ -36,7 +36,7 @@ func (dest *testDestination) factory(_ wpg.Conn, ig Integration) (Destination, e
 }
 
 func (dest *testDestination) intg() Integration {
-	return Integration{Name: dest.name}
+	return Integration{Name: dest.name, Enabled: true}
 }
 
 func newTestDestination(name string) *testDestination {

@@ -1,5 +1,6 @@
 {
 	"name": "txinput",
+	"enabled": true,
 	"table": {
 		"name": "txinput_test",
 		"columns": [
