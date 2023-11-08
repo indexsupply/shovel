@@ -20,6 +20,7 @@ import (
 	"github.com/indexsupply/x/rlps"
 	"github.com/indexsupply/x/wctx"
 	"github.com/indexsupply/x/wpg"
+	"github.com/indexsupply/x/wstrings"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -1189,12 +1190,31 @@ type Config struct {
 	Integrations  []Integration  `json:"integrations"`
 }
 
-func (conf Config) Empty() bool {
-	return conf.PGURL == ""
-}
-
-func (conf Config) Valid(intg Integration) error {
-	return nil
+func (conf Config) CheckUserInput() error {
+	var (
+		err   error
+		check = func(name, val string) {
+			if err != nil {
+				return
+			}
+			err = wstrings.Safe(val)
+			if err != nil {
+				err = fmt.Errorf("%q %w", val, err)
+			}
+		}
+	)
+	for _, ig := range conf.Integrations {
+		check("integration name", ig.Name)
+		check("table name", ig.Table.Name)
+		for _, c := range ig.Table.Cols {
+			check("column name", c.Name)
+			check("column type", c.Type)
+		}
+	}
+	for _, sc := range conf.SourceConfigs {
+		check("source config name", sc.Name)
+	}
+	return err
 }
 
 func (conf Config) AllIntegrations(ctx context.Context, pg wpg.Conn) ([]Integration, error) {

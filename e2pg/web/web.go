@@ -13,6 +13,7 @@ import (
 	"sync"
 
 	"github.com/indexsupply/x/e2pg"
+	"github.com/indexsupply/x/wstrings"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -122,6 +123,11 @@ func (h *Handler) SaveIntegration(w http.ResponseWriter, r *http.Request) {
 	err = json.NewDecoder(r.Body).Decode(&intg)
 	if err != nil {
 		slog.ErrorContext(ctx, "decoding integration", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	testConfig := e2pg.Config{Integrations: []e2pg.Integration{intg}}
+	if err := testConfig.CheckUserInput(); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -295,6 +301,10 @@ func (h *Handler) SaveSource(w http.ResponseWriter, r *http.Request) {
 	name := r.FormValue("name")
 	if len(name) == 0 {
 		slog.ErrorContext(ctx, "parsing chain name", err)
+		return
+	}
+	if err := wstrings.Safe(name); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	url := r.FormValue("ethURL")

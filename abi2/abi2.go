@@ -11,13 +11,13 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"unicode"
 
 	"github.com/indexsupply/x/bint"
 	"github.com/indexsupply/x/eth"
 	"github.com/indexsupply/x/isxhash"
 	"github.com/indexsupply/x/wctx"
 	"github.com/indexsupply/x/wpg"
+	"github.com/indexsupply/x/wstrings"
 
 	"github.com/holiman/uint256"
 	"github.com/jackc/pgx/v5"
@@ -614,18 +614,26 @@ func New(name string, ev Event, bd []BlockData, table Table) (Integration, error
 }
 
 func (ig *Integration) validateSQL() error {
-	if err := validateString(ig.name); err != nil {
-		return fmt.Errorf("invalid ig name %s: %w", ig.name, err)
-	}
+	var (
+		err   error
+		check = func(name, val string) {
+			if err != nil {
+				return
+			}
+			err = wstrings.Safe(val)
+			if err != nil {
+				err = fmt.Errorf("%q %w", val, err)
+			}
+		}
+	)
+
+	check("integration name", ig.name)
+	check("table name", ig.Table.Name)
 	for _, c := range ig.Table.Cols {
-		if err := validateString(c.Name); err != nil {
-			return fmt.Errorf("invalid col name %s: %w", c.Name, err)
-		}
-		if err := validateString(c.Type); err != nil {
-			return fmt.Errorf("invalid col type%s: %w", c.Type, err)
-		}
+		check("column name", c.Name)
+		check("column type", c.Type)
 	}
-	return nil
+	return err
 }
 
 func (ig *Integration) validateCols() error {
@@ -781,15 +789,6 @@ func (ig *Integration) addRequiredFields() {
 			add("abi_idx", "int2")
 		}
 	}
-}
-
-func validateString(s string) error {
-	for _, r := range s {
-		if !(unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_' || r == '-') {
-			return errors.New("must be: 'a-z', 'A-Z', '0-9', '_', or '-'")
-		}
-	}
-	return nil
 }
 
 func (ig Integration) Name() string { return ig.name }
