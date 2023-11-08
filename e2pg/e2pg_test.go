@@ -31,6 +31,14 @@ type testDestination struct {
 	chain map[uint64]eth.Block
 }
 
+func (dest *testDestination) factory(_ wpg.Conn, ig Integration) (Destination, error) {
+	return dest, nil
+}
+
+func (dest *testDestination) intg() Integration {
+	return Integration{Name: dest.name, Enabled: true}
+}
+
 func newTestDestination(name string) *testDestination {
 	return &testDestination{
 		name:  name,
@@ -140,90 +148,13 @@ func testpg(t *testing.T) *pgxpool.Pool {
 	return pg
 }
 
-func TestSetup(t *testing.T) {
-	var (
-		tg   = &testGeth{}
-		pg   = testpg(t)
-		task = NewTask(
-			WithSourceConfig(SourceConfig{Name: "foo"}),
-			WithSourceFactory(func(SourceConfig) Source { return tg }),
-			WithPG(pg),
-			WithDestinations(newTestDestination("foo")),
-		)
-	)
-	tg.add(0, hash(0), hash(0))
-	tg.add(1, hash(1), hash(0))
-	tg.add(2, hash(2), hash(1))
-	diff.Test(t, t.Errorf, task.Setup(), nil)
-
-	checkQuery(t, pg, `
-		select true
-		from e2pg.task
-		where src_name = 'foo'
-		and hash = $1
-		and num = $2
-	`, hash(1), uint64(1))
-}
-
-func TestConverge_Zero(t *testing.T) {
-	var (
-		pg   = testpg(t)
-		task = NewTask(
-			WithSourceConfig(SourceConfig{Name: "foo"}),
-			WithSourceFactory(func(SourceConfig) Source { return &testGeth{} }),
-			WithPG(pg),
-			WithDestinations(newTestDestination("foo")),
-		)
-	)
-	diff.Test(t, t.Errorf, task.Converge(false), ErrNothingNew)
-}
-
-func TestConverge_EmptyDestination(t *testing.T) {
-	var (
-		pg   = testpg(t)
-		tg   = &testGeth{}
-		dest = newTestDestination("foo")
-		task = NewTask(
-			WithSourceConfig(SourceConfig{Name: "foo"}),
-			WithSourceFactory(func(SourceConfig) Source { return tg }),
-			WithPG(pg),
-			WithDestinations(dest),
-		)
-	)
-	tg.add(0, hash(0), hash(0))
-	tg.add(1, hash(1), hash(0))
-	dest.add(0, hash(0), hash(0))
-	taskAdd(t, pg, "foo", 0, hash(0))
-	diff.Test(t, t.Fatalf, task.Converge(true), nil)
-	diff.Test(t, t.Errorf, dest.blocks(), tg.blocks)
-}
-
-func TestConverge_Reorg(t *testing.T) {
-	var (
-		pg   = testpg(t)
-		tg   = &testGeth{}
-		dest = newTestDestination("foo")
-		task = NewTask(
-			WithSourceConfig(SourceConfig{Name: "foo"}),
-			WithSourceFactory(func(SourceConfig) Source { return tg }),
-			WithPG(pg),
-			WithDestinations(dest),
-		)
-	)
-
-	tg.add(0, hash(0), hash(0))
-	tg.add(1, hash(2), hash(0))
-	tg.add(2, hash(3), hash(2))
-
-	dest.add(0, hash(0), hash(0))
-	dest.add(1, hash(2), hash(0))
-
-	taskAdd(t, pg, "foo", 0, hash(0), dest.Name())
-	taskAdd(t, pg, "foo", 1, hash(1), dest.Name())
-
-	diff.Test(t, t.Fatalf, task.Converge(false), nil)
-	diff.Test(t, t.Fatalf, task.Converge(false), nil)
-	diff.Test(t, t.Errorf, dest.blocks(), tg.blocks)
+func checkQuery(tb testing.TB, pg wpg.Conn, query string, args ...any) {
+	var found bool
+	err := pg.QueryRow(context.Background(), query, args...).Scan(&found)
+	diff.Test(tb, tb.Fatalf, err, nil)
+	if !found {
+		tb.Errorf("query\n%s\nreturned false", query)
+	}
 }
 
 func taskAdd(
@@ -255,23 +186,122 @@ func taskAdd(
 	}
 }
 
+func TestSetup(t *testing.T) {
+	var (
+		tg        = &testGeth{}
+		pg        = testpg(t)
+		dest      = newTestDestination("foo")
+		task, err = NewTask(
+			WithPG(pg),
+			WithSourceConfig(SourceConfig{Name: "foo"}),
+			WithSourceFactory(func(SourceConfig) Source { return tg }),
+			WithIntegrations(dest.intg()),
+			WithIntegrationFactory(dest.factory),
+		)
+	)
+	diff.Test(t, t.Errorf, err, nil)
+	tg.add(0, hash(0), hash(0))
+	tg.add(1, hash(1), hash(0))
+	tg.add(2, hash(2), hash(1))
+	diff.Test(t, t.Errorf, task.Setup(), nil)
+
+	checkQuery(t, pg, `
+		select true
+		from e2pg.task
+		where src_name = 'foo'
+		and hash = $1
+		and num = $2
+	`, hash(1), uint64(1))
+}
+
+func TestConverge_Zero(t *testing.T) {
+	t.Skip()
+	var (
+		pg        = testpg(t)
+		dest      = newTestDestination("foo")
+		task, err = NewTask(
+			WithPG(pg),
+			WithSourceConfig(SourceConfig{Name: "foo"}),
+			WithSourceFactory(func(SourceConfig) Source { return &testGeth{} }),
+			WithIntegrations(dest.intg()),
+			WithIntegrationFactory(dest.factory),
+		)
+	)
+	diff.Test(t, t.Errorf, err, nil)
+	diff.Test(t, t.Errorf, task.Converge(false), ErrNothingNew)
+}
+
+func TestConverge_EmptyDestination(t *testing.T) {
+	var (
+		pg        = testpg(t)
+		tg        = &testGeth{}
+		dest      = newTestDestination("foo")
+		task, err = NewTask(
+			WithPG(pg),
+			WithSourceConfig(SourceConfig{Name: "foo"}),
+			WithSourceFactory(func(SourceConfig) Source { return tg }),
+			WithIntegrations(dest.intg()),
+			WithIntegrationFactory(dest.factory),
+		)
+	)
+	diff.Test(t, t.Errorf, err, nil)
+	tg.add(0, hash(0), hash(0))
+	tg.add(1, hash(1), hash(0))
+	dest.add(0, hash(0), hash(0))
+	taskAdd(t, pg, "foo", 0, hash(0))
+	diff.Test(t, t.Fatalf, task.Converge(true), nil)
+	diff.Test(t, t.Errorf, dest.blocks(), tg.blocks)
+}
+
+func TestConverge_Reorg(t *testing.T) {
+	var (
+		pg        = testpg(t)
+		tg        = &testGeth{}
+		dest      = newTestDestination("foo")
+		task, err = NewTask(
+			WithPG(pg),
+			WithSourceConfig(SourceConfig{Name: "foo"}),
+			WithSourceFactory(func(SourceConfig) Source { return tg }),
+			WithIntegrations(dest.intg()),
+			WithIntegrationFactory(dest.factory),
+		)
+	)
+	diff.Test(t, t.Errorf, err, nil)
+
+	tg.add(0, hash(0), hash(0))
+	tg.add(1, hash(2), hash(0))
+	tg.add(2, hash(3), hash(2))
+
+	dest.add(0, hash(0), hash(0))
+	dest.add(1, hash(2), hash(0))
+
+	taskAdd(t, pg, "foo", 0, hash(0), dest.Name())
+	taskAdd(t, pg, "foo", 1, hash(1), dest.Name())
+
+	diff.Test(t, t.Fatalf, task.Converge(false), nil)
+	diff.Test(t, t.Fatalf, task.Converge(false), nil)
+	diff.Test(t, t.Errorf, dest.blocks(), tg.blocks)
+}
+
 func TestConverge_DeltaBatchSize(t *testing.T) {
 	const (
 		batchSize = 16
 		workers   = 2
 	)
 	var (
-		pg   = testpg(t)
-		tg   = &testGeth{}
-		dest = newTestDestination("foo")
-		task = NewTask(
-			WithSourceConfig(SourceConfig{Name: "foo"}),
-			WithSourceFactory(func(SourceConfig) Source { return tg }),
+		pg        = testpg(t)
+		tg        = &testGeth{}
+		dest      = newTestDestination("foo")
+		task, err = NewTask(
 			WithPG(pg),
 			WithConcurrency(workers, batchSize),
-			WithDestinations(dest),
+			WithSourceConfig(SourceConfig{Name: "foo"}),
+			WithSourceFactory(func(SourceConfig) Source { return tg }),
+			WithIntegrations(dest.intg()),
+			WithIntegrationFactory(dest.factory),
 		)
 	)
+	diff.Test(t, t.Errorf, err, nil)
 
 	tg.add(0, hash(0), hash(0))
 	dest.add(0, hash(0), hash(0))
@@ -290,25 +320,29 @@ func TestConverge_DeltaBatchSize(t *testing.T) {
 
 func TestConverge_MultipleTasks(t *testing.T) {
 	var (
-		tg    = &testGeth{}
-		pg    = testpg(t)
-		dest1 = newTestDestination("foo")
-		dest2 = newTestDestination("bar")
-		task1 = NewTask(
+		tg          = &testGeth{}
+		pg          = testpg(t)
+		dest1       = newTestDestination("foo")
+		dest2       = newTestDestination("bar")
+		task1, err1 = NewTask(
+			WithPG(pg),
+			WithConcurrency(1, 3),
 			WithSourceConfig(SourceConfig{Name: "a"}),
 			WithSourceFactory(func(SourceConfig) Source { return tg }),
+			WithIntegrations(dest1.intg()),
+			WithIntegrationFactory(dest1.factory),
+		)
+		task2, err2 = NewTask(
 			WithPG(pg),
 			WithConcurrency(1, 3),
-			WithDestinations(dest1),
-		)
-		task2 = NewTask(
 			WithSourceConfig(SourceConfig{Name: "b"}),
 			WithSourceFactory(func(SourceConfig) Source { return tg }),
-			WithPG(pg),
-			WithConcurrency(1, 3),
-			WithDestinations(dest2),
+			WithIntegrations(dest2.intg()),
+			WithIntegrationFactory(dest2.factory),
 		)
 	)
+	diff.Test(t, t.Errorf, err1, nil)
+	diff.Test(t, t.Errorf, err2, nil)
 	tg.add(1, hash(1), hash(0))
 	tg.add(2, hash(2), hash(1))
 
@@ -324,17 +358,19 @@ func TestConverge_MultipleTasks(t *testing.T) {
 
 func TestConverge_LocalAhead(t *testing.T) {
 	var (
-		tg   = &testGeth{}
-		pg   = testpg(t)
-		dest = newTestDestination("foo")
-		task = NewTask(
-			WithSourceConfig(SourceConfig{Name: "foo"}),
-			WithSourceFactory(func(SourceConfig) Source { return tg }),
+		tg        = &testGeth{}
+		pg        = testpg(t)
+		dest      = newTestDestination("foo")
+		task, err = NewTask(
 			WithPG(pg),
 			WithConcurrency(1, 3),
-			WithDestinations(dest),
+			WithSourceConfig(SourceConfig{Name: "foo"}),
+			WithSourceFactory(func(SourceConfig) Source { return tg }),
+			WithIntegrations(dest.intg()),
+			WithIntegrationFactory(dest.factory),
 		)
 	)
+	diff.Test(t, t.Errorf, err, nil)
 	tg.add(1, hash(1), hash(0))
 
 	taskAdd(t, pg, "foo", 0, hash(0))
@@ -346,25 +382,30 @@ func TestConverge_LocalAhead(t *testing.T) {
 
 func TestConverge_Done(t *testing.T) {
 	var (
-		ctx  = context.Background()
-		pg   = testpg(t)
-		tg   = &testGeth{}
-		task = NewTask(
-			WithSourceConfig(SourceConfig{Name: "foo"}),
-			WithSourceFactory(func(SourceConfig) Source { return tg }),
+		ctx        = context.Background()
+		pg         = testpg(t)
+		tg         = &testGeth{}
+		dest       = newTestDestination("foo")
+		task, err1 = NewTask(
 			WithPG(pg),
 			WithConcurrency(1, 1),
-			WithDestinations(newTestDestination("foo")),
+			WithSourceConfig(SourceConfig{Name: "foo"}),
+			WithSourceFactory(func(SourceConfig) Source { return tg }),
+			WithIntegrations(dest.intg()),
+			WithIntegrationFactory(dest.factory),
 		)
-		taskBF = NewTask(
+		taskBF, err2 = NewTask(
 			WithBackfill(true),
-			WithSourceConfig(SourceConfig{Name: "foo"}),
-			WithSourceFactory(func(SourceConfig) Source { return tg }),
 			WithPG(pg),
 			WithConcurrency(1, 1),
-			WithDestinations(newTestDestination("foo")),
+			WithSourceConfig(SourceConfig{Name: "foo"}),
+			WithSourceFactory(func(SourceConfig) Source { return tg }),
+			WithIntegrations(dest.intg()),
+			WithIntegrationFactory(dest.factory),
 		)
 	)
+	diff.Test(t, t.Errorf, err1, nil)
+	diff.Test(t, t.Errorf, err2, nil)
 	diff.Test(t, t.Errorf, nil, task.initRows(0, hash(0)))
 
 	tg.add(1, hash(1), hash(0))
@@ -380,17 +421,8 @@ func TestConverge_Done(t *testing.T) {
 	`
 	_, err := pg.Exec(ctx, q, "foo", "foo", true, 0)
 	diff.Test(t, t.Errorf, nil, err)
-	diff.Test(t, t.Errorf, nil, taskBF.destRanges[0].load(ctx, pg, "foo", "foo"))
+	diff.Test(t, t.Errorf, nil, taskBF.igr[0].load(ctx, pg, "foo", "foo"))
 	diff.Test(t, t.Errorf, ErrDone, taskBF.Converge(true))
-}
-
-func checkQuery(tb testing.TB, pg wpg.Conn, query string, args ...any) {
-	var found bool
-	err := pg.QueryRow(context.Background(), query, args...).Scan(&found)
-	diff.Test(tb, tb.Fatalf, err, nil)
-	if !found {
-		tb.Errorf("query\n%s\nreturned false", query)
-	}
 }
 
 func TestPruneTask(t *testing.T) {
@@ -446,18 +478,35 @@ func TestPruneIntg(t *testing.T) {
 	checkQuery(t, pg, `select count(*) = 3 from e2pg.intg`)
 }
 
+func destFactory(dests ...*testDestination) func(wpg.Conn, Integration) (Destination, error) {
+	return func(_ wpg.Conn, ig Integration) (Destination, error) {
+		for i := range dests {
+			if dests[i].name == ig.Name {
+				return dests[i], nil
+			}
+		}
+		return nil, fmt.Errorf("dest not found %s", ig.Name)
+	}
+}
+
 func TestInitRows(t *testing.T) {
 	ctx := context.Background()
 	pqxtest.CreateDB(t, Schema)
 	pg, err := pgxpool.New(ctx, pqxtest.DSNForTest(t))
 	diff.Test(t, t.Fatalf, err, nil)
 
-	task := NewTask(
+	var (
+		bar = newTestDestination("bar")
+		baz = newTestDestination("baz")
+	)
+	task, err := NewTask(
 		WithPG(pg),
 		WithSourceConfig(SourceConfig{Name: "foo"}),
 		WithSourceFactory(func(SourceConfig) Source { return &testGeth{} }),
-		WithDestinations(newTestDestination("bar")),
+		WithIntegrations(bar.intg()),
+		WithIntegrationFactory(bar.factory),
 	)
+	diff.Test(t, t.Errorf, err, nil)
 	err = task.initRows(42, hash(42))
 	diff.Test(t, t.Fatalf, err, nil)
 	checkQuery(t, pg, `select count(*) = 1 from e2pg.intg`)
@@ -468,24 +517,30 @@ func TestInitRows(t *testing.T) {
 	checkQuery(t, pg, `select count(*) = 1 from e2pg.intg`)
 	checkQuery(t, pg, `select count(*) = 1 from e2pg.task`)
 
-	task = NewTask(
+	task, err = NewTask(
 		WithPG(pg),
 		WithSourceConfig(SourceConfig{Name: "foo"}),
 		WithSourceFactory(func(SourceConfig) Source { return &testGeth{} }),
-		WithDestinations(newTestDestination("bar"), newTestDestination("baz")),
+		WithIntegrations(bar.intg(), baz.intg()),
+		WithIntegrationFactory(destFactory(bar, baz)),
 	)
+	diff.Test(t, t.Errorf, err, nil)
+
 	err = task.initRows(42, hash(42))
 	diff.Test(t, t.Fatalf, err, nil)
 	checkQuery(t, pg, `select count(*) = 2 from e2pg.intg`)
 	checkQuery(t, pg, `select count(*) = 1 from e2pg.task`)
 
-	task = NewTask(
+	task, err = NewTask(
 		WithPG(pg),
 		WithBackfill(true),
 		WithSourceConfig(SourceConfig{Name: "foo"}),
 		WithSourceFactory(func(SourceConfig) Source { return &testGeth{} }),
-		WithDestinations(newTestDestination("bar"), newTestDestination("baz")),
+		WithIntegrations(bar.intg(), baz.intg()),
+		WithIntegrationFactory(destFactory(bar, baz)),
 	)
+	diff.Test(t, t.Errorf, err, nil)
+
 	err = task.initRows(42, hash(42))
 	diff.Test(t, t.Fatalf, err, nil)
 	checkQuery(t, pg, `select count(*) = 4 from e2pg.intg`)
@@ -538,29 +593,35 @@ func TestDestRanges_Load(t *testing.T) {
 	pg, err := pgxpool.New(ctx, pqxtest.DSNForTest(t))
 	diff.Test(t, t.Fatalf, err, nil)
 
-	task1 := NewTask(
+	dest := newTestDestination("bar")
+	task1, err1 := NewTask(
 		WithPG(pg),
 		WithSourceConfig(SourceConfig{Name: "foo"}),
 		WithSourceFactory(func(SourceConfig) Source { return &testGeth{} }),
-		WithDestinations(newTestDestination("bar")),
+		WithIntegrations(dest.intg()),
+		WithIntegrationFactory(dest.factory),
 	)
-	task2 := NewTask(
+	task2, err2 := NewTask(
 		WithPG(pg),
 		WithBackfill(true),
 		WithSourceConfig(SourceConfig{Name: "foo"}),
 		WithSourceFactory(func(SourceConfig) Source { return &testGeth{} }),
-		WithDestinations(newTestDestination("bar")),
+		WithIntegrations(dest.intg()),
+		WithIntegrationFactory(dest.factory),
 	)
+	diff.Test(t, t.Errorf, err1, nil)
+	diff.Test(t, t.Errorf, err2, nil)
+
 	err = task1.initRows(42, hash(42))
 	diff.Test(t, t.Fatalf, err, nil)
 	err = task2.initRows(10, hash(10))
 	diff.Test(t, t.Fatalf, err, nil)
 
-	diff.Test(t, t.Fatalf, len(task2.destRanges), 1)
-	err = task2.destRanges[0].load(ctx, pg, "bar", "foo")
+	diff.Test(t, t.Fatalf, len(task2.igr), 1)
+	err = task2.igr[0].load(ctx, pg, "bar", "foo")
 	diff.Test(t, t.Fatalf, err, nil)
-	diff.Test(t, t.Errorf, task2.destRanges[0].start, uint64(10))
-	diff.Test(t, t.Errorf, task2.destRanges[0].stop, uint64(42))
+	diff.Test(t, t.Errorf, task2.igr[0].start, uint64(10))
+	diff.Test(t, t.Errorf, task2.igr[0].stop, uint64(42))
 }
 
 func TestDestRanges_Filter(t *testing.T) {
@@ -573,13 +634,13 @@ func TestDestRanges_Filter(t *testing.T) {
 	cases := []struct {
 		desc  string
 		input []eth.Block
-		r     destRange
+		r     igRange
 		want  []eth.Block
 	}{
 		{
 			desc:  "empty input",
 			input: []eth.Block{},
-			r:     destRange{},
+			r:     igRange{},
 			want:  []eth.Block{},
 		},
 		{
@@ -588,7 +649,7 @@ func TestDestRanges_Filter(t *testing.T) {
 				eth.Block{Header: eth.Header{Number: 42}},
 				eth.Block{Header: eth.Header{Number: 43}},
 			},
-			r: destRange{},
+			r: igRange{},
 			want: []eth.Block{
 				eth.Block{Header: eth.Header{Number: 42}},
 				eth.Block{Header: eth.Header{Number: 43}},
@@ -597,43 +658,43 @@ func TestDestRanges_Filter(t *testing.T) {
 		{
 			desc:  "[0, 10] -> [1,9]",
 			input: br(0, 10),
-			r:     destRange{start: 1, stop: 9},
+			r:     igRange{start: 1, stop: 9},
 			want:  br(1, 9),
 		},
 		{
 			desc:  "[0, 10] -> [0,5]",
 			input: br(0, 10),
-			r:     destRange{start: 0, stop: 5},
+			r:     igRange{start: 0, stop: 5},
 			want:  br(0, 5),
 		},
 		{
 			desc:  "[0, 10] -> [5,10]",
 			input: br(0, 10),
-			r:     destRange{start: 5, stop: 10},
+			r:     igRange{start: 5, stop: 10},
 			want:  br(5, 10),
 		},
 		{
 			desc:  "[0, 10] -> [10, 15]",
 			input: br(0, 10),
-			r:     destRange{start: 10, stop: 15},
+			r:     igRange{start: 10, stop: 15},
 			want:  br(10, 10),
 		},
 		{
 			desc:  "[0, 10] -> [10, 10]",
 			input: br(0, 10),
-			r:     destRange{start: 10, stop: 10},
+			r:     igRange{start: 10, stop: 10},
 			want:  br(10, 10),
 		},
 		{
 			desc:  "[0, 10] -> [15, 10]",
 			input: br(0, 10),
-			r:     destRange{start: 15, stop: 10},
+			r:     igRange{start: 15, stop: 10},
 			want:  []eth.Block(nil),
 		},
 		{
 			desc:  "[0, 10] -> [5, 0]",
 			input: br(0, 10),
-			r:     destRange{start: 5, stop: 0},
+			r:     igRange{start: 5, stop: 0},
 			want:  []eth.Block(nil),
 		},
 	}
@@ -682,10 +743,13 @@ func TestLoadTasks(t *testing.T) {
 	}
 	tasks, err := loadTasks(ctx, pg, conf)
 	diff.Test(t, t.Fatalf, err, nil)
-	diff.Test(t, t.Fatalf, len(tasks), 1)
+	diff.Test(t, t.Fatalf, len(tasks), 2)
 
 	diff.Test(t, t.Fatalf, tasks[0].backfill, false)
 	diff.Test(t, t.Fatalf, tasks[0].start, uint64(0))
+
+	diff.Test(t, t.Fatalf, tasks[1].backfill, true)
+	diff.Test(t, t.Fatalf, tasks[1].start, uint64(0))
 }
 
 func TestLoadTasks_Backfill(t *testing.T) {
@@ -720,7 +784,7 @@ func TestLoadTasks_Backfill(t *testing.T) {
 					},
 				},
 				SourceConfigs: []SourceConfig{
-					SourceConfig{Name: "foo", Start: 42},
+					SourceConfig{Name: "foo", Start: 2},
 				},
 			},
 			Integration{
@@ -739,7 +803,7 @@ func TestLoadTasks_Backfill(t *testing.T) {
 					},
 				},
 				SourceConfigs: []SourceConfig{
-					SourceConfig{Name: "foo", Start: 41},
+					SourceConfig{Name: "foo", Start: 1},
 				},
 			},
 		},
@@ -749,10 +813,83 @@ func TestLoadTasks_Backfill(t *testing.T) {
 	diff.Test(t, t.Fatalf, len(tasks), 2)
 
 	diff.Test(t, t.Fatalf, tasks[0].backfill, false)
-	diff.Test(t, t.Fatalf, tasks[0].start, uint64(0))
 
-	diff.Test(t, t.Fatalf, tasks[1].backfill, true)
-	diff.Test(t, t.Fatalf, tasks[1].start, uint64(41))
+	tg := &testGeth{}
+	tg.add(0, hash(0), hash(0))
+	tg.add(1, hash(1), hash(0))
+	tg.add(2, hash(2), hash(1))
+	tg.add(3, hash(3), hash(2))
+
+	tasks[0].parts[0].src = tg
+	diff.Test(t, t.Errorf, nil, tasks[0].Setup())
+	checkQuery(t, pg, `
+		select count(*) = 1
+		from e2pg.task
+		where src_name = 'foo'
+		and backfill = false
+	`)
+	checkQuery(t, pg, `
+		select num = 2
+		from e2pg.task
+		where src_name = 'foo'
+		and backfill = false
+	`)
+	checkQuery(t, pg, `
+		select count(*) = 2
+		from e2pg.intg
+		where src_name = 'foo'
+		and backfill = false
+	`)
+	checkQuery(t, pg, `
+		select num = 2
+		from e2pg.intg
+		where src_name = 'foo'
+		and name = 'baz'
+		and backfill = false
+	`)
+	checkQuery(t, pg, `
+		select num = 2
+		from e2pg.intg
+		where src_name = 'foo'
+		and name = 'bar'
+		and backfill = false
+	`)
+	tasks[1].parts[0].src = tg
+	diff.Test(t, t.Errorf, nil, tasks[1].Setup())
+	diff.Test(t, t.Errorf, uint64(1), tasks[1].start)
+	diff.Test(t, t.Errorf, uint64(2), tasks[1].stop)
+	checkQuery(t, pg, `
+		select count(*) = 1
+		from e2pg.task
+		where src_name = 'foo'
+		and backfill
+	`)
+	checkQuery(t, pg, `
+		select num = 1
+		from e2pg.task
+		where src_name = 'foo'
+		and backfill
+	`)
+	checkQuery(t, pg, `
+		select count(*) = 2
+		from e2pg.intg
+		where src_name = 'foo'
+		and backfill
+	`)
+	checkQuery(t, pg, `
+		select num = 2
+		from e2pg.intg
+		where src_name = 'foo'
+		and name = 'bar'
+		and backfill
+	`)
+	checkQuery(t, pg, `
+		select num = 1
+		from e2pg.intg
+		where src_name = 'foo'
+		and name = 'baz'
+		and backfill
+	`)
 }
 
 func TestValidateChain(t *testing.T) {

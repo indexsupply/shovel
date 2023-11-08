@@ -80,61 +80,79 @@ func WithRange(start, stop uint64) Option {
 
 func WithConcurrency(numParts, batchSize int) Option {
 	return func(t *Task) {
-		t.batch = make([]eth.Block, batchSize)
-		t.parts = parts(numParts, batchSize)
+		t.batch = make([]eth.Block, max(batchSize, 1))
+		t.parts = parts(max(numParts, 1), max(batchSize, 1))
 	}
 }
 
-func WithDestinations(dests ...Destination) Option {
+func WithIntegrationFactory(f func(wpg.Conn, Integration) (Destination, error)) Option {
 	return func(t *Task) {
-		var filter [][]byte
-		for i := range dests {
-			e := dests[i].Events(t.ctx)
-			// if one integration has no filter
-			// then the task must consider all data
-			if len(e) == 0 {
-				filter = filter[:0]
-				break
-			}
-			filter = append(filter, e...)
-		}
-		t.dests = dests
-		t.filter = filter
-		t.iub = newIUB(len(t.dests))
-		t.destRanges = make([]destRange, len(t.dests))
+		t.integrationFactory = f
 	}
 }
 
-func NewTask(opts ...Option) *Task {
+func WithIntegrations(igs ...Integration) Option {
+	return func(t *Task) {
+		for i := range igs {
+			if !igs[i].Enabled {
+				continue
+			}
+			t.integrations = append(t.integrations, igs[i])
+		}
+		t.iub = newIUB(len(t.integrations))
+		t.igr = make([]igRange, len(t.integrations))
+	}
+}
+
+func NewTask(opts ...Option) (*Task, error) {
 	t := &Task{
-		ctx:        context.Background(),
-		batch:      make([]eth.Block, 1),
-		parts:      parts(1, 1),
-		srcFactory: getSource,
+		ctx:                context.Background(),
+		batch:              make([]eth.Block, 1),
+		parts:              parts(1, 1),
+		srcFactory:         getSource,
+		integrationFactory: getDest,
 	}
 	for _, opt := range opts {
 		opt(t)
 	}
 	for i := range t.parts {
 		t.parts[i].src = t.srcFactory(t.srcConfig)
+		for j := range t.integrations {
+			dest, err := t.integrationFactory(t.pgp, t.integrations[j])
+			if err != nil {
+				return nil, fmt.Errorf("initializing integration: %w", err)
+			}
+			t.parts[i].dests = append(t.parts[i].dests, dest)
+		}
 	}
-	slog.InfoContext(t.ctx, "starting task", "dest-count", len(t.dests))
-	return t
+	for i := range t.parts[0].dests {
+		e := t.parts[0].dests[i].Events(t.ctx)
+		// if one integration has no filter
+		// then the task must consider all data
+		if len(e) == 0 {
+			t.filter = t.filter[:0]
+			break
+		}
+		t.filter = append(t.filter, e...)
+	}
+	slog.InfoContext(t.ctx, "new-task", "integrations", len(t.integrations))
+	return t, nil
 }
 
 type Task struct {
-	ctx      context.Context
-	backfill bool
+	ctx context.Context
+	pgp *pgxpool.Pool
+
+	backfill    bool
+	start, stop uint64
 
 	srcFactory func(SourceConfig) Source
 	srcConfig  SourceConfig
 
-	pgp         *pgxpool.Pool
-	dests       []Destination
-	destRanges  []destRange
-	start, stop uint64
-
-	iub *intgUpdateBuf
+	igr                []igRange
+	integrationFactory func(wpg.Conn, Integration) (Destination, error)
+	integrations       []Integration
+	iub                *intgUpdateBuf
 
 	filter [][]byte
 	batch  []eth.Block
@@ -150,8 +168,9 @@ type Task struct {
 // Each part has its own source since the Source may have buffers
 // that aren't safe to share across go-routines.
 type part struct {
-	m, n int
-	src  Source
+	m, n  int
+	src   Source
+	dests []Destination
 }
 
 func parts(numParts, batchSize int) []part {
@@ -183,22 +202,40 @@ func (p *part) slice(delta uint64, b []eth.Block) []eth.Block {
 func (t *Task) Setup() error {
 	switch {
 	case t.backfill:
-		var maxStart uint64
-		for i, d := range t.dests {
-			err := t.destRanges[i].load(t.ctx, t.pgp, d.Name(), t.srcConfig.Name)
+		if len(t.integrations) == 0 {
+			slog.InfoContext(t.ctx, "empty task")
+			return nil
+		}
+		for i, ig := range t.integrations {
+			sc, err := ig.sourceConfig(t.srcConfig.Name)
 			if err != nil {
-				return fmt.Errorf("loading dest range for %s/%s: %w", d.Name(), t.srcConfig.Name, err)
+				return fmt.Errorf("missing ig.sourceConfig for %s/%s: %w", ig.Name, t.srcConfig.Name, err)
 			}
-			if maxStart == 0 || maxStart < t.destRanges[i].start {
-				maxStart = t.destRanges[i].start
+			if sc.Start == 0 { // no backfill request
+				continue
 			}
-			if t.stop < t.destRanges[i].stop {
-				t.stop = t.destRanges[i].stop
+			const q = `
+				insert into e2pg.intg(name, src_name, backfill, num)
+				values ($1, $2, true, $3)
+				on conflict (name, src_name, backfill, num)
+				do nothing
+			`
+			if _, err := t.pgp.Exec(t.ctx, q, ig.Name, sc.Name, sc.Start); err != nil {
+				return fmt.Errorf("initial intg record: %w", err)
+			}
+			if err := t.igr[i].load(t.ctx, t.pgp, ig.Name, sc.Name); err != nil {
+				return fmt.Errorf("loading dest range for %s/%s: %w", ig.Name, sc.Name, err)
+			}
+			if t.igr[i].start < t.start || t.start == 0 {
+				t.start = t.igr[i].start
+			}
+			if t.igr[i].stop > t.stop {
+				t.stop = t.igr[i].stop
 			}
 		}
-		h, err := t.parts[0].src.Hash(maxStart)
+		h, err := t.parts[0].src.Hash(t.start)
 		if err != nil {
-			return fmt.Errorf("getting hash for %d: %w", maxStart, err)
+			return fmt.Errorf("getting hash for %d: %w", t.start, err)
 		}
 		const dq = `delete from e2pg.task where src_name = $1 and backfill`
 		if _, err := t.pgp.Exec(t.ctx, dq, t.srcConfig.Name); err != nil {
@@ -208,7 +245,7 @@ func (t *Task) Setup() error {
 			insert into e2pg.task(src_name, backfill, num, hash)
 			values ($1, $2, $3, $4)
 		`
-		_, err = t.pgp.Exec(t.ctx, iq, t.srcConfig.Name, t.backfill, maxStart, h)
+		_, err = t.pgp.Exec(t.ctx, iq, t.srcConfig.Name, t.backfill, t.start, h)
 		if err != nil {
 			return fmt.Errorf("inserting into task table: %w", err)
 		}
@@ -267,7 +304,7 @@ func (t *Task) initRows(n uint64, h []byte) error {
 	case err != nil:
 		return fmt.Errorf("querying for existing task: %w", err)
 	}
-	for _, d := range t.dests {
+	for _, ig := range t.integrations {
 		const eq = `
 			select true
 			from e2pg.intg
@@ -276,14 +313,14 @@ func (t *Task) initRows(n uint64, h []byte) error {
 			and backfill = $3
 			limit 1
 		`
-		err := t.pgp.QueryRow(t.ctx, eq, d.Name(), t.srcConfig.Name, t.backfill).Scan(&exists)
+		err := t.pgp.QueryRow(t.ctx, eq, ig.Name, t.srcConfig.Name, t.backfill).Scan(&exists)
 		switch {
 		case errors.Is(err, pgx.ErrNoRows):
 			const iq = `
 				insert into e2pg.intg(name, src_name, backfill, num)
 				values ($1, $2, $3, $4)
 			`
-			_, err := t.pgp.Exec(t.ctx, iq, d.Name(), t.srcConfig.Name, t.backfill, n)
+			_, err := t.pgp.Exec(t.ctx, iq, ig.Name, t.srcConfig.Name, t.backfill, n)
 			if err != nil {
 				return fmt.Errorf("inserting into intg table: %w", err)
 			}
@@ -307,6 +344,19 @@ func lockid(x uint64, backfill bool) uint32 {
 		return uint32((x << 1) | 1)
 	}
 	return uint32((x << 1) &^ 1)
+}
+
+func (task *Task) Delete(pg wpg.Conn, n uint64) error {
+	if len(task.parts) == 0 {
+		return fmt.Errorf("unable to delete. missing parts.")
+	}
+	for i := range task.parts[0].dests {
+		err := task.parts[0].dests[i].Delete(task.ctx, pg, n)
+		if err != nil {
+			return fmt.Errorf("deleting block: %w", err)
+		}
+	}
+	return nil
 }
 
 var (
@@ -405,10 +455,9 @@ func (task *Task) Converge(notx bool) error {
 			if err != nil {
 				return fmt.Errorf("deleting block from task table: %w", err)
 			}
-			for _, dest := range task.dests {
-				if err := dest.Delete(task.ctx, pg, localNum); err != nil {
-					return fmt.Errorf("deleting block from integration: %w", err)
-				}
+			err = task.Delete(pg, localNum)
+			if err != nil {
+				return fmt.Errorf("deleting during reorg: %w", err)
 			}
 		case err != nil:
 			err = errors.Join(rollback(), err)
@@ -498,19 +547,19 @@ func (task *Task) loadinsert(localHash []byte, pg wpg.Conn, delta uint64) (int64
 		}
 		eg2.Go(func() error {
 			var eg3 errgroup.Group
-			for j := range task.dests {
+			for j := range task.parts[i].dests {
 				j := j
 				eg3.Go(func() error {
 					var (
 						start = time.Now()
-						bdst  = task.destRanges[j].filter(b)
+						bdst  = task.igr[j].filter(b)
 					)
 					if len(bdst) == 0 {
 						return nil
 					}
-					count, err := task.dests[j].Insert(task.ctx, pg, bdst)
+					count, err := task.parts[i].dests[j].Insert(task.ctx, pg, bdst)
 					task.iub.update(j,
-						task.dests[j].Name(),
+						task.parts[i].dests[j].Name(),
 						task.srcConfig.Name,
 						task.backfill,
 						bdst[len(bdst)-1].Num(),
@@ -554,9 +603,9 @@ func validateChain(ctx context.Context, parent []byte, blks []eth.Block) error {
 	return nil
 }
 
-type destRange struct{ start, stop uint64 }
+type igRange struct{ start, stop uint64 }
 
-func (r *destRange) load(ctx context.Context, pg wpg.Conn, name, srcName string) error {
+func (r *igRange) load(ctx context.Context, pg wpg.Conn, name, srcName string) error {
 	const startQuery = `
 	   select num
 	   from e2pg.intg
@@ -586,7 +635,7 @@ func (r *destRange) load(ctx context.Context, pg wpg.Conn, name, srcName string)
 	return nil
 }
 
-func (r *destRange) filter(blks []eth.Block) []eth.Block {
+func (r *igRange) filter(blks []eth.Block) []eth.Block {
 	switch {
 	case r.start == 0 && r.stop == 0:
 		return blks
@@ -630,6 +679,8 @@ func newIUB(n int) *intgUpdateBuf {
 }
 
 type intgUpdateBuf struct {
+	sync.Mutex
+
 	i       int
 	updates []intgUpdate
 	out     [7]any
@@ -647,6 +698,9 @@ func (b *intgUpdateBuf) update(
 	lat time.Duration,
 	nrows int64,
 ) {
+	b.Lock()
+	defer b.Unlock()
+
 	if num <= b.updates[j].Num {
 		return
 	}
@@ -691,6 +745,9 @@ func (b *intgUpdateBuf) Values() ([]any, error) {
 }
 
 func (b *intgUpdateBuf) write(ctx context.Context, pg wpg.Conn) error {
+	b.Lock()
+	defer b.Unlock()
+
 	_, err := pg.CopyFrom(ctx, b.table, b.cols, b)
 	b.i = 0 // reset
 	return err
@@ -996,83 +1053,41 @@ func (tm *Manager) Run() {
 }
 
 func loadTasks(ctx context.Context, pgp *pgxpool.Pool, conf Config) ([]*Task, error) {
-	allIntgs := map[string]Integration{}
-	dbIntgs, err := Integrations(ctx, pgp)
+	igs, err := conf.IntegrationsBySource(ctx, pgp)
 	if err != nil {
 		return nil, fmt.Errorf("loading integrations: %w", err)
 	}
-	for _, intg := range dbIntgs {
-		allIntgs[intg.Name] = intg
-	}
-	for _, intg := range conf.Integrations {
-		allIntgs[intg.Name] = intg
-	}
-
-	// Start per-source main tasks
-	var (
-		dests   = map[string][]Destination{}
-		destsBF = map[string][]Destination{}
-		startBF = map[string]uint64{}
-	)
-	for _, ig := range allIntgs {
-		if !ig.Enabled {
-			continue
-		}
-		dest, err := getDest(pgp, ig)
-		if err != nil {
-			return nil, fmt.Errorf("unable to build integration %s: %w", ig.Name, err)
-		}
-		for _, sc := range ig.SourceConfigs {
-			dests[sc.Name] = append(dests[sc.Name], dest)
-			if sc.Start == 0 {
-				continue
-			}
-			const iq = `
-				insert into e2pg.intg(name, src_name, backfill, num)
-				values ($1, $2, $3, $4)
-				on conflict (name, src_name, backfill, num)
-				do nothing
-			`
-			_, err = pgp.Exec(ctx, iq, ig.Name, sc.Name, true, sc.Start)
-			if err != nil {
-				return nil, fmt.Errorf("initial intg record: %w", err)
-			}
-			destsBF[sc.Name] = append(destsBF[sc.Name], dest)
-			if startBF[sc.Name] == 0 || startBF[sc.Name] > sc.Start {
-				startBF[sc.Name] = sc.Start
-			}
-		}
-	}
-
-	allSources, err := conf.AllSourceConfigs(ctx, pgp)
+	scs, err := conf.AllSourceConfigs(ctx, pgp)
 	if err != nil {
 		return nil, fmt.Errorf("loading source configs: %w", err)
 	}
 	var tasks []*Task
-	for _, sc := range allSources {
-		tasks = append(tasks, NewTask(
-			WithSourceConfig(sc),
+	for _, sc := range scs {
+		mt, err := NewTask(
 			WithPG(pgp),
-			WithRange(sc.Start, sc.Stop),
-			WithConcurrency(max(1, sc.Concurrency), max(1, sc.BatchSize)),
-			WithDestinations(dests[sc.Name]...),
-		))
-		if len(destsBF[sc.Name]) == 0 {
-			continue
+			WithConcurrency(sc.Concurrency, sc.BatchSize),
+			WithSourceConfig(sc),
+			WithIntegrations(igs[sc.Name]...),
+		)
+		if err != nil {
+			return nil, fmt.Errorf("setting up main task: %w", err)
 		}
-		tasks = append(tasks, NewTask(
+		bt, err := NewTask(
 			WithBackfill(true),
-			WithSourceConfig(sc),
 			WithPG(pgp),
-			WithRange(startBF[sc.Name], 0),
-			WithConcurrency(max(1, sc.Concurrency), max(1, sc.BatchSize)),
-			WithDestinations(destsBF[sc.Name]...),
-		))
+			WithConcurrency(sc.Concurrency, sc.BatchSize),
+			WithSourceConfig(sc),
+			WithIntegrations(igs[sc.Name]...),
+		)
+		if err != nil {
+			return nil, fmt.Errorf("setting up backfill task: %w", err)
+		}
+		tasks = append(tasks, mt, bt)
 	}
 	return tasks, nil
 }
 
-func getDest(pgp *pgxpool.Pool, ig Integration) (Destination, error) {
+func getDest(pgp wpg.Conn, ig Integration) (Destination, error) {
 	switch {
 	case len(ig.Compiled.Name) > 0:
 		cig, ok := compiled[ig.Name]
@@ -1168,6 +1183,15 @@ type Integration struct {
 	Compiled      Compiled         `json:"compiled"`
 	Block         []abi2.BlockData `json:"block"`
 	Event         abi2.Event       `json:"event"`
+}
+
+func (ig Integration) sourceConfig(name string) (SourceConfig, error) {
+	for _, sc := range ig.SourceConfigs {
+		if sc.Name == name {
+			return sc, nil
+		}
+	}
+	return SourceConfig{}, fmt.Errorf("missing source config for: %s", name)
 }
 
 type Config struct {

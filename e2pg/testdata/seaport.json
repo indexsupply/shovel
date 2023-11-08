@@ -1,5 +1,6 @@
 {
 	"name": "seaport_test",
+	"enabled": true,
 	"table": {
 		"name": "seaport_test",
 		"columns": [

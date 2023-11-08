@@ -1,5 +1,6 @@
 {
 	"name": "erc721",
+	"enabled": true,
 	"table": {
 		"name": "erc721_test",
 		"columns": [
