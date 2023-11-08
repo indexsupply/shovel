@@ -73,8 +73,9 @@ func (hb *hbyte) UnmarshalJSON(data []byte) error {
 	}
 	data = data[1 : len(data)-1] // remove quotes
 	data = data[2:]              // remove 0x
-	*hb = hbyte(data[0])
-	return nil
+	n, err := decode(string(data))
+	*hb = hbyte(n)
+	return err
 }
 
 type Bytes []byte

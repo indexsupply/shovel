@@ -894,6 +894,8 @@ func (lwc *logWithCtx) get(name string) any {
 		return lwc.t.Value.Dec()
 	case "tx_input":
 		return lwc.t.Data.Bytes()
+	case "tx_type":
+		return lwc.t.Type
 	case "log_idx":
 		return lwc.lidx
 	case "log_addr":
