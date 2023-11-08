@@ -950,9 +950,6 @@ type Manager struct {
 	updates chan uint64
 	pgp     *pgxpool.Pool
 	conf    Config
-
-	err     chan error
-	lastErr error
 }
 
 func NewManager(pgp *pgxpool.Pool, conf Config) *Manager {
@@ -962,13 +959,6 @@ func NewManager(pgp *pgxpool.Pool, conf Config) *Manager {
 		pgp:     pgp,
 		conf:    conf,
 	}
-}
-
-func (tm *Manager) Err() error {
-	if err := <-tm.err; err != nil {
-		tm.lastErr = err
-	}
-	return tm.lastErr
 }
 
 func (tm *Manager) Updates() uint64 {
@@ -1007,9 +997,11 @@ func (tm *Manager) runTask(t *Task) {
 
 // Ensures all running tasks stop
 // and calls [Manager.Run] in a new go routine.
-func (tm *Manager) Restart() {
+func (tm *Manager) Restart() error {
 	close(tm.restart)
-	go tm.Run()
+	ec := make(chan error)
+	go tm.Run(ec)
+	return <-ec
 }
 
 // Loads ethereum sources and integrations from both the config file
@@ -1018,26 +1010,23 @@ func (tm *Manager) Restart() {
 //
 // Acquires a lock to ensure only on routine is running.
 // Releases lock on return
-func (tm *Manager) Run() {
+func (tm *Manager) Run(ec chan error) {
 	tm.running.Lock()
-	defer func() {
-		close(tm.err)
-		tm.running.Unlock()
-	}()
+	defer tm.running.Unlock()
 
 	var err error
-	tm.err = make(chan error)
 	tm.tasks, err = loadTasks(context.Background(), tm.pgp, tm.conf)
 	if err != nil {
-		tm.err <- fmt.Errorf("loading tasks: %w", err)
+		ec <- fmt.Errorf("loading tasks: %w", err)
 		return
 	}
 	for i := range tm.tasks {
 		if err := tm.tasks[i].Setup(); err != nil {
-			tm.err <- fmt.Errorf("setting up task: %w", err)
+			ec <- fmt.Errorf("setting up task: %w", err)
 			return
 		}
 	}
+	close(ec)
 
 	tm.restart = make(chan struct{})
 	var wg sync.WaitGroup

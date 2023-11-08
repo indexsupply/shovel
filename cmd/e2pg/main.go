@@ -138,14 +138,12 @@ func main() {
 		}
 	}()
 
-	go mgr.Run()
-	go func() {
-		for {
-			if err := mgr.Err(); err != nil {
-				slog.ErrorContext(ctx, "error", err)
-			}
-		}
-	}()
+	ec := make(chan error)
+	go mgr.Run(ec)
+	if err := <-ec; err != nil {
+		fmt.Printf("startup error: %s\n", err)
+		os.Exit(1)
+	}
 
 	switch profile {
 	case "cpu":

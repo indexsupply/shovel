@@ -138,9 +138,8 @@ func (h *Handler) SaveIntegration(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	h.mgr.Restart()
-	if err := h.mgr.Err(); err != nil {
-		slog.ErrorContext(ctx, "inserting integration", err)
+	if err := h.mgr.Restart(); err != nil {
+		slog.ErrorContext(ctx, "saving integration", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -313,9 +312,8 @@ func (h *Handler) SaveSource(w http.ResponseWriter, r *http.Request) {
 		slog.ErrorContext(ctx, "inserting task", err)
 		return
 	}
-	h.mgr.Restart()
-	if err := h.mgr.Err(); err != nil {
-		slog.ErrorContext(ctx, "inserting integration", err)
+	if err := h.mgr.Restart(); err != nil {
+		slog.ErrorContext(ctx, "saving source", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
