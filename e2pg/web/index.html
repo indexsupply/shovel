@@ -146,7 +146,7 @@
 						<div class="Progress">-</div>
 					</div>
 					<div class="destinations" style="display:none;">
-						{{ range $iu := (index $.IntgUpdates $tu.DOMID) -}}
+						{{ range $iu := (index $.IGUpdates $tu.DOMID) -}}
 						<div class="destination" id="{{ $iu.DOMID }}">
 							<div class="Name">{{ $iu.Name }}</div>
 							<div class="NRows">{{ $iu.NRows }}</div>
@@ -177,7 +177,7 @@
 						<div class="Progress">-</div>
 					</div>
 					<div class="destinations" style="display:none;">
-						{{ range $iu := (index $.IntgUpdates $tu.DOMID) -}}
+						{{ range $iu := (index $.IGUpdates $tu.DOMID) -}}
 						<div class="destination" id="{{ $iu.DOMID }}">
 							<div class="Name">{{ $iu.Name }}</div>
 							<div class="NRows">{{ $iu.NRows }}</div>

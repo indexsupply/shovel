@@ -73,14 +73,14 @@ func (h *Handler) PushUpdates() error {
 				c <- j
 			}
 		}
-		ius, err := e2pg.IntgUpdates(ctx, h.pgp)
+		ius, err := e2pg.IGUpdates(ctx, h.pgp)
 		if err != nil {
-			return fmt.Errorf("querying intg updates: %w", err)
+			return fmt.Errorf("querying ig updates: %w", err)
 		}
 		for _, update := range ius {
 			j, err := json.Marshal(update)
 			if err != nil {
-				return fmt.Errorf("marshaling intg update: %w", err)
+				return fmt.Errorf("marshaling ig update: %w", err)
 			}
 			for _, c := range h.clients {
 				c <- j
@@ -115,30 +115,30 @@ func (h *Handler) template(name string) (*template.Template, error) {
 
 func (h *Handler) SaveIntegration(w http.ResponseWriter, r *http.Request) {
 	var (
-		err  error
-		ctx  = r.Context()
-		intg = e2pg.Integration{}
+		err error
+		ctx = r.Context()
+		ig  = e2pg.Integration{}
 	)
 	defer r.Body.Close()
-	err = json.NewDecoder(r.Body).Decode(&intg)
+	err = json.NewDecoder(r.Body).Decode(&ig)
 	if err != nil {
 		slog.ErrorContext(ctx, "decoding integration", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	testConfig := e2pg.Config{Integrations: []e2pg.Integration{intg}}
+	testConfig := e2pg.Config{Integrations: []e2pg.Integration{ig}}
 	if err := testConfig.CheckUserInput(); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	cj, err := json.Marshal(intg)
+	cj, err := json.Marshal(ig)
 	if err != nil {
 		slog.ErrorContext(ctx, "encoding integration", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	const q = `insert into e2pg.integrations(name, conf) values ($1, $2)`
-	_, err = h.pgp.Exec(ctx, q, intg.Name, cj)
+	_, err = h.pgp.Exec(ctx, q, ig.Name, cj)
 	if err != nil {
 		slog.ErrorContext(ctx, "inserting integration", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -186,7 +186,7 @@ func (h *Handler) AddIntegration(w http.ResponseWriter, r *http.Request) {
 
 type IndexView struct {
 	TaskUpdates   map[string]e2pg.TaskUpdate
-	IntgUpdates   map[string][]e2pg.IntgUpdate
+	IGUpdates     map[string][]e2pg.IGUpdate
 	SourceConfigs []e2pg.SourceConfig
 	ShowBackfill  bool
 }
@@ -201,16 +201,16 @@ func (h *Handler) Index(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	ius, err := e2pg.IntgUpdates(ctx, h.pgp)
+	ius, err := e2pg.IGUpdates(ctx, h.pgp)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	view.IntgUpdates = make(map[string][]e2pg.IntgUpdate)
+	view.IGUpdates = make(map[string][]e2pg.IGUpdate)
 	for _, iu := range ius {
-		view.IntgUpdates[iu.TaskID()] = append(
-			view.IntgUpdates[iu.TaskID()],
+		view.IGUpdates[iu.TaskID()] = append(
+			view.IGUpdates[iu.TaskID()],
 			iu,
 		)
 	}

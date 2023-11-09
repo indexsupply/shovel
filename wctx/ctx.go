@@ -7,7 +7,7 @@ type key int
 
 const (
 	chainIDKey  key = 1
-	intgNameKey key = 2
+	igNameKey   key = 2
 	srcNameKey  key = 3
 	backfillKey key = 4
 )
@@ -21,12 +21,12 @@ func ChainID(ctx context.Context) uint64 {
 	return id
 }
 
-func WithIntgName(ctx context.Context, name string) context.Context {
-	return context.WithValue(ctx, intgNameKey, name)
+func WithIGName(ctx context.Context, name string) context.Context {
+	return context.WithValue(ctx, igNameKey, name)
 }
 
-func IntgName(ctx context.Context) string {
-	name, _ := ctx.Value(intgNameKey).(string)
+func IGName(ctx context.Context) string {
+	name, _ := ctx.Value(igNameKey).(string)
 	return name
 }
 

@@ -732,7 +732,7 @@ func (ig *Integration) addUniqueIndex() {
 		return
 	}
 	possible := []string{
-		"intg_name",
+		"ig_name",
 		"src_name",
 		"block_num",
 		"tx_idx",
@@ -776,7 +776,7 @@ func (ig *Integration) addRequiredFields() {
 		}
 	}
 
-	add("intg_name", "text")
+	add("ig_name", "text")
 	add("src_name", "text")
 	add("block_num", "numeric")
 	add("tx_idx", "int4")
@@ -799,7 +799,7 @@ func (ig Integration) Delete(ctx context.Context, pg wpg.Conn, n uint64) error {
 	const q = `
 		delete from %s
 		where src_name = $1
-		and intg_name = $2
+		and ig_name = $2
 		and block_num >= $3
 	`
 	_, err := pg.Exec(ctx,
@@ -820,7 +820,7 @@ func (ig Integration) Insert(ctx context.Context, pg wpg.Conn, blocks []eth.Bloc
 		err  error
 		skip bool
 		rows [][]any
-		lwc  = &logWithCtx{ctx: wctx.WithIntgName(ctx, ig.Name())}
+		lwc  = &logWithCtx{ctx: wctx.WithIGName(ctx, ig.Name())}
 	)
 	for bidx := range blocks {
 		lwc.b = &blocks[bidx]
@@ -866,8 +866,8 @@ func (lwc *logWithCtx) get(name string) any {
 	switch name {
 	case "src_name":
 		return wctx.SrcName(lwc.ctx)
-	case "intg_name":
-		return wctx.IntgName(lwc.ctx)
+	case "ig_name":
+		return wctx.IGName(lwc.ctx)
 	case "chain_id":
 		return wctx.ChainID(lwc.ctx)
 	case "block_hash":
@@ -1101,6 +1101,21 @@ func (t *Table) Create(ctx context.Context, pg wpg.Conn) error {
 	}
 	_, err := pg.Exec(ctx, s.String())
 	return err
+}
+
+func (t *Table) Rename(ctx context.Context, pg wpg.Conn) error {
+	const q = `
+		DO $$
+		BEGIN
+			ALTER TABLE %s RENAME COLUMN intg_name TO ig_name;
+		EXCEPTION
+			WHEN undefined_column THEN RAISE NOTICE 'column intg_name does not exist';
+		END; $$;
+	`
+	if _, err := pg.Exec(ctx, fmt.Sprintf(q, t.Name)); err != nil {
+		return fmt.Errorf("updating intg_name col on %s: %w", t.Name, err)
+	}
+	return nil
 }
 
 func (t *Table) CreateUIDX(ctx context.Context, pg wpg.Conn) error {

@@ -35,7 +35,7 @@ func (dest *testDestination) factory(_ wpg.Conn, ig Integration) (Destination, e
 	return dest, nil
 }
 
-func (dest *testDestination) intg() Integration {
+func (dest *testDestination) ig() Integration {
 	return Integration{Name: dest.name, Enabled: true}
 }
 
@@ -163,23 +163,23 @@ func taskAdd(
 	srcName string,
 	n uint64,
 	h []byte,
-	intgs ...string,
+	igs ...string,
 ) {
 	ctx := context.Background()
 	const q1 = `
-		insert into e2pg.task(src_name, backfill, num, hash)
+		insert into e2pg.task_updates(src_name, backfill, num, hash)
 		values ($1, false, $2, $3)
 	`
 	_, err := pg.Exec(ctx, q1, srcName, n, h)
 	if err != nil {
 		tb.Fatalf("inserting task %d %.4x %s", n, h, err)
 	}
-	for i := range intgs {
+	for i := range igs {
 		const q1 = `
-			insert into e2pg.intg(name, src_name, backfill, num)
+			insert into e2pg.ig_updates(name, src_name, backfill, num)
 			values ($1, $2, false, $3)
 		`
-		_, err := pg.Exec(ctx, q1, intgs[i], srcName, n)
+		_, err := pg.Exec(ctx, q1, igs[i], srcName, n)
 		if err != nil {
 			tb.Fatalf("inserting task %d %.4x %s", n, h, err)
 		}
@@ -195,7 +195,7 @@ func TestSetup(t *testing.T) {
 			WithPG(pg),
 			WithSourceConfig(SourceConfig{Name: "foo"}),
 			WithSourceFactory(func(SourceConfig) Source { return tg }),
-			WithIntegrations(dest.intg()),
+			WithIntegrations(dest.ig()),
 			WithIntegrationFactory(dest.factory),
 		)
 	)
@@ -207,7 +207,7 @@ func TestSetup(t *testing.T) {
 
 	checkQuery(t, pg, `
 		select true
-		from e2pg.task
+		from e2pg.task_updates
 		where src_name = 'foo'
 		and hash = $1
 		and num = $2
@@ -223,7 +223,7 @@ func TestConverge_Zero(t *testing.T) {
 			WithPG(pg),
 			WithSourceConfig(SourceConfig{Name: "foo"}),
 			WithSourceFactory(func(SourceConfig) Source { return &testGeth{} }),
-			WithIntegrations(dest.intg()),
+			WithIntegrations(dest.ig()),
 			WithIntegrationFactory(dest.factory),
 		)
 	)
@@ -240,7 +240,7 @@ func TestConverge_EmptyDestination(t *testing.T) {
 			WithPG(pg),
 			WithSourceConfig(SourceConfig{Name: "foo"}),
 			WithSourceFactory(func(SourceConfig) Source { return tg }),
-			WithIntegrations(dest.intg()),
+			WithIntegrations(dest.ig()),
 			WithIntegrationFactory(dest.factory),
 		)
 	)
@@ -262,7 +262,7 @@ func TestConverge_Reorg(t *testing.T) {
 			WithPG(pg),
 			WithSourceConfig(SourceConfig{Name: "foo"}),
 			WithSourceFactory(func(SourceConfig) Source { return tg }),
-			WithIntegrations(dest.intg()),
+			WithIntegrations(dest.ig()),
 			WithIntegrationFactory(dest.factory),
 		)
 	)
@@ -297,7 +297,7 @@ func TestConverge_DeltaBatchSize(t *testing.T) {
 			WithConcurrency(workers, batchSize),
 			WithSourceConfig(SourceConfig{Name: "foo"}),
 			WithSourceFactory(func(SourceConfig) Source { return tg }),
-			WithIntegrations(dest.intg()),
+			WithIntegrations(dest.ig()),
 			WithIntegrationFactory(dest.factory),
 		)
 	)
@@ -329,7 +329,7 @@ func TestConverge_MultipleTasks(t *testing.T) {
 			WithConcurrency(1, 3),
 			WithSourceConfig(SourceConfig{Name: "a"}),
 			WithSourceFactory(func(SourceConfig) Source { return tg }),
-			WithIntegrations(dest1.intg()),
+			WithIntegrations(dest1.ig()),
 			WithIntegrationFactory(dest1.factory),
 		)
 		task2, err2 = NewTask(
@@ -337,7 +337,7 @@ func TestConverge_MultipleTasks(t *testing.T) {
 			WithConcurrency(1, 3),
 			WithSourceConfig(SourceConfig{Name: "b"}),
 			WithSourceFactory(func(SourceConfig) Source { return tg }),
-			WithIntegrations(dest2.intg()),
+			WithIntegrations(dest2.ig()),
 			WithIntegrationFactory(dest2.factory),
 		)
 	)
@@ -366,7 +366,7 @@ func TestConverge_LocalAhead(t *testing.T) {
 			WithConcurrency(1, 3),
 			WithSourceConfig(SourceConfig{Name: "foo"}),
 			WithSourceFactory(func(SourceConfig) Source { return tg }),
-			WithIntegrations(dest.intg()),
+			WithIntegrations(dest.ig()),
 			WithIntegrationFactory(dest.factory),
 		)
 	)
@@ -391,7 +391,7 @@ func TestConverge_Done(t *testing.T) {
 			WithConcurrency(1, 1),
 			WithSourceConfig(SourceConfig{Name: "foo"}),
 			WithSourceFactory(func(SourceConfig) Source { return tg }),
-			WithIntegrations(dest.intg()),
+			WithIntegrations(dest.ig()),
 			WithIntegrationFactory(dest.factory),
 		)
 		taskBF, err2 = NewTask(
@@ -400,7 +400,7 @@ func TestConverge_Done(t *testing.T) {
 			WithConcurrency(1, 1),
 			WithSourceConfig(SourceConfig{Name: "foo"}),
 			WithSourceFactory(func(SourceConfig) Source { return tg }),
-			WithIntegrations(dest.intg()),
+			WithIntegrations(dest.ig()),
 			WithIntegrationFactory(dest.factory),
 		)
 	)
@@ -416,12 +416,12 @@ func TestConverge_Done(t *testing.T) {
 	// manually setup the first record.
 	// this is typically done in loadTasks
 	const q = `
-		insert into e2pg.intg(name, src_name, backfill, num)
+		insert into e2pg.ig_updates(name, src_name, backfill, num)
 		values ($1, $2, $3, $4)
 	`
 	_, err := pg.Exec(ctx, q, "foo", "foo", true, 0)
 	diff.Test(t, t.Errorf, nil, err)
-	diff.Test(t, t.Errorf, nil, taskBF.igr[0].load(ctx, pg, "foo", "foo"))
+	diff.Test(t, t.Errorf, nil, taskBF.igRange[0].load(ctx, pg, "foo", "foo"))
 	diff.Test(t, t.Errorf, ErrDone, taskBF.Converge(true))
 }
 
@@ -429,7 +429,7 @@ func TestPruneTask(t *testing.T) {
 	pg := testpg(t)
 	it := func(n uint8) {
 		_, err := pg.Exec(context.Background(), `
-			insert into e2pg.task(src_name, backfill, num, hash)
+			insert into e2pg.task_updates(src_name, backfill, num, hash)
 			values ($1, false, $2, $3)
 		`, "foo", n, hash(n))
 		if err != nil {
@@ -439,43 +439,43 @@ func TestPruneTask(t *testing.T) {
 	for i := uint8(0); i < 10; i++ {
 		it(i)
 	}
-	checkQuery(t, pg, `select count(*) = 10 from e2pg.task`)
+	checkQuery(t, pg, `select count(*) = 10 from e2pg.task_updates`)
 	PruneTask(context.Background(), pg, 1)
-	checkQuery(t, pg, `select count(*) = 1 from e2pg.task`)
+	checkQuery(t, pg, `select count(*) = 1 from e2pg.task_updates`)
 }
 
-func TestPruneIntg(t *testing.T) {
+func TestPruneIG(t *testing.T) {
 	ctx := context.Background()
 
 	pqxtest.CreateDB(t, Schema)
 	pg, err := pgxpool.New(ctx, pqxtest.DSNForTest(t))
 	diff.Test(t, t.Fatalf, err, nil)
 
-	iub := newIUB(2)
-	iub.update(0, "foo", "bar", true, 1, 0, 0, 0)
-	err = iub.write(ctx, pg)
+	igUpdateBuf := newIGUpdateBuf(2)
+	igUpdateBuf.update(0, "foo", "bar", true, 1, 0, 0, 0)
+	err = igUpdateBuf.write(ctx, pg)
 	diff.Test(t, t.Fatalf, err, nil)
-	checkQuery(t, pg, `select count(*) = 1 from e2pg.intg`)
+	checkQuery(t, pg, `select count(*) = 1 from e2pg.ig_updates`)
 
 	for i := 0; i < 10; i++ {
-		iub.update(0, "foo", "bar", true, uint64(i+2), 0, 0, 0)
-		err := iub.write(ctx, pg)
+		igUpdateBuf.update(0, "foo", "bar", true, uint64(i+2), 0, 0, 0)
+		err := igUpdateBuf.write(ctx, pg)
 		diff.Test(t, t.Fatalf, err, nil)
 	}
-	checkQuery(t, pg, `select count(*) = 11 from e2pg.intg`)
-	err = PruneIntg(ctx, pg)
+	checkQuery(t, pg, `select count(*) = 11 from e2pg.ig_updates`)
+	err = PruneIG(ctx, pg)
 	diff.Test(t, t.Fatalf, err, nil)
-	checkQuery(t, pg, `select count(*) = 2 from e2pg.intg`)
+	checkQuery(t, pg, `select count(*) = 2 from e2pg.ig_updates`)
 
-	iub.update(1, "foo", "baz", true, 1, 0, 0, 0)
-	err = iub.write(ctx, pg)
+	igUpdateBuf.update(1, "foo", "baz", true, 1, 0, 0, 0)
+	err = igUpdateBuf.write(ctx, pg)
 	diff.Test(t, t.Fatalf, err, nil)
-	checkQuery(t, pg, `select count(*) = 1 from e2pg.intg where src_name = 'baz'`)
-	checkQuery(t, pg, `select count(*) = 3 from e2pg.intg`)
+	checkQuery(t, pg, `select count(*) = 1 from e2pg.ig_updates where src_name = 'baz'`)
+	checkQuery(t, pg, `select count(*) = 3 from e2pg.ig_updates`)
 
-	err = PruneIntg(ctx, pg)
+	err = PruneIG(ctx, pg)
 	diff.Test(t, t.Fatalf, err, nil)
-	checkQuery(t, pg, `select count(*) = 3 from e2pg.intg`)
+	checkQuery(t, pg, `select count(*) = 3 from e2pg.ig_updates`)
 }
 
 func destFactory(dests ...*testDestination) func(wpg.Conn, Integration) (Destination, error) {
@@ -503,84 +503,84 @@ func TestInitRows(t *testing.T) {
 		WithPG(pg),
 		WithSourceConfig(SourceConfig{Name: "foo"}),
 		WithSourceFactory(func(SourceConfig) Source { return &testGeth{} }),
-		WithIntegrations(bar.intg()),
+		WithIntegrations(bar.ig()),
 		WithIntegrationFactory(bar.factory),
 	)
 	diff.Test(t, t.Errorf, err, nil)
 	err = task.initRows(42, hash(42))
 	diff.Test(t, t.Fatalf, err, nil)
-	checkQuery(t, pg, `select count(*) = 1 from e2pg.intg`)
-	checkQuery(t, pg, `select count(*) = 1 from e2pg.task`)
+	checkQuery(t, pg, `select count(*) = 1 from e2pg.ig_updates`)
+	checkQuery(t, pg, `select count(*) = 1 from e2pg.task_updates`)
 
 	err = task.initRows(42, hash(42))
 	diff.Test(t, t.Fatalf, err, nil)
-	checkQuery(t, pg, `select count(*) = 1 from e2pg.intg`)
-	checkQuery(t, pg, `select count(*) = 1 from e2pg.task`)
+	checkQuery(t, pg, `select count(*) = 1 from e2pg.ig_updates`)
+	checkQuery(t, pg, `select count(*) = 1 from e2pg.task_updates`)
 
 	task, err = NewTask(
 		WithPG(pg),
 		WithSourceConfig(SourceConfig{Name: "foo"}),
 		WithSourceFactory(func(SourceConfig) Source { return &testGeth{} }),
-		WithIntegrations(bar.intg(), baz.intg()),
+		WithIntegrations(bar.ig(), baz.ig()),
 		WithIntegrationFactory(destFactory(bar, baz)),
 	)
 	diff.Test(t, t.Errorf, err, nil)
 
 	err = task.initRows(42, hash(42))
 	diff.Test(t, t.Fatalf, err, nil)
-	checkQuery(t, pg, `select count(*) = 2 from e2pg.intg`)
-	checkQuery(t, pg, `select count(*) = 1 from e2pg.task`)
+	checkQuery(t, pg, `select count(*) = 2 from e2pg.ig_updates`)
+	checkQuery(t, pg, `select count(*) = 1 from e2pg.task_updates`)
 
 	task, err = NewTask(
 		WithPG(pg),
 		WithBackfill(true),
 		WithSourceConfig(SourceConfig{Name: "foo"}),
 		WithSourceFactory(func(SourceConfig) Source { return &testGeth{} }),
-		WithIntegrations(bar.intg(), baz.intg()),
+		WithIntegrations(bar.ig(), baz.ig()),
 		WithIntegrationFactory(destFactory(bar, baz)),
 	)
 	diff.Test(t, t.Errorf, err, nil)
 
 	err = task.initRows(42, hash(42))
 	diff.Test(t, t.Fatalf, err, nil)
-	checkQuery(t, pg, `select count(*) = 4 from e2pg.intg`)
-	checkQuery(t, pg, `select count(*) = 2 from e2pg.task`)
+	checkQuery(t, pg, `select count(*) = 4 from e2pg.ig_updates`)
+	checkQuery(t, pg, `select count(*) = 2 from e2pg.task_updates`)
 	checkQuery(t, pg, `
 		select count(*) = 1
-		from e2pg.task
+		from e2pg.task_updates
 		where src_name = 'foo'
 		and backfill = false
 	`)
 	checkQuery(t, pg, `
 		select count(*) = 1
-		from e2pg.task
+		from e2pg.task_updates
 		where src_name = 'foo'
 		and backfill = true
 	`)
 	checkQuery(t, pg, `
 		select count(*) = 1
-		from e2pg.intg
+		from e2pg.ig_updates
 		where name = 'bar'
 		and src_name = 'foo'
 		and backfill = true
 	`)
 	checkQuery(t, pg, `
 		select count(*) = 1
-		from e2pg.intg
+		from e2pg.ig_updates
 		where name = 'bar'
 		and src_name = 'foo'
 		and backfill = false
 	`)
 	checkQuery(t, pg, `
 		select count(*) = 1
-		from e2pg.intg
+		from e2pg.ig_updates
 		where name = 'baz'
 		and src_name = 'foo'
 		and backfill = true
 	`)
 	checkQuery(t, pg, `
 		select count(*) = 1
-		from e2pg.intg
+		from e2pg.ig_updates
 		where name = 'baz'
 		and src_name = 'foo'
 		and backfill = false
@@ -598,7 +598,7 @@ func TestDestRanges_Load(t *testing.T) {
 		WithPG(pg),
 		WithSourceConfig(SourceConfig{Name: "foo"}),
 		WithSourceFactory(func(SourceConfig) Source { return &testGeth{} }),
-		WithIntegrations(dest.intg()),
+		WithIntegrations(dest.ig()),
 		WithIntegrationFactory(dest.factory),
 	)
 	task2, err2 := NewTask(
@@ -606,7 +606,7 @@ func TestDestRanges_Load(t *testing.T) {
 		WithBackfill(true),
 		WithSourceConfig(SourceConfig{Name: "foo"}),
 		WithSourceFactory(func(SourceConfig) Source { return &testGeth{} }),
-		WithIntegrations(dest.intg()),
+		WithIntegrations(dest.ig()),
 		WithIntegrationFactory(dest.factory),
 	)
 	diff.Test(t, t.Errorf, err1, nil)
@@ -617,11 +617,11 @@ func TestDestRanges_Load(t *testing.T) {
 	err = task2.initRows(10, hash(10))
 	diff.Test(t, t.Fatalf, err, nil)
 
-	diff.Test(t, t.Fatalf, len(task2.igr), 1)
-	err = task2.igr[0].load(ctx, pg, "bar", "foo")
+	diff.Test(t, t.Fatalf, len(task2.igRange), 1)
+	err = task2.igRange[0].load(ctx, pg, "bar", "foo")
 	diff.Test(t, t.Fatalf, err, nil)
-	diff.Test(t, t.Errorf, task2.igr[0].start, uint64(10))
-	diff.Test(t, t.Errorf, task2.igr[0].stop, uint64(42))
+	diff.Test(t, t.Errorf, task2.igRange[0].start, uint64(10))
+	diff.Test(t, t.Errorf, task2.igRange[0].stop, uint64(42))
 }
 
 func TestDestRanges_Filter(t *testing.T) {
@@ -824,32 +824,32 @@ func TestLoadTasks_Backfill(t *testing.T) {
 	diff.Test(t, t.Errorf, nil, tasks[0].Setup())
 	checkQuery(t, pg, `
 		select count(*) = 1
-		from e2pg.task
+		from e2pg.task_updates
 		where src_name = 'foo'
 		and backfill = false
 	`)
 	checkQuery(t, pg, `
 		select num = 2
-		from e2pg.task
+		from e2pg.task_updates
 		where src_name = 'foo'
 		and backfill = false
 	`)
 	checkQuery(t, pg, `
 		select count(*) = 2
-		from e2pg.intg
+		from e2pg.ig_updates
 		where src_name = 'foo'
 		and backfill = false
 	`)
 	checkQuery(t, pg, `
 		select num = 2
-		from e2pg.intg
+		from e2pg.ig_updates
 		where src_name = 'foo'
 		and name = 'baz'
 		and backfill = false
 	`)
 	checkQuery(t, pg, `
 		select num = 2
-		from e2pg.intg
+		from e2pg.ig_updates
 		where src_name = 'foo'
 		and name = 'bar'
 		and backfill = false
@@ -860,32 +860,32 @@ func TestLoadTasks_Backfill(t *testing.T) {
 	diff.Test(t, t.Errorf, uint64(2), tasks[1].stop)
 	checkQuery(t, pg, `
 		select count(*) = 1
-		from e2pg.task
+		from e2pg.task_updates
 		where src_name = 'foo'
 		and backfill
 	`)
 	checkQuery(t, pg, `
 		select num = 1
-		from e2pg.task
+		from e2pg.task_updates
 		where src_name = 'foo'
 		and backfill
 	`)
 	checkQuery(t, pg, `
 		select count(*) = 2
-		from e2pg.intg
+		from e2pg.ig_updates
 		where src_name = 'foo'
 		and backfill
 	`)
 	checkQuery(t, pg, `
 		select num = 2
-		from e2pg.intg
+		from e2pg.ig_updates
 		where src_name = 'foo'
 		and name = 'bar'
 		and backfill
 	`)
 	checkQuery(t, pg, `
 		select num = 1
-		from e2pg.intg
+		from e2pg.ig_updates
 		where src_name = 'foo'
 		and name = 'baz'
 		and backfill

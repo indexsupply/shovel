@@ -340,7 +340,7 @@ func TestNew(t *testing.T) {
 		"b",
 		"c",
 		"block_num",
-		"intg_name",
+		"ig_name",
 		"src_name",
 		"tx_idx",
 		"log_idx",
@@ -372,7 +372,7 @@ func TestValidate_AddRequired(t *testing.T) {
 	want := []Column{
 		{Name: "b", Type: "bytea"},
 		{Name: "c", Type: "bytea"},
-		{Name: "intg_name", Type: "text"},
+		{Name: "ig_name", Type: "text"},
 		{Name: "src_name", Type: "text"},
 		{Name: "block_num", Type: "numeric"},
 		{Name: "tx_idx", Type: "int4"},
@@ -408,7 +408,7 @@ func TestAddUniqueIndex(t *testing.T) {
 	ig.addRequiredFields()
 	ig.setCols()
 	ig.addUniqueIndex()
-	want := []string{"intg_name", "src_name", "block_num", "tx_idx"}
+	want := []string{"ig_name", "src_name", "block_num", "tx_idx"}
 	diff.Test(t, t.Fatalf, 1, len(ig.Table.Unique))
 	diff.Test(t, t.Errorf, want, ig.Table.Unique[0])
 }
