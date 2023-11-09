@@ -88,7 +88,7 @@ func WithConcurrency(numParts, batchSize int) Option {
 
 func WithIntegrationFactory(f func(wpg.Conn, Integration) (Destination, error)) Option {
 	return func(t *Task) {
-		t.integrationFactory = f
+		t.igFactory = f
 	}
 }
 
@@ -98,28 +98,28 @@ func WithIntegrations(igs ...Integration) Option {
 			if !igs[i].Enabled {
 				continue
 			}
-			t.integrations = append(t.integrations, igs[i])
+			t.igs = append(t.igs, igs[i])
 		}
-		t.iub = newIUB(len(t.integrations))
-		t.igr = make([]igRange, len(t.integrations))
+		t.igUpdateBuf = newIGUpdateBuf(len(t.igs))
+		t.igRange = make([]igRange, len(t.igs))
 	}
 }
 
 func NewTask(opts ...Option) (*Task, error) {
 	t := &Task{
-		ctx:                context.Background(),
-		batch:              make([]eth.Block, 1),
-		parts:              parts(1, 1),
-		srcFactory:         getSource,
-		integrationFactory: getDest,
+		ctx:        context.Background(),
+		batch:      make([]eth.Block, 1),
+		parts:      parts(1, 1),
+		srcFactory: getSource,
+		igFactory:  getDest,
 	}
 	for _, opt := range opts {
 		opt(t)
 	}
 	for i := range t.parts {
 		t.parts[i].src = t.srcFactory(t.srcConfig)
-		for j := range t.integrations {
-			dest, err := t.integrationFactory(t.pgp, t.integrations[j])
+		for j := range t.igs {
+			dest, err := t.igFactory(t.pgp, t.igs[j])
 			if err != nil {
 				return nil, fmt.Errorf("initializing integration: %w", err)
 			}
@@ -136,7 +136,7 @@ func NewTask(opts ...Option) (*Task, error) {
 		}
 		t.filter = append(t.filter, e...)
 	}
-	slog.InfoContext(t.ctx, "new-task", "integrations", len(t.integrations))
+	slog.InfoContext(t.ctx, "new-task", "integrations", len(t.igs))
 	return t, nil
 }
 
@@ -150,10 +150,10 @@ type Task struct {
 	srcFactory func(SourceConfig) Source
 	srcConfig  SourceConfig
 
-	igr                []igRange
-	integrationFactory func(wpg.Conn, Integration) (Destination, error)
-	integrations       []Integration
-	iub                *intgUpdateBuf
+	igFactory   func(wpg.Conn, Integration) (Destination, error)
+	igs         []Integration
+	igRange     []igRange
+	igUpdateBuf *igUpdateBuf
 
 	filter [][]byte
 	batch  []eth.Block
@@ -203,11 +203,11 @@ func (p *part) slice(delta uint64, b []eth.Block) []eth.Block {
 func (t *Task) Setup() error {
 	switch {
 	case t.backfill:
-		if len(t.integrations) == 0 {
+		if len(t.igs) == 0 {
 			slog.InfoContext(t.ctx, "empty task")
 			return nil
 		}
-		for i, ig := range t.integrations {
+		for i, ig := range t.igs {
 			sc, err := ig.sourceConfig(t.srcConfig.Name)
 			if err != nil {
 				return fmt.Errorf("missing ig.sourceConfig for %s/%s: %w", ig.Name, t.srcConfig.Name, err)
@@ -216,34 +216,34 @@ func (t *Task) Setup() error {
 				continue
 			}
 			const q = `
-				insert into e2pg.intg(name, src_name, backfill, num)
+				insert into e2pg.ig_updates(name, src_name, backfill, num)
 				values ($1, $2, true, $3)
 				on conflict (name, src_name, backfill, num)
 				do nothing
 			`
 			if _, err := t.pgp.Exec(t.ctx, q, ig.Name, sc.Name, sc.Start); err != nil {
-				return fmt.Errorf("initial intg record: %w", err)
+				return fmt.Errorf("initial ig record: %w", err)
 			}
-			if err := t.igr[i].load(t.ctx, t.pgp, ig.Name, sc.Name); err != nil {
+			if err := t.igRange[i].load(t.ctx, t.pgp, ig.Name, sc.Name); err != nil {
 				return fmt.Errorf("loading dest range for %s/%s: %w", ig.Name, sc.Name, err)
 			}
-			if t.igr[i].start < t.start || t.start == 0 {
-				t.start = t.igr[i].start
+			if t.igRange[i].start < t.start || t.start == 0 {
+				t.start = t.igRange[i].start
 			}
-			if t.igr[i].stop > t.stop {
-				t.stop = t.igr[i].stop
+			if t.igRange[i].stop > t.stop {
+				t.stop = t.igRange[i].stop
 			}
 		}
 		h, err := t.parts[0].src.Hash(t.start)
 		if err != nil {
 			return fmt.Errorf("getting hash for %d: %w", t.start, err)
 		}
-		const dq = `delete from e2pg.task where src_name = $1 and backfill`
+		const dq = `delete from e2pg.task_updates where src_name = $1 and backfill`
 		if _, err := t.pgp.Exec(t.ctx, dq, t.srcConfig.Name); err != nil {
 			return fmt.Errorf("resetting backfill task %s: %q", t.srcConfig.Name, err)
 		}
 		const iq = `
-			insert into e2pg.task(src_name, backfill, num, hash)
+			insert into e2pg.task_updates(src_name, backfill, num, hash)
 			values ($1, $2, $3, $4)
 		`
 		_, err = t.pgp.Exec(t.ctx, iq, t.srcConfig.Name, t.backfill, t.start, h)
@@ -276,8 +276,8 @@ func (t *Task) Setup() error {
 	}
 }
 
-// inserts an e2pg.task unless one with {src_name,backfill} already exists
-// inserts a e2pg.intg for each t.dests[i] unless one with
+// inserts an e2pg.task_updates unless one with {src_name,backfill} already exists
+// inserts a e2pg.ig_updates for each t.dests[i] unless one with
 // {name,src_name,backfill} already exists.
 //
 // There is no db transaction because this function can be called many
@@ -286,7 +286,7 @@ func (t *Task) initRows(n uint64, h []byte) error {
 	var exists bool
 	const eq = `
 		select true
-		from e2pg.task
+		from e2pg.task_updates
 		where src_name = $1
 		and backfill = $2
 		limit 1
@@ -295,7 +295,7 @@ func (t *Task) initRows(n uint64, h []byte) error {
 	switch {
 	case errors.Is(err, pgx.ErrNoRows):
 		const iq = `
-			insert into e2pg.task(src_name, backfill, num, hash)
+			insert into e2pg.task_updates(src_name, backfill, num, hash)
 			values ($1, $2, $3, $4)
 		`
 		_, err := t.pgp.Exec(t.ctx, iq, t.srcConfig.Name, t.backfill, n, h)
@@ -305,10 +305,10 @@ func (t *Task) initRows(n uint64, h []byte) error {
 	case err != nil:
 		return fmt.Errorf("querying for existing task: %w", err)
 	}
-	for _, ig := range t.integrations {
+	for _, ig := range t.igs {
 		const eq = `
 			select true
-			from e2pg.intg
+			from e2pg.ig_updates
 			where name = $1
 			and src_name = $2
 			and backfill = $3
@@ -318,15 +318,15 @@ func (t *Task) initRows(n uint64, h []byte) error {
 		switch {
 		case errors.Is(err, pgx.ErrNoRows):
 			const iq = `
-				insert into e2pg.intg(name, src_name, backfill, num)
+				insert into e2pg.ig_updates(name, src_name, backfill, num)
 				values ($1, $2, $3, $4)
 			`
 			_, err := t.pgp.Exec(t.ctx, iq, ig.Name, t.srcConfig.Name, t.backfill, n)
 			if err != nil {
-				return fmt.Errorf("inserting into intg table: %w", err)
+				return fmt.Errorf("inserting into ig table: %w", err)
 			}
 		case err != nil:
-			return fmt.Errorf("querying for existing intg: %w", err)
+			return fmt.Errorf("querying for existing ig: %w", err)
 		}
 	}
 	return nil
@@ -398,7 +398,7 @@ func (task *Task) Converge(notx bool) error {
 		localNum, localHash := uint64(0), []byte{}
 		const q = `
 			select num, hash
-			from e2pg.task
+			from e2pg.task_updates
 			where src_name = $1
 			and backfill = $2
 			order by num desc
@@ -437,7 +437,7 @@ func (task *Task) Converge(notx bool) error {
 			reorgs++
 			slog.ErrorContext(task.ctx, "reorg", "n", localNum, "h", fmt.Sprintf("%.4x", localHash))
 			const rq1 = `
-				delete from e2pg.task
+				delete from e2pg.task_updates
 				where src_name = $1
 				and backfill = $2
 				and num >= $3
@@ -447,7 +447,7 @@ func (task *Task) Converge(notx bool) error {
 				return fmt.Errorf("deleting block from task table: %w", err)
 			}
 			const rq2 = `
-				delete from e2pg.intg
+				delete from e2pg.ig_updates
 				where src_name = $1
 				and backfill = $2
 				and num >= $3
@@ -466,7 +466,7 @@ func (task *Task) Converge(notx bool) error {
 		default:
 			var last = task.batch[delta-1]
 			const uq = `
-				insert into e2pg.task (
+				insert into e2pg.task_updates (
 					src_name,
 					backfill,
 					num,
@@ -495,7 +495,7 @@ func (task *Task) Converge(notx bool) error {
 			if err != nil {
 				return fmt.Errorf("updating task table: %w", err)
 			}
-			if err := task.iub.write(task.ctx, pg); err != nil {
+			if err := task.igUpdateBuf.write(task.ctx, pg); err != nil {
 				return fmt.Errorf("updating integrations: %w", err)
 			}
 			if err := commit(); err != nil {
@@ -553,13 +553,13 @@ func (task *Task) loadinsert(localHash []byte, pg wpg.Conn, delta uint64) (int64
 				eg3.Go(func() error {
 					var (
 						start = time.Now()
-						bdst  = task.igr[j].filter(b)
+						bdst  = task.igRange[j].filter(b)
 					)
 					if len(bdst) == 0 {
 						return nil
 					}
 					count, err := task.parts[i].dests[j].Insert(task.ctx, pg, bdst)
-					task.iub.update(j,
+					task.igUpdateBuf.update(j,
 						task.parts[i].dests[j].Name(),
 						task.srcConfig.Name,
 						task.backfill,
@@ -609,7 +609,7 @@ type igRange struct{ start, stop uint64 }
 func (r *igRange) load(ctx context.Context, pg wpg.Conn, name, srcName string) error {
 	const startQuery = `
 	   select num
-	   from e2pg.intg
+	   from e2pg.ig_updates
 	   where name = $1
 	   and src_name = $2
 	   and backfill = true
@@ -622,7 +622,7 @@ func (r *igRange) load(ctx context.Context, pg wpg.Conn, name, srcName string) e
 	}
 	const stopQuery = `
 	   select num
-	   from e2pg.intg
+	   from e2pg.ig_updates
 	   where name = $1
 	   and src_name = $2
 	   and backfill = false
@@ -660,7 +660,7 @@ func (r *igRange) filter(blks []eth.Block) []eth.Block {
 	}
 }
 
-type intgUpdate struct {
+type igUpdate struct {
 	changed  bool
 	Name     string        `db:"name"`
 	SrcName  string        `db:"src_name"`
@@ -671,25 +671,25 @@ type intgUpdate struct {
 	NRows    int64         `db:"nrows"`
 }
 
-func newIUB(n int) *intgUpdateBuf {
-	iub := &intgUpdateBuf{}
-	iub.updates = make([]intgUpdate, n)
-	iub.table = pgx.Identifier{"e2pg", "intg"}
-	iub.cols = []string{"name", "src_name", "backfill", "num", "stop", "latency", "nrows"}
-	return iub
+func newIGUpdateBuf(n int) *igUpdateBuf {
+	b := &igUpdateBuf{}
+	b.updates = make([]igUpdate, n)
+	b.table = pgx.Identifier{"e2pg", "ig_updates"}
+	b.cols = []string{"name", "src_name", "backfill", "num", "stop", "latency", "nrows"}
+	return b
 }
 
-type intgUpdateBuf struct {
+type igUpdateBuf struct {
 	sync.Mutex
 
 	i       int
-	updates []intgUpdate
+	updates []igUpdate
 	out     [7]any
 	table   pgx.Identifier
 	cols    []string
 }
 
-func (b *intgUpdateBuf) update(
+func (b *igUpdateBuf) update(
 	j int,
 	name string,
 	srcName string,
@@ -715,7 +715,7 @@ func (b *intgUpdateBuf) update(
 	b.updates[j].NRows = nrows
 }
 
-func (b *intgUpdateBuf) Next() bool {
+func (b *igUpdateBuf) Next() bool {
 	for i := b.i; i < len(b.updates); i++ {
 		if b.updates[i].changed {
 			b.i = i
@@ -725,13 +725,13 @@ func (b *intgUpdateBuf) Next() bool {
 	return false
 }
 
-func (b *intgUpdateBuf) Err() error {
+func (b *igUpdateBuf) Err() error {
 	return nil
 }
 
-func (b *intgUpdateBuf) Values() ([]any, error) {
+func (b *igUpdateBuf) Values() ([]any, error) {
 	if b.i >= len(b.updates) {
-		return nil, fmt.Errorf("no intg_update at idx %d len=%d", b.i, len(b.updates))
+		return nil, fmt.Errorf("no ig_update at idx %d len=%d", b.i, len(b.updates))
 	}
 	b.out[0] = b.updates[b.i].Name
 	b.out[1] = b.updates[b.i].SrcName
@@ -745,7 +745,7 @@ func (b *intgUpdateBuf) Values() ([]any, error) {
 	return b.out[:], nil
 }
 
-func (b *intgUpdateBuf) write(ctx context.Context, pg wpg.Conn) error {
+func (b *igUpdateBuf) write(ctx context.Context, pg wpg.Conn) error {
 	b.Lock()
 	defer b.Unlock()
 
@@ -756,7 +756,7 @@ func (b *intgUpdateBuf) write(ctx context.Context, pg wpg.Conn) error {
 
 func PruneTask(ctx context.Context, pg wpg.Conn, n int) error {
 	const q = `
-		delete from e2pg.task
+		delete from e2pg.task_updates
 		where (src_name, backfill, num) not in (
 			select src_name, backfill, num
 			from (
@@ -765,37 +765,37 @@ func PruneTask(ctx context.Context, pg wpg.Conn, n int) error {
 					backfill,
 					num,
 					row_number() over(partition by src_name, backfill order by num desc) as rn
-				from e2pg.task
+				from e2pg.task_updates
 			) as s
 			where rn <= $1
 		)
 	`
 	cmd, err := pg.Exec(ctx, q, n)
 	if err != nil {
-		return fmt.Errorf("deleting e2pg.task: %w", err)
+		return fmt.Errorf("deleting e2pg.task_updates: %w", err)
 	}
 	slog.InfoContext(ctx, "prune-task", "n", cmd.RowsAffected())
 	return nil
 }
 
-func PruneIntg(ctx context.Context, pg wpg.Conn) error {
+func PruneIG(ctx context.Context, pg wpg.Conn) error {
 	const q = `
-		delete from e2pg.intg
+		delete from e2pg.ig_updates
 		where (name, src_name, backfill, num) not in (
 			select name, src_name, backfill, max(num)
-			from e2pg.intg
+			from e2pg.ig_updates
 			group by name, src_name, backfill
 			union
 			select name, src_name, backfill, min(num)
-			from e2pg.intg
+			from e2pg.ig_updates
 			group by name, src_name, backfill
 		)
 	`
 	cmd, err := pg.Exec(ctx, q)
 	if err != nil {
-		return fmt.Errorf("deleting e2pg.intg: %w", err)
+		return fmt.Errorf("deleting e2pg.ig_updates: %w", err)
 	}
-	slog.InfoContext(ctx, "prune-intg", "n", cmd.RowsAffected())
+	slog.InfoContext(ctx, "prune-ig", "n", cmd.RowsAffected())
 	return nil
 }
 
@@ -849,7 +849,7 @@ func TaskUpdates(ctx context.Context, pg wpg.Conn) ([]TaskUpdate, error) {
 	rows, _ := pg.Query(ctx, `
         with f as (
             select src_name, backfill, max(num) num
-            from e2pg.task group by 1, 2
+            from e2pg.task_updates group by 1, 2
         )
         select
 			f.src_name,
@@ -863,10 +863,10 @@ func TaskUpdates(ctx context.Context, pg wpg.Conn) ([]TaskUpdate, error) {
 			coalesce(nrows, 0) nrows,
 			coalesce(latency, '0')::interval latency
         from f
-        left join e2pg.task
-		on e2pg.task.src_name = f.src_name
-		and e2pg.task.backfill = f.backfill
-		and e2pg.task.num = f.num;
+        left join e2pg.task_updates
+		on e2pg.task_updates.src_name = f.src_name
+		and e2pg.task_updates.backfill = f.backfill
+		and e2pg.task_updates.num = f.num;
     `)
 	tus, err := pgx.CollectRows(rows, pgx.RowToStructByName[TaskUpdate])
 	if err != nil {
@@ -883,7 +883,7 @@ func TaskUpdates(ctx context.Context, pg wpg.Conn) ([]TaskUpdate, error) {
 	return tus, nil
 }
 
-type IntgUpdate struct {
+type IGUpdate struct {
 	DOMID    string       `db:"-"`
 	Name     string       `db:"name"`
 	SrcName  string       `db:"src_name"`
@@ -894,7 +894,7 @@ type IntgUpdate struct {
 	Latency  jsonDuration `db:"latency"`
 }
 
-func (iu IntgUpdate) TaskID() string {
+func (iu IGUpdate) TaskID() string {
 	switch {
 	case iu.Backfill:
 		return fmt.Sprintf("%s-backfill", iu.SrcName)
@@ -903,11 +903,11 @@ func (iu IntgUpdate) TaskID() string {
 	}
 }
 
-func IntgUpdates(ctx context.Context, pg wpg.Conn) ([]IntgUpdate, error) {
+func IGUpdates(ctx context.Context, pg wpg.Conn) ([]IGUpdate, error) {
 	rows, _ := pg.Query(ctx, `
         with f as (
             select name, src_name, backfill, max(num) num
-            from e2pg.intg
+            from e2pg.ig_updates
 			group by 1, 2, 3
         ) select
 			f.name,
@@ -919,15 +919,15 @@ func IntgUpdates(ctx context.Context, pg wpg.Conn) ([]IntgUpdate, error) {
 			coalesce(latency, '0')::interval latency
         from f
 
-        left join e2pg.intg latest
+        left join e2pg.ig_updates latest
 		on latest.name = f.name
 		and latest.src_name = f.src_name
 		and latest.backfill = f.backfill
 		and latest.num = f.num
     `)
-	ius, err := pgx.CollectRows(rows, pgx.RowToStructByName[IntgUpdate])
+	ius, err := pgx.CollectRows(rows, pgx.RowToStructByName[IGUpdate])
 	if err != nil {
-		return nil, fmt.Errorf("querying for intg updates: %w", err)
+		return nil, fmt.Errorf("querying for ig updates: %w", err)
 	}
 	for i := range ius {
 		switch {
@@ -1091,10 +1091,13 @@ func getDest(pgp wpg.Conn, ig Integration) (Destination, error) {
 			return nil, fmt.Errorf("building abi integration: %w", err)
 		}
 		if err := aig.Table.Create(context.Background(), pgp); err != nil {
-			return nil, fmt.Errorf("create intg table: %w", err)
+			return nil, fmt.Errorf("create ig table: %w", err)
+		}
+		if err := aig.Table.Rename(context.Background(), pgp); err != nil {
+			return nil, fmt.Errorf("renaming ig table: %w", err)
 		}
 		if err := aig.Table.CreateUIDX(context.Background(), pgp); err != nil {
-			return nil, fmt.Errorf("create intg unique index: %w", err)
+			return nil, fmt.Errorf("create ig unique index: %w", err)
 		}
 		return aig, nil
 	}
@@ -1124,11 +1127,11 @@ func Integrations(ctx context.Context, pg wpg.Conn) ([]Integration, error) {
 		if err := rows.Scan(&buf); err != nil {
 			return nil, fmt.Errorf("scanning integration: %w", err)
 		}
-		var intg Integration
-		if err := json.Unmarshal(buf, &intg); err != nil {
+		var ig Integration
+		if err := json.Unmarshal(buf, &ig); err != nil {
 			return nil, fmt.Errorf("unmarshaling integration: %w", err)
 		}
-		res = append(res, intg)
+		res = append(res, ig)
 	}
 	return res, nil
 }

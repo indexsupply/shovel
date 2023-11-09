@@ -77,4 +77,10 @@ var Migrations = map[int]pgmig.Migration{
 			alter table e2pg.task drop column dstat;
 		`,
 	},
+	16: pgmig.Migration{
+		SQL: `
+			alter table e2pg.task rename to task_updates;
+			alter table e2pg.intg rename to ig_updates;
+		`,
+	},
 }

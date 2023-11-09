@@ -123,7 +123,6 @@ Integrations are specified using the config file. Here is an example of an integ
     "table": {
         "name": "erc20_transfers",
         "columns": [
-            {"name": "task_id", "type": "text"},
             {"name": "chain_id", "type": "numeric"},
             {"name": "block_num", "type": "numeric"},
             {"name": "tx_hash", "type": "bytea"},
@@ -134,7 +133,6 @@ Integrations are specified using the config file. Here is an example of an integ
         ]
     },
     "block": [
-        {"name": "task_id", "column": "task_id"},
         {"name": "chain_id", "column": "chain_id"},
         {"name": "block_num", "column": "block_num"},
         {"name": "tx_hash", "column": "tx_hash"},
@@ -179,7 +177,8 @@ The table is created dynamically. If the table already exists, nothing is change
 
 Instructs the integration to retrieve block level data. The available data include:
 
-- task_id, text (e2pg internal bookkeeping)
+- src_name, text (e2pg internal bookkeeping)
+- ig_name, text (e2pg internal bookkeeping)
 - chain_id, numeric
 - block_hash, bytea
 - block_num, numeric
@@ -209,7 +208,7 @@ The event is a ABI fragment containing an ABI JSON event definition. However, an
 If E2PG gets a block from its Ethereum source where the new block's parent doesn't match the local block's hash, then the local block, and all it's integration data are deleted. After the deletion, E2PG attempts to add the new block. This process is repeated up to 10 times or until a hash/parent match is made. If there is a reorg of more than 10 blocks the database transaction is rolled back (meaning no data was deleted) and E2PG will halt progress. This condition requires operator intervention via SQL:
 
 ```sql
-delete from e2pg.task where number > XXX;
+delete from e2pg.task_updates where number > XXX;
 --etc...
 ```
 

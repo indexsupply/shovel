@@ -47,7 +47,7 @@ func NewHelper(tb testing.TB) *Helper {
 
 // Reset the task table. Call this in-between test cases
 func (th *Helper) Reset() {
-	_, err := th.PG.Exec(context.Background(), "truncate table e2pg.task")
+	_, err := th.PG.Exec(context.Background(), "truncate table e2pg.task_updates")
 	check(th.tb, err)
 }
 

@@ -20,14 +20,7 @@ SET default_tablespace = '';
 SET default_table_access_method = heap;
 
 
-CREATE TABLE e2pg.integrations (
-    name text,
-    conf jsonb
-);
-
-
-
-CREATE TABLE e2pg.intg (
+CREATE TABLE e2pg.ig_updates (
     name text NOT NULL,
     src_name text NOT NULL,
     backfill boolean DEFAULT false,
@@ -35,6 +28,13 @@ CREATE TABLE e2pg.intg (
     latency interval,
     nrows numeric,
     stop numeric
+);
+
+
+
+CREATE TABLE e2pg.integrations (
+    name text,
+    conf jsonb
 );
 
 
@@ -55,7 +55,7 @@ CREATE TABLE e2pg.sources (
 
 
 
-CREATE TABLE e2pg.task (
+CREATE TABLE e2pg.task_updates (
     num bigint,
     hash bytea,
     insert_at timestamp with time zone DEFAULT now(),
@@ -76,7 +76,7 @@ ALTER TABLE ONLY e2pg.migrations
 
 
 
-CREATE UNIQUE INDEX intg_name_src_name_backfill_num_idx ON e2pg.intg USING btree (name, src_name, backfill, num DESC);
+CREATE UNIQUE INDEX intg_name_src_name_backfill_num_idx ON e2pg.ig_updates USING btree (name, src_name, backfill, num DESC);
 
 
 
@@ -88,11 +88,11 @@ CREATE UNIQUE INDEX sources_name_idx ON e2pg.sources USING btree (name);
 
 
 
-CREATE UNIQUE INDEX task_src_name_num_idx ON e2pg.task USING btree (src_name, num DESC) WHERE (backfill = true);
+CREATE UNIQUE INDEX task_src_name_num_idx ON e2pg.task_updates USING btree (src_name, num DESC) WHERE (backfill = true);
 
 
 
-CREATE UNIQUE INDEX task_src_name_num_idx1 ON e2pg.task USING btree (src_name, num DESC) WHERE (backfill = false);
+CREATE UNIQUE INDEX task_src_name_num_idx1 ON e2pg.task_updates USING btree (src_name, num DESC) WHERE (backfill = false);
 
 
 
