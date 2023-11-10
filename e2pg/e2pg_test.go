@@ -644,16 +644,10 @@ func TestDestRanges_Filter(t *testing.T) {
 			want:  []eth.Block{},
 		},
 		{
-			desc: "empty range",
-			input: []eth.Block{
-				eth.Block{Header: eth.Header{Number: 42}},
-				eth.Block{Header: eth.Header{Number: 43}},
-			},
-			r: igRange{},
-			want: []eth.Block{
-				eth.Block{Header: eth.Header{Number: 42}},
-				eth.Block{Header: eth.Header{Number: 43}},
-			},
+			desc:  "empty range",
+			input: br(0, 10),
+			r:     igRange{},
+			want:  br(0, 10),
 		},
 		{
 			desc:  "[0, 10] -> [1,9]",
@@ -677,13 +671,25 @@ func TestDestRanges_Filter(t *testing.T) {
 			desc:  "[0, 10] -> [10, 15]",
 			input: br(0, 10),
 			r:     igRange{start: 10, stop: 15},
-			want:  br(10, 10),
+			want:  []eth.Block(nil),
 		},
 		{
 			desc:  "[0, 10] -> [10, 10]",
 			input: br(0, 10),
 			r:     igRange{start: 10, stop: 10},
-			want:  br(10, 10),
+			want:  []eth.Block(nil),
+		},
+		{
+			desc:  "[10, 10] -> [10, 15]",
+			input: br(10, 10),
+			r:     igRange{start: 10, stop: 10},
+			want:  []eth.Block(nil),
+		},
+		{
+			desc:  "[0, 10] -> [15, 20]",
+			input: br(0, 10),
+			r:     igRange{start: 15, stop: 10},
+			want:  []eth.Block(nil),
 		},
 		{
 			desc:  "[0, 10] -> [15, 10]",

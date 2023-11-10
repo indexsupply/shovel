@@ -644,8 +644,8 @@ func (r *igRange) filter(blks []eth.Block) []eth.Block {
 		return blks
 	case r.start > r.stop:
 		return nil
-	case blks[0].Num() >= r.start && blks[len(blks)-1].Num() <= r.stop:
-		return blks
+	case blks[len(blks)-1].Num() <= r.start || r.stop <= blks[0].Num():
+		return nil
 	default:
 		var n, m = 0, len(blks)
 		for i := range blks {
