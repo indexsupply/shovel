@@ -723,10 +723,10 @@ func TestLoadTasks(t *testing.T) {
 			Integration{
 				Enabled: true,
 				Name:    "bar",
-				Table: dig.Table{
+				Table: wpg.Table{
 					Name: "bar",
-					Cols: []dig.Column{
-						dig.Column{Name: "block_hash", Type: "bytea"},
+					Columns: []wpg.Column{
+						wpg.Column{Name: "block_hash", Type: "bytea"},
 					},
 				},
 				Block: []dig.BlockData{
@@ -771,10 +771,10 @@ func TestLoadTasks_Backfill(t *testing.T) {
 			Integration{
 				Enabled: true,
 				Name:    "bar",
-				Table: dig.Table{
+				Table: wpg.Table{
 					Name: "bar",
-					Cols: []dig.Column{
-						dig.Column{Name: "block_hash", Type: "bytea"},
+					Columns: []wpg.Column{
+						wpg.Column{Name: "block_hash", Type: "bytea"},
 					},
 				},
 				Block: []dig.BlockData{
@@ -790,10 +790,10 @@ func TestLoadTasks_Backfill(t *testing.T) {
 			Integration{
 				Enabled: true,
 				Name:    "baz",
-				Table: dig.Table{
+				Table: wpg.Table{
 					Name: "baz",
-					Cols: []dig.Column{
-						dig.Column{Name: "block_hash", Type: "bytea"},
+					Columns: []wpg.Column{
+						wpg.Column{Name: "block_hash", Type: "bytea"},
 					},
 				},
 				Block: []dig.BlockData{

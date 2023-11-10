@@ -1086,17 +1086,18 @@ func getDest(pgp wpg.Conn, ig Integration) (Destination, error) {
 		}
 		return dest, nil
 	default:
+		ctx := context.Background()
 		dest, err := dig.New(ig.Name, ig.Event, ig.Block, ig.Table)
 		if err != nil {
 			return nil, fmt.Errorf("building abi integration: %w", err)
 		}
-		if err := dest.Table.Create(context.Background(), pgp); err != nil {
+		if err := wpg.CreateTable(ctx, pgp, dest.Table); err != nil {
 			return nil, fmt.Errorf("create ig table: %w", err)
 		}
-		if err := dest.Table.Rename(context.Background(), pgp); err != nil {
+		if err := wpg.Rename(ctx, pgp, dest.Table); err != nil {
 			return nil, fmt.Errorf("renaming ig table: %w", err)
 		}
-		if err := dest.Table.CreateUIDX(context.Background(), pgp); err != nil {
+		if err := wpg.CreateUIDX(ctx, pgp, dest.Table); err != nil {
 			return nil, fmt.Errorf("create ig unique index: %w", err)
 		}
 		return dest, nil
@@ -1172,7 +1173,7 @@ type Integration struct {
 	Name          string          `json:"name"`
 	Enabled       bool            `json:"enabled"`
 	SourceConfigs []SourceConfig  `json:"sources"`
-	Table         dig.Table       `json:"table"`
+	Table         wpg.Table       `json:"table"`
 	Compiled      Compiled        `json:"compiled"`
 	Block         []dig.BlockData `json:"block"`
 	Event         dig.Event       `json:"event"`
@@ -1209,7 +1210,7 @@ func (conf Config) CheckUserInput() error {
 	for _, ig := range conf.Integrations {
 		check("integration name", ig.Name)
 		check("table name", ig.Table.Name)
-		for _, c := range ig.Table.Cols {
+		for _, c := range ig.Table.Columns {
 			check("column name", c.Name)
 			check("column type", c.Type)
 		}

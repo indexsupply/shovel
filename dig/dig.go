@@ -553,7 +553,7 @@ func (e Event) numIndexed() int {
 type coldef struct {
 	Input     Input
 	BlockData BlockData
-	Column    Column
+	Column    wpg.Column
 }
 
 // Implements the [e2pg.Integration] interface
@@ -561,7 +561,7 @@ type Integration struct {
 	name    string
 	Event   Event
 	Block   []BlockData
-	Table   Table
+	Table   wpg.Table
 	Columns []string
 	coldefs []coldef
 
@@ -592,7 +592,7 @@ type Integration struct {
 // For example:
 //
 //	{"name": "my_column", "type": "db_type", "filter_op": "contains", "filter_arg": ["0x000"]}
-func New(name string, ev Event, bd []BlockData, table Table) (Integration, error) {
+func New(name string, ev Event, bd []BlockData, table wpg.Table) (Integration, error) {
 	ig := Integration{
 		name:  name,
 		Event: ev,
@@ -632,7 +632,7 @@ func (ig *Integration) validateSQL() error {
 
 	check("integration name", ig.name)
 	check("table name", ig.Table.Name)
-	for _, c := range ig.Table.Cols {
+	for _, c := range ig.Table.Columns {
 		check("column name", c.Name)
 		check("column type", c.Type)
 	}
@@ -641,7 +641,7 @@ func (ig *Integration) validateSQL() error {
 
 func (ig *Integration) validateCols() error {
 	type config struct {
-		c Column
+		c wpg.Column
 		i Input
 		b BlockData
 	}
@@ -650,7 +650,7 @@ func (ig *Integration) validateCols() error {
 		uinputs = map[string]struct{}{}
 		ubd     = map[string]struct{}{}
 	)
-	for _, c := range ig.Table.Cols {
+	for _, c := range ig.Table.Columns {
 		if _, ok := ucols[c.Name]; ok {
 			return fmt.Errorf("duplicate column: %s", c.Name)
 		}
@@ -671,7 +671,7 @@ func (ig *Integration) validateCols() error {
 	// Every selected input must have a coresponding column
 	for _, inp := range ig.Event.Selected() {
 		var found bool
-		for _, c := range ig.Table.Cols {
+		for _, c := range ig.Table.Columns {
 			if c.Name == inp.Column {
 				found = true
 				break
@@ -687,7 +687,7 @@ func (ig *Integration) validateCols() error {
 			return fmt.Errorf("missing column for block.%s", bd.Name)
 		}
 		var found bool
-		for _, c := range ig.Table.Cols {
+		for _, c := range ig.Table.Columns {
 			if c.Name == bd.Column {
 				found = true
 				break
@@ -701,13 +701,13 @@ func (ig *Integration) validateCols() error {
 }
 
 func (ig *Integration) setCols() {
-	getCol := func(name string) Column {
-		for _, c := range ig.Table.Cols {
+	getCol := func(name string) wpg.Column {
+		for _, c := range ig.Table.Columns {
 			if c.Name == name {
 				return c
 			}
 		}
-		return Column{}
+		return wpg.Column{}
 	}
 	for _, input := range ig.Event.Selected() {
 		c := getCol(input.Column)
@@ -763,7 +763,7 @@ func (ig *Integration) addRequiredFields() {
 		return false
 	}
 	hasCol := func(name string) bool {
-		for _, c := range ig.Table.Cols {
+		for _, c := range ig.Table.Columns {
 			if c.Name == name {
 				return true
 			}
@@ -775,7 +775,10 @@ func (ig *Integration) addRequiredFields() {
 			ig.Block = append(ig.Block, BlockData{Name: name, Column: name})
 		}
 		if !hasCol(name) {
-			ig.Table.Cols = append(ig.Table.Cols, Column{Name: name, Type: t})
+			ig.Table.Columns = append(ig.Table.Columns, wpg.Column{
+				Name: name,
+				Type: t,
+			})
 		}
 	}
 
@@ -1076,74 +1079,6 @@ func (ig Integration) RecentRows(ctx context.Context, pgp *pgxpool.Pool, chainID
 		return nil
 	}
 	return res
-}
-
-type Column struct {
-	Name string `json:"name"`
-	Type string `json:"type"`
-}
-
-type Table struct {
-	Name string   `json:"name"`
-	Cols []Column `json:"columns"`
-
-	DisableUnique bool       `json:"disable_unique"`
-	Unique        [][]string `json:"unique"`
-}
-
-func (t *Table) Create(ctx context.Context, pg wpg.Conn) error {
-	var s strings.Builder
-	s.WriteString(fmt.Sprintf("create table if not exists %s(", t.Name))
-	for i := range t.Cols {
-		s.WriteString(fmt.Sprintf("%s %s", t.Cols[i].Name, t.Cols[i].Type))
-		if i+1 == len(t.Cols) {
-			s.WriteString(")")
-			break
-		}
-		s.WriteString(",")
-	}
-	_, err := pg.Exec(ctx, s.String())
-	return err
-}
-
-func (t *Table) Rename(ctx context.Context, pg wpg.Conn) error {
-	const q = `
-		DO $$
-		BEGIN
-			ALTER TABLE %s RENAME COLUMN intg_name TO ig_name;
-		EXCEPTION
-			WHEN undefined_column THEN RAISE NOTICE 'column intg_name does not exist';
-		END; $$;
-	`
-	if _, err := pg.Exec(ctx, fmt.Sprintf(q, t.Name)); err != nil {
-		return fmt.Errorf("updating intg_name col on %s: %w", t.Name, err)
-	}
-	return nil
-}
-
-func (t *Table) CreateUIDX(ctx context.Context, pg wpg.Conn) error {
-	if t.DisableUnique {
-		slog.InfoContext(ctx, "disable unique index", "table", t.Name)
-		return nil
-	}
-	var s strings.Builder
-	for _, cols := range t.Unique {
-		s.Reset()
-		const q = "create unique index if not exists u_%s on %s ("
-		s.WriteString(fmt.Sprintf(q, t.Name, t.Name))
-		for i, cname := range cols {
-			s.WriteString(cname)
-			if i+1 == len(cols) {
-				s.WriteString(")")
-				break
-			}
-			s.WriteString(",")
-		}
-		if _, err := pg.Exec(ctx, s.String()); err != nil {
-			return fmt.Errorf("creating index %s: %w", t.Name, err)
-		}
-	}
-	return nil
 }
 
 func Indexes(ctx context.Context, pg wpg.Conn, table string) []map[string]any {
