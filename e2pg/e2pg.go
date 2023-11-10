@@ -14,7 +14,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/indexsupply/x/abi2"
+	"github.com/indexsupply/x/dig"
 	"github.com/indexsupply/x/eth"
 	"github.com/indexsupply/x/jrpc2"
 	"github.com/indexsupply/x/rlps"
@@ -1080,26 +1080,26 @@ func loadTasks(ctx context.Context, pgp *pgxpool.Pool, conf Config) ([]*Task, er
 func getDest(pgp wpg.Conn, ig Integration) (Destination, error) {
 	switch {
 	case len(ig.Compiled.Name) > 0:
-		cig, ok := compiled[ig.Name]
+		dest, ok := compiled[ig.Name]
 		if !ok {
 			return nil, fmt.Errorf("unable to find compiled integration: %s", ig.Name)
 		}
-		return cig, nil
+		return dest, nil
 	default:
-		aig, err := abi2.New(ig.Name, ig.Event, ig.Block, ig.Table)
+		dest, err := dig.New(ig.Name, ig.Event, ig.Block, ig.Table)
 		if err != nil {
 			return nil, fmt.Errorf("building abi integration: %w", err)
 		}
-		if err := aig.Table.Create(context.Background(), pgp); err != nil {
+		if err := dest.Table.Create(context.Background(), pgp); err != nil {
 			return nil, fmt.Errorf("create ig table: %w", err)
 		}
-		if err := aig.Table.Rename(context.Background(), pgp); err != nil {
+		if err := dest.Table.Rename(context.Background(), pgp); err != nil {
 			return nil, fmt.Errorf("renaming ig table: %w", err)
 		}
-		if err := aig.Table.CreateUIDX(context.Background(), pgp); err != nil {
+		if err := dest.Table.CreateUIDX(context.Background(), pgp); err != nil {
 			return nil, fmt.Errorf("create ig unique index: %w", err)
 		}
-		return aig, nil
+		return dest, nil
 	}
 }
 
@@ -1169,13 +1169,13 @@ type Compiled struct {
 }
 
 type Integration struct {
-	Name          string           `json:"name"`
-	Enabled       bool             `json:"enabled"`
-	SourceConfigs []SourceConfig   `json:"sources"`
-	Table         abi2.Table       `json:"table"`
-	Compiled      Compiled         `json:"compiled"`
-	Block         []abi2.BlockData `json:"block"`
-	Event         abi2.Event       `json:"event"`
+	Name          string          `json:"name"`
+	Enabled       bool            `json:"enabled"`
+	SourceConfigs []SourceConfig  `json:"sources"`
+	Table         dig.Table       `json:"table"`
+	Compiled      Compiled        `json:"compiled"`
+	Block         []dig.BlockData `json:"block"`
+	Event         dig.Event       `json:"event"`
 }
 
 func (ig Integration) sourceConfig(name string) (SourceConfig, error) {

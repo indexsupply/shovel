@@ -1,5 +1,8 @@
-// decode abi data into flat rows using a JSON ABI file for the schema
-package abi2
+// declarative integration
+//
+// Pass a set of declarative config to [New] and receive
+// an Integration that is compatabile with [e2pg.Destination]
+package dig
 
 import (
 	"bytes"
