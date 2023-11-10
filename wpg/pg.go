@@ -11,7 +11,6 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/kr/pretty"
 )
 
 func TestPG(tb testing.TB, schema string) *pgxpool.Pool {
@@ -170,6 +169,5 @@ func Diff(
 			dd.Remove = append(dd.Remove, indb[i])
 		}
 	}
-	pretty.Println(dd)
 	return dd, nil
 }
