@@ -1080,26 +1080,26 @@ func loadTasks(ctx context.Context, pgp *pgxpool.Pool, conf Config) ([]*Task, er
 func getDest(pgp wpg.Conn, ig Integration) (Destination, error) {
 	switch {
 	case len(ig.Compiled.Name) > 0:
-		cig, ok := compiled[ig.Name]
+		dest, ok := compiled[ig.Name]
 		if !ok {
 			return nil, fmt.Errorf("unable to find compiled integration: %s", ig.Name)
 		}
-		return cig, nil
+		return dest, nil
 	default:
-		aig, err := dig.New(ig.Name, ig.Event, ig.Block, ig.Table)
+		dest, err := dig.New(ig.Name, ig.Event, ig.Block, ig.Table)
 		if err != nil {
 			return nil, fmt.Errorf("building abi integration: %w", err)
 		}
-		if err := aig.Table.Create(context.Background(), pgp); err != nil {
+		if err := dest.Table.Create(context.Background(), pgp); err != nil {
 			return nil, fmt.Errorf("create ig table: %w", err)
 		}
-		if err := aig.Table.Rename(context.Background(), pgp); err != nil {
+		if err := dest.Table.Rename(context.Background(), pgp); err != nil {
 			return nil, fmt.Errorf("renaming ig table: %w", err)
 		}
-		if err := aig.Table.CreateUIDX(context.Background(), pgp); err != nil {
+		if err := dest.Table.CreateUIDX(context.Background(), pgp); err != nil {
 			return nil, fmt.Errorf("create ig unique index: %w", err)
 		}
-		return aig, nil
+		return dest, nil
 	}
 }
 
