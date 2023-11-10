@@ -14,7 +14,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/indexsupply/x/abi2"
+	"github.com/indexsupply/x/dig"
 	"github.com/indexsupply/x/eth"
 	"github.com/indexsupply/x/jrpc2"
 	"github.com/indexsupply/x/rlps"
@@ -1086,7 +1086,7 @@ func getDest(pgp wpg.Conn, ig Integration) (Destination, error) {
 		}
 		return cig, nil
 	default:
-		aig, err := abi2.New(ig.Name, ig.Event, ig.Block, ig.Table)
+		aig, err := dig.New(ig.Name, ig.Event, ig.Block, ig.Table)
 		if err != nil {
 			return nil, fmt.Errorf("building abi integration: %w", err)
 		}
@@ -1169,13 +1169,13 @@ type Compiled struct {
 }
 
 type Integration struct {
-	Name          string           `json:"name"`
-	Enabled       bool             `json:"enabled"`
-	SourceConfigs []SourceConfig   `json:"sources"`
-	Table         abi2.Table       `json:"table"`
-	Compiled      Compiled         `json:"compiled"`
-	Block         []abi2.BlockData `json:"block"`
-	Event         abi2.Event       `json:"event"`
+	Name          string          `json:"name"`
+	Enabled       bool            `json:"enabled"`
+	SourceConfigs []SourceConfig  `json:"sources"`
+	Table         dig.Table       `json:"table"`
+	Compiled      Compiled        `json:"compiled"`
+	Block         []dig.BlockData `json:"block"`
+	Event         dig.Event       `json:"event"`
 }
 
 func (ig Integration) sourceConfig(name string) (SourceConfig, error) {

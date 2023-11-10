@@ -1,4 +1,4 @@
-package abi2
+package dig
 
 import (
 	"encoding/hex"

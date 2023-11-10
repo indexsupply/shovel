@@ -9,7 +9,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/indexsupply/x/abi2"
+	"github.com/indexsupply/x/dig"
 	"github.com/indexsupply/x/eth"
 	"github.com/indexsupply/x/tc"
 	"github.com/indexsupply/x/wpg"
@@ -723,14 +723,14 @@ func TestLoadTasks(t *testing.T) {
 			Integration{
 				Enabled: true,
 				Name:    "bar",
-				Table: abi2.Table{
+				Table: dig.Table{
 					Name: "bar",
-					Cols: []abi2.Column{
-						abi2.Column{Name: "block_hash", Type: "bytea"},
+					Cols: []dig.Column{
+						dig.Column{Name: "block_hash", Type: "bytea"},
 					},
 				},
-				Block: []abi2.BlockData{
-					abi2.BlockData{
+				Block: []dig.BlockData{
+					dig.BlockData{
 						Name:   "block_hash",
 						Column: "block_hash",
 					},
@@ -771,14 +771,14 @@ func TestLoadTasks_Backfill(t *testing.T) {
 			Integration{
 				Enabled: true,
 				Name:    "bar",
-				Table: abi2.Table{
+				Table: dig.Table{
 					Name: "bar",
-					Cols: []abi2.Column{
-						abi2.Column{Name: "block_hash", Type: "bytea"},
+					Cols: []dig.Column{
+						dig.Column{Name: "block_hash", Type: "bytea"},
 					},
 				},
-				Block: []abi2.BlockData{
-					abi2.BlockData{
+				Block: []dig.BlockData{
+					dig.BlockData{
 						Name:   "block_hash",
 						Column: "block_hash",
 					},
@@ -790,14 +790,14 @@ func TestLoadTasks_Backfill(t *testing.T) {
 			Integration{
 				Enabled: true,
 				Name:    "baz",
-				Table: abi2.Table{
+				Table: dig.Table{
 					Name: "baz",
-					Cols: []abi2.Column{
-						abi2.Column{Name: "block_hash", Type: "bytea"},
+					Cols: []dig.Column{
+						dig.Column{Name: "block_hash", Type: "bytea"},
 					},
 				},
-				Block: []abi2.BlockData{
-					abi2.BlockData{
+				Block: []dig.BlockData{
+					dig.BlockData{
 						Name:   "block_hash",
 						Column: "block_hash",
 					},
