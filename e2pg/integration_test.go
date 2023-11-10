@@ -6,9 +6,8 @@ import (
 	"os"
 	"testing"
 
-	"blake.io/pqx/pqxtest"
 	"github.com/indexsupply/x/geth/gethtest"
-	"github.com/indexsupply/x/wctx"
+	"github.com/indexsupply/x/wpg"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"kr.dev/diff"
 )
@@ -20,77 +19,34 @@ func check(t testing.TB, err error) {
 	}
 }
 
-type Helper struct {
-	tb   testing.TB
-	ctx  context.Context
-	PG   *pgxpool.Pool
-	gt   *gethtest.Helper
-	task *Task
-}
-
-// jrpc.Client is required when testdata isn't
-// available in the integrations/testdata directory.
-func NewHelper(tb testing.TB) *Helper {
-	ctx := context.Background()
-
-	pqxtest.CreateDB(tb, Schema)
-	pg, err := pgxpool.New(ctx, pqxtest.DSNForTest(tb))
-	diff.Test(tb, tb.Fatalf, err, nil)
-
-	return &Helper{
-		tb:  tb,
-		ctx: ctx,
-		PG:  pg,
-		gt:  gethtest.New(tb, "http://hera:8545"),
-	}
-}
-
-// Reset the task table. Call this in-between test cases
-func (th *Helper) Reset() {
-	_, err := th.PG.Exec(context.Background(), "truncate table e2pg.task_updates")
-	check(th.tb, err)
-}
-
-func (th *Helper) Context() context.Context {
-	return th.ctx
-}
-
-func (th *Helper) Done() {
-	th.gt.Done()
-}
-
 // Process will download the header,bodies, and receipts data
 // if it doesn't exist in: integrations/testdata
 // In the case that it needs to fetch the data, an RPC
 // client will be used. The RPC endpoint needs to support
 // the debug_dbAncient and debug_dbGet methods.
-func (th *Helper) Process(ig Integration, n uint64) {
-	geth := NewGeth(th.gt.FileCache, th.gt.Client)
-	var err error
-	th.task, err = NewTask(
-		WithPG(th.PG),
+func process(tb testing.TB, pg *pgxpool.Pool, ig Integration, n uint64) *Task {
+	gethTest := gethtest.New(tb, "http://hera:8545")
+	geth := NewGeth(gethTest.FileCache, gethTest.Client)
+
+	cur, err := geth.Hash(n)
+	check(tb, err)
+	gethTest.SetLatest(n, cur)
+
+	task, err := NewTask(
+		WithPG(pg),
 		WithSourceConfig(SourceConfig{Name: "testhelper"}),
 		WithSourceFactory(func(SourceConfig) Source { return geth }),
 		WithIntegrations(ig),
 		WithRange(n, n+1),
 	)
-	check(th.tb, err)
-	th.ctx = wctx.WithSrcName(th.ctx, "testhelper")
-	cur, err := geth.Hash(n)
-	check(th.tb, err)
-	th.gt.SetLatest(n, cur)
-
-	check(th.tb, th.task.Setup())
-	check(th.tb, th.task.Converge(true))
-}
-
-func (th *Helper) delete(n uint64) {
-	check(th.tb, th.task.Delete(th.PG, n))
+	check(tb, err)
+	check(tb, task.Setup())
+	check(tb, task.Converge(true))
+	gethTest.Done()
+	return task
 }
 
 func TestIntegrations(t *testing.T) {
-	th := NewHelper(t)
-	defer th.Done()
 	cases := []struct {
 		blockNum    uint64
 		config      string
@@ -158,13 +114,13 @@ func TestIntegrations(t *testing.T) {
 		},
 	}
 	for _, tc := range cases {
-		th.Reset()
+		pg := wpg.TestPG(t, Schema)
 		ig := Integration{}
 		decode(t, read(t, tc.config), &ig)
-		th.Process(ig, tc.blockNum)
+		task := process(t, pg, ig, tc.blockNum)
 		for i, q := range tc.queries {
 			var found bool
-			err := th.PG.QueryRow(th.Context(), q).Scan(&found)
+			err := pg.QueryRow(context.Background(), q).Scan(&found)
 			diff.Test(t, t.Errorf, nil, err)
 			if err != nil {
 				t.Logf("failing test query: %d", i)
@@ -174,9 +130,9 @@ func TestIntegrations(t *testing.T) {
 			}
 		}
 
-		th.task.Delete(th.PG, tc.blockNum)
+		task.Delete(pg, tc.blockNum)
 		var deleted bool
-		err := th.PG.QueryRow(th.Context(), tc.deleteQuery).Scan(&deleted)
+		err := pg.QueryRow(context.Background(), tc.deleteQuery).Scan(&deleted)
 		diff.Test(t, t.Errorf, nil, err)
 		if !deleted {
 			t.Errorf("%s was not cleaned up after ig.Delete", tc.config)

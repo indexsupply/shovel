@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/indexsupply/x/bint"
+	"github.com/indexsupply/x/wpg"
 
 	"kr.dev/diff"
 )
@@ -314,12 +315,12 @@ func TestNumIndexed(t *testing.T) {
 
 func TestNew(t *testing.T) {
 	var (
-		table = Table{
+		table = wpg.Table{
 			Name: "foo",
-			Cols: []Column{
-				Column{Name: "block_num", Type: "numeric"},
-				Column{Name: "b", Type: "bytea"},
-				Column{Name: "c", Type: "bytea"},
+			Columns: []wpg.Column{
+				wpg.Column{Name: "block_num", Type: "numeric"},
+				wpg.Column{Name: "b", Type: "bytea"},
+				wpg.Column{Name: "c", Type: "bytea"},
 			},
 		}
 		block = []BlockData{
@@ -352,11 +353,11 @@ func TestNew(t *testing.T) {
 func TestValidate_AddRequired(t *testing.T) {
 	ig := Integration{
 		name: "foo",
-		Table: Table{
+		Table: wpg.Table{
 			Name: "foo",
-			Cols: []Column{
-				Column{Name: "b", Type: "bytea"},
-				Column{Name: "c", Type: "bytea"},
+			Columns: []wpg.Column{
+				wpg.Column{Name: "b", Type: "bytea"},
+				wpg.Column{Name: "c", Type: "bytea"},
 			},
 		},
 		Event: Event{
@@ -369,7 +370,7 @@ func TestValidate_AddRequired(t *testing.T) {
 		},
 	}
 	ig.addRequiredFields()
-	want := []Column{
+	want := []wpg.Column{
 		{Name: "b", Type: "bytea"},
 		{Name: "c", Type: "bytea"},
 		{Name: "ig_name", Type: "text"},
@@ -378,16 +379,16 @@ func TestValidate_AddRequired(t *testing.T) {
 		{Name: "tx_idx", Type: "int4"},
 		{Name: "log_idx", Type: "int2"},
 	}
-	diff.Test(t, t.Errorf, want, ig.Table.Cols)
+	diff.Test(t, t.Errorf, want, ig.Table.Columns)
 }
 
 func TestValidate_MissingCols(t *testing.T) {
 	ig := Integration{
 		name: "foo",
-		Table: Table{
+		Table: wpg.Table{
 			Name: "foo",
-			Cols: []Column{
-				Column{Name: "c", Type: "bytea"},
+			Columns: []wpg.Column{
+				wpg.Column{Name: "c", Type: "bytea"},
 			},
 		},
 		Event: Event{
