@@ -1,7 +1,7 @@
 // declarative integration
 //
 // Pass a set of declarative config to [New] and receive
-// an Integration that is compatabile with [e2pg.Destination]
+// an Integration that is compatabile with [shovel.Destination]
 package dig
 
 import (
@@ -556,7 +556,7 @@ type coldef struct {
 	Column    wpg.Column
 }
 
-// Implements the [e2pg.Integration] interface
+// Implements the [shovel.Integration] interface
 type Integration struct {
 	name    string
 	Event   Event

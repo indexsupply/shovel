@@ -1,6 +1,6 @@
-# E2PG
+# Shovel
 
-An Ethereum to Postgres indexer. At a high level, E2PG does the following:
+An Ethereum to Postgres indexer. At a high level, Shovel does the following:
 
 - Reads blocks (header, bodies, receipts) from an Ethereum source
 - Maps block data against a set of Integrations that can:
@@ -20,48 +20,48 @@ The rest of this file describes how this process is accomplished.
 
 ```bash
 # linux/amd64, darwin/arm64, darwin/amd64, windows/amd64
-curl -LO https://indexsupply.net/bin/main/darwin/arm64/e2pg
-chmod +x e2pg
+curl -LO https://indexsupply.net/bin/main/darwin/arm64/shovel
+chmod +x shovel
 
 # install postgres if needed. https://postgresapp.com/
-createdb e2pg
+createdb shovel
 
-curl -LO https://raw.githubusercontent.com/indexsupply/x/main/cmd/e2pg/config.json
-./e2pg -config config.json
+curl -LO https://raw.githubusercontent.com/indexsupply/x/main/cmd/shovel/config.json
+./shovel -config config.json
 
 # blocks are now being indexed and you can query your PG DB:
-psql e2pg
+psql shovel
 ```
 
 ## Install
 
 There are two ways to install: Build or Download
 
-Currently E2PG is in developer preview. Once we have a stable release these links will include the proper version. Right now they are running/building off of the main branch.
+Currently Shovel is in developer preview. Once we have a stable release these links will include the proper version. Right now they are running/building off of the main branch.
 
 ### Build
 
 1. Install go version 1.21 [go.dev/doc/install](https://go.dev/doc/install)
-2. `go install github.com/indexsupply/x/cmd/e2pg@main`
+2. `go install github.com/indexsupply/x/cmd/shovel@main`
 
 ### Download
 
 ```bash
-curl -LO https://indexsupply.net/bin/main/darwin/arm64/e2pg
-chmod +x e2pg
+curl -LO https://indexsupply.net/bin/main/darwin/arm64/shovel
+chmod +x shovel
 ```
 
 ### Dependencies
 
-E2PG will need Postgres and an Ethereum node. Both of these are specified in the config file and can be URLs that point to local or hosted services.
+Shovel will need Postgres and an Ethereum node. Both of these are specified in the config file and can be URLs that point to local or hosted services.
 
 ## Configure
 
-E2PG is configured via a JSON config file. Here is the basic structure:
+Shovel is configured via a JSON config file. Here is the basic structure:
 
 ```json
 {
-	"pg_url": "postgres:///e2pg",
+	"pg_url": "postgres:///shovel",
 	"eth_sources": [
 		{"name": "goerli", "chain_id": 5, "url": "https://5.rlps.indexsupply.net"}
 	],
@@ -71,7 +71,7 @@ E2PG is configured via a JSON config file. Here is the basic structure:
 
 ### pg_url
 
-E2PG will setup its database on startup. It keeps bookkeeping tables in a schema named "e2pg". Tables created from integrations are created in the public schema.
+Shovel will setup its database on startup. It keeps bookkeeping tables in a schema named "shovel". Tables created from integrations are created in the public schema.
 
 You can specify the database url in the config file. Or, you can instruct the config file to read from an environment variable via:
 
@@ -79,17 +79,17 @@ You can specify the database url in the config file. Or, you can instruct the co
 "pg_url": "$DATABASE_URL"
 ```
 
-The dollar sign indicates that E2PG should read from env.
+The dollar sign indicates that Shovel should read from env.
 
 ### eth_sources
 
-A list of sources that E2PG will use to download data. Integrations specify a list of sources by name.
+A list of sources that Shovel will use to download data. Integrations specify a list of sources by name.
 
 Each source name must be unique but is only used for bookkeeping.
 
 The chain_id is used to derive tx_signer information.
 
-The url can point to a standard JSON RPC API (local or hosted) or it can point to Index Supply's hosted node service RLPS.
+The url can point to a standard JSON RPC API (local or hosted) or it can point to Index Supply's hosted Block API.
 
 You can specify the url directly or you can instruct the config file to read from an environment variable via:
 
@@ -97,13 +97,13 @@ You can specify the url directly or you can instruct the config file to read fro
 "url": "$ETH_URL"
 ```
 
-The dollar sign indicates that E2PG should read from env.
+The dollar sign indicates that Shovel should read from env.
 
 ### JSON RPC API
 
-E2PG uses `eth_getBlockByNumber` and `eth_getLogs`.
+Shovel uses `eth_getBlockByNumber` and `eth_getLogs`.
 
-#### RLPS
+#### Block API
 
 Index Supply offers a data API that is optimized for indexing. It is faster than the JSON RPC API and can be significantly more cost effective for backfilling indexes.
 
@@ -171,14 +171,14 @@ Each integration can run on 1 or more chains. Chains are defined in the config's
 
 #### table
 
-The table is created dynamically. If the table already exists, nothing is changed. Later versions of E2PG will deal with table differences.
+The table is created dynamically. If the table already exists, nothing is changed. Later versions of Shovel will deal with table differences.
 
 #### block
 
 Instructs the integration to retrieve block level data. The available data include:
 
-- src_name, text (e2pg internal bookkeeping)
-- ig_name, text (e2pg internal bookkeeping)
+- src_name, text (shovel internal bookkeeping)
+- ig_name, text (shovel internal bookkeeping)
 - chain_id, numeric
 - block_hash, bytea
 - block_num, numeric
@@ -205,10 +205,10 @@ The event is a ABI fragment containing an ABI JSON event definition. However, an
 
 ## Reorgs
 
-If E2PG gets a block from its Ethereum source where the new block's parent doesn't match the local block's hash, then the local block, and all it's integration data are deleted. After the deletion, E2PG attempts to add the new block. This process is repeated up to 10 times or until a hash/parent match is made. If there is a reorg of more than 10 blocks the database transaction is rolled back (meaning no data was deleted) and E2PG will halt progress. This condition requires operator intervention via SQL:
+If Shovel gets a block from its Ethereum source where the new block's parent doesn't match the local block's hash, then the local block, and all it's integration data are deleted. After the deletion, Shovel attempts to add the new block. This process is repeated up to 10 times or until a hash/parent match is made. If there is a reorg of more than 10 blocks the database transaction is rolled back (meaning no data was deleted) and Shovel will halt progress. This condition requires operator intervention via SQL:
 
 ```sql
-delete from e2pg.task_updates where number > XXX;
+delete from shovel.task_updates where number > XXX;
 --etc...
 ```
 

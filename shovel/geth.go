@@ -1,4 +1,4 @@
-package e2pg
+package shovel
 
 import (
 	"bytes"

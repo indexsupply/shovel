@@ -1,4 +1,4 @@
-package e2pg
+package shovel
 
 import (
 	"bytes"
@@ -216,7 +216,7 @@ func (t *Task) Setup() error {
 				continue
 			}
 			const q = `
-				insert into e2pg.ig_updates(name, src_name, backfill, num)
+				insert into shovel.ig_updates(name, src_name, backfill, num)
 				values ($1, $2, true, $3)
 				on conflict (name, src_name, backfill, num)
 				do nothing
@@ -238,12 +238,12 @@ func (t *Task) Setup() error {
 		if err != nil {
 			return fmt.Errorf("getting hash for %d: %w", t.start, err)
 		}
-		const dq = `delete from e2pg.task_updates where src_name = $1 and backfill`
+		const dq = `delete from shovel.task_updates where src_name = $1 and backfill`
 		if _, err := t.pgp.Exec(t.ctx, dq, t.srcConfig.Name); err != nil {
 			return fmt.Errorf("resetting backfill task %s: %q", t.srcConfig.Name, err)
 		}
 		const iq = `
-			insert into e2pg.task_updates(src_name, backfill, num, hash)
+			insert into shovel.task_updates(src_name, backfill, num, hash)
 			values ($1, $2, $3, $4)
 		`
 		_, err = t.pgp.Exec(t.ctx, iq, t.srcConfig.Name, t.backfill, t.start, h)
@@ -276,8 +276,8 @@ func (t *Task) Setup() error {
 	}
 }
 
-// inserts an e2pg.task_updates unless one with {src_name,backfill} already exists
-// inserts a e2pg.ig_updates for each t.dests[i] unless one with
+// inserts an shovel.task_updates unless one with {src_name,backfill} already exists
+// inserts a shovel.ig_updates for each t.dests[i] unless one with
 // {name,src_name,backfill} already exists.
 //
 // There is no db transaction because this function can be called many
@@ -286,7 +286,7 @@ func (t *Task) initRows(n uint64, h []byte) error {
 	var exists bool
 	const eq = `
 		select true
-		from e2pg.task_updates
+		from shovel.task_updates
 		where src_name = $1
 		and backfill = $2
 		limit 1
@@ -295,7 +295,7 @@ func (t *Task) initRows(n uint64, h []byte) error {
 	switch {
 	case errors.Is(err, pgx.ErrNoRows):
 		const iq = `
-			insert into e2pg.task_updates(src_name, backfill, num, hash)
+			insert into shovel.task_updates(src_name, backfill, num, hash)
 			values ($1, $2, $3, $4)
 		`
 		_, err := t.pgp.Exec(t.ctx, iq, t.srcConfig.Name, t.backfill, n, h)
@@ -308,7 +308,7 @@ func (t *Task) initRows(n uint64, h []byte) error {
 	for _, ig := range t.igs {
 		const eq = `
 			select true
-			from e2pg.ig_updates
+			from shovel.ig_updates
 			where name = $1
 			and src_name = $2
 			and backfill = $3
@@ -318,7 +318,7 @@ func (t *Task) initRows(n uint64, h []byte) error {
 		switch {
 		case errors.Is(err, pgx.ErrNoRows):
 			const iq = `
-				insert into e2pg.ig_updates(name, src_name, backfill, num)
+				insert into shovel.ig_updates(name, src_name, backfill, num)
 				values ($1, $2, $3, $4)
 			`
 			_, err := t.pgp.Exec(t.ctx, iq, ig.Name, t.srcConfig.Name, t.backfill, n)
@@ -398,7 +398,7 @@ func (task *Task) Converge(notx bool) error {
 		localNum, localHash := uint64(0), []byte{}
 		const q = `
 			select num, hash
-			from e2pg.task_updates
+			from shovel.task_updates
 			where src_name = $1
 			and backfill = $2
 			order by num desc
@@ -437,7 +437,7 @@ func (task *Task) Converge(notx bool) error {
 			reorgs++
 			slog.ErrorContext(task.ctx, "reorg", "n", localNum, "h", fmt.Sprintf("%.4x", localHash))
 			const rq1 = `
-				delete from e2pg.task_updates
+				delete from shovel.task_updates
 				where src_name = $1
 				and backfill = $2
 				and num >= $3
@@ -447,7 +447,7 @@ func (task *Task) Converge(notx bool) error {
 				return fmt.Errorf("deleting block from task table: %w", err)
 			}
 			const rq2 = `
-				delete from e2pg.ig_updates
+				delete from shovel.ig_updates
 				where src_name = $1
 				and backfill = $2
 				and num >= $3
@@ -466,7 +466,7 @@ func (task *Task) Converge(notx bool) error {
 		default:
 			var last = task.batch[delta-1]
 			const uq = `
-				insert into e2pg.task_updates (
+				insert into shovel.task_updates (
 					src_name,
 					backfill,
 					num,
@@ -609,7 +609,7 @@ type igRange struct{ start, stop uint64 }
 func (r *igRange) load(ctx context.Context, pg wpg.Conn, name, srcName string) error {
 	const startQuery = `
 	   select num
-	   from e2pg.ig_updates
+	   from shovel.ig_updates
 	   where name = $1
 	   and src_name = $2
 	   and backfill = true
@@ -622,7 +622,7 @@ func (r *igRange) load(ctx context.Context, pg wpg.Conn, name, srcName string) e
 	}
 	const stopQuery = `
 	   select num
-	   from e2pg.ig_updates
+	   from shovel.ig_updates
 	   where name = $1
 	   and src_name = $2
 	   and backfill = false
@@ -674,7 +674,7 @@ type igUpdate struct {
 func newIGUpdateBuf(n int) *igUpdateBuf {
 	b := &igUpdateBuf{}
 	b.updates = make([]igUpdate, n)
-	b.table = pgx.Identifier{"e2pg", "ig_updates"}
+	b.table = pgx.Identifier{"shovel", "ig_updates"}
 	b.cols = []string{"name", "src_name", "backfill", "num", "stop", "latency", "nrows"}
 	return b
 }
@@ -756,7 +756,7 @@ func (b *igUpdateBuf) write(ctx context.Context, pg wpg.Conn) error {
 
 func PruneTask(ctx context.Context, pg wpg.Conn, n int) error {
 	const q = `
-		delete from e2pg.task_updates
+		delete from shovel.task_updates
 		where (src_name, backfill, num) not in (
 			select src_name, backfill, num
 			from (
@@ -765,14 +765,14 @@ func PruneTask(ctx context.Context, pg wpg.Conn, n int) error {
 					backfill,
 					num,
 					row_number() over(partition by src_name, backfill order by num desc) as rn
-				from e2pg.task_updates
+				from shovel.task_updates
 			) as s
 			where rn <= $1
 		)
 	`
 	cmd, err := pg.Exec(ctx, q, n)
 	if err != nil {
-		return fmt.Errorf("deleting e2pg.task_updates: %w", err)
+		return fmt.Errorf("deleting shovel.task_updates: %w", err)
 	}
 	slog.InfoContext(ctx, "prune-task", "n", cmd.RowsAffected())
 	return nil
@@ -780,20 +780,20 @@ func PruneTask(ctx context.Context, pg wpg.Conn, n int) error {
 
 func PruneIG(ctx context.Context, pg wpg.Conn) error {
 	const q = `
-		delete from e2pg.ig_updates
+		delete from shovel.ig_updates
 		where (name, src_name, backfill, num) not in (
 			select name, src_name, backfill, max(num)
-			from e2pg.ig_updates
+			from shovel.ig_updates
 			group by name, src_name, backfill
 			union
 			select name, src_name, backfill, min(num)
-			from e2pg.ig_updates
+			from shovel.ig_updates
 			group by name, src_name, backfill
 		)
 	`
 	cmd, err := pg.Exec(ctx, q)
 	if err != nil {
-		return fmt.Errorf("deleting e2pg.ig_updates: %w", err)
+		return fmt.Errorf("deleting shovel.ig_updates: %w", err)
 	}
 	slog.InfoContext(ctx, "prune-ig", "n", cmd.RowsAffected())
 	return nil
@@ -849,7 +849,7 @@ func TaskUpdates(ctx context.Context, pg wpg.Conn) ([]TaskUpdate, error) {
 	rows, _ := pg.Query(ctx, `
         with f as (
             select src_name, backfill, max(num) num
-            from e2pg.task_updates group by 1, 2
+            from shovel.task_updates group by 1, 2
         )
         select
 			f.src_name,
@@ -863,10 +863,10 @@ func TaskUpdates(ctx context.Context, pg wpg.Conn) ([]TaskUpdate, error) {
 			coalesce(nrows, 0) nrows,
 			coalesce(latency, '0')::interval latency
         from f
-        left join e2pg.task_updates
-		on e2pg.task_updates.src_name = f.src_name
-		and e2pg.task_updates.backfill = f.backfill
-		and e2pg.task_updates.num = f.num;
+        left join shovel.task_updates
+		on shovel.task_updates.src_name = f.src_name
+		and shovel.task_updates.backfill = f.backfill
+		and shovel.task_updates.num = f.num;
     `)
 	tus, err := pgx.CollectRows(rows, pgx.RowToStructByName[TaskUpdate])
 	if err != nil {
@@ -907,7 +907,7 @@ func IGUpdates(ctx context.Context, pg wpg.Conn) ([]IGUpdate, error) {
 	rows, _ := pg.Query(ctx, `
         with f as (
             select name, src_name, backfill, max(num) num
-            from e2pg.ig_updates
+            from shovel.ig_updates
 			group by 1, 2, 3
         ) select
 			f.name,
@@ -919,7 +919,7 @@ func IGUpdates(ctx context.Context, pg wpg.Conn) ([]IGUpdate, error) {
 			coalesce(latency, '0')::interval latency
         from f
 
-        left join e2pg.ig_updates latest
+        left join shovel.ig_updates latest
 		on latest.name = f.name
 		and latest.src_name = f.src_name
 		and latest.backfill = f.backfill
@@ -1118,7 +1118,7 @@ func getSource(sc SourceConfig) Source {
 
 func Integrations(ctx context.Context, pg wpg.Conn) ([]Integration, error) {
 	var res []Integration
-	const q = `select conf from e2pg.integrations`
+	const q = `select conf from shovel.integrations`
 	rows, err := pg.Query(ctx, q)
 	if err != nil {
 		return nil, fmt.Errorf("querying integrations: %w", err)
@@ -1139,7 +1139,7 @@ func Integrations(ctx context.Context, pg wpg.Conn) ([]Integration, error) {
 
 func SourceConfigs(ctx context.Context, pgp *pgxpool.Pool) ([]SourceConfig, error) {
 	var res []SourceConfig
-	const q = `select name, chain_id, url from e2pg.sources`
+	const q = `select name, chain_id, url from shovel.sources`
 	rows, err := pgp.Query(ctx, q)
 	if err != nil {
 		return nil, fmt.Errorf("querying sources: %w", err)

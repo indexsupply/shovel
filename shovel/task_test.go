@@ -1,4 +1,4 @@
-package e2pg
+package shovel
 
 import (
 	"context"
@@ -167,7 +167,7 @@ func taskAdd(
 ) {
 	ctx := context.Background()
 	const q1 = `
-		insert into e2pg.task_updates(src_name, backfill, num, hash)
+		insert into shovel.task_updates(src_name, backfill, num, hash)
 		values ($1, false, $2, $3)
 	`
 	_, err := pg.Exec(ctx, q1, srcName, n, h)
@@ -176,7 +176,7 @@ func taskAdd(
 	}
 	for i := range igs {
 		const q1 = `
-			insert into e2pg.ig_updates(name, src_name, backfill, num)
+			insert into shovel.ig_updates(name, src_name, backfill, num)
 			values ($1, $2, false, $3)
 		`
 		_, err := pg.Exec(ctx, q1, igs[i], srcName, n)
@@ -207,7 +207,7 @@ func TestSetup(t *testing.T) {
 
 	checkQuery(t, pg, `
 		select true
-		from e2pg.task_updates
+		from shovel.task_updates
 		where src_name = 'foo'
 		and hash = $1
 		and num = $2
@@ -416,7 +416,7 @@ func TestConverge_Done(t *testing.T) {
 	// manually setup the first record.
 	// this is typically done in loadTasks
 	const q = `
-		insert into e2pg.ig_updates(name, src_name, backfill, num)
+		insert into shovel.ig_updates(name, src_name, backfill, num)
 		values ($1, $2, $3, $4)
 	`
 	_, err := pg.Exec(ctx, q, "foo", "foo", true, 0)
@@ -429,7 +429,7 @@ func TestPruneTask(t *testing.T) {
 	pg := testpg(t)
 	it := func(n uint8) {
 		_, err := pg.Exec(context.Background(), `
-			insert into e2pg.task_updates(src_name, backfill, num, hash)
+			insert into shovel.task_updates(src_name, backfill, num, hash)
 			values ($1, false, $2, $3)
 		`, "foo", n, hash(n))
 		if err != nil {
@@ -439,9 +439,9 @@ func TestPruneTask(t *testing.T) {
 	for i := uint8(0); i < 10; i++ {
 		it(i)
 	}
-	checkQuery(t, pg, `select count(*) = 10 from e2pg.task_updates`)
+	checkQuery(t, pg, `select count(*) = 10 from shovel.task_updates`)
 	PruneTask(context.Background(), pg, 1)
-	checkQuery(t, pg, `select count(*) = 1 from e2pg.task_updates`)
+	checkQuery(t, pg, `select count(*) = 1 from shovel.task_updates`)
 }
 
 func TestPruneIG(t *testing.T) {
@@ -455,27 +455,27 @@ func TestPruneIG(t *testing.T) {
 	igUpdateBuf.update(0, "foo", "bar", true, 1, 0, 0, 0)
 	err = igUpdateBuf.write(ctx, pg)
 	diff.Test(t, t.Fatalf, err, nil)
-	checkQuery(t, pg, `select count(*) = 1 from e2pg.ig_updates`)
+	checkQuery(t, pg, `select count(*) = 1 from shovel.ig_updates`)
 
 	for i := 0; i < 10; i++ {
 		igUpdateBuf.update(0, "foo", "bar", true, uint64(i+2), 0, 0, 0)
 		err := igUpdateBuf.write(ctx, pg)
 		diff.Test(t, t.Fatalf, err, nil)
 	}
-	checkQuery(t, pg, `select count(*) = 11 from e2pg.ig_updates`)
+	checkQuery(t, pg, `select count(*) = 11 from shovel.ig_updates`)
 	err = PruneIG(ctx, pg)
 	diff.Test(t, t.Fatalf, err, nil)
-	checkQuery(t, pg, `select count(*) = 2 from e2pg.ig_updates`)
+	checkQuery(t, pg, `select count(*) = 2 from shovel.ig_updates`)
 
 	igUpdateBuf.update(1, "foo", "baz", true, 1, 0, 0, 0)
 	err = igUpdateBuf.write(ctx, pg)
 	diff.Test(t, t.Fatalf, err, nil)
-	checkQuery(t, pg, `select count(*) = 1 from e2pg.ig_updates where src_name = 'baz'`)
-	checkQuery(t, pg, `select count(*) = 3 from e2pg.ig_updates`)
+	checkQuery(t, pg, `select count(*) = 1 from shovel.ig_updates where src_name = 'baz'`)
+	checkQuery(t, pg, `select count(*) = 3 from shovel.ig_updates`)
 
 	err = PruneIG(ctx, pg)
 	diff.Test(t, t.Fatalf, err, nil)
-	checkQuery(t, pg, `select count(*) = 3 from e2pg.ig_updates`)
+	checkQuery(t, pg, `select count(*) = 3 from shovel.ig_updates`)
 }
 
 func destFactory(dests ...*testDestination) func(wpg.Conn, Integration) (Destination, error) {
@@ -509,13 +509,13 @@ func TestInitRows(t *testing.T) {
 	diff.Test(t, t.Errorf, err, nil)
 	err = task.initRows(42, hash(42))
 	diff.Test(t, t.Fatalf, err, nil)
-	checkQuery(t, pg, `select count(*) = 1 from e2pg.ig_updates`)
-	checkQuery(t, pg, `select count(*) = 1 from e2pg.task_updates`)
+	checkQuery(t, pg, `select count(*) = 1 from shovel.ig_updates`)
+	checkQuery(t, pg, `select count(*) = 1 from shovel.task_updates`)
 
 	err = task.initRows(42, hash(42))
 	diff.Test(t, t.Fatalf, err, nil)
-	checkQuery(t, pg, `select count(*) = 1 from e2pg.ig_updates`)
-	checkQuery(t, pg, `select count(*) = 1 from e2pg.task_updates`)
+	checkQuery(t, pg, `select count(*) = 1 from shovel.ig_updates`)
+	checkQuery(t, pg, `select count(*) = 1 from shovel.task_updates`)
 
 	task, err = NewTask(
 		WithPG(pg),
@@ -528,8 +528,8 @@ func TestInitRows(t *testing.T) {
 
 	err = task.initRows(42, hash(42))
 	diff.Test(t, t.Fatalf, err, nil)
-	checkQuery(t, pg, `select count(*) = 2 from e2pg.ig_updates`)
-	checkQuery(t, pg, `select count(*) = 1 from e2pg.task_updates`)
+	checkQuery(t, pg, `select count(*) = 2 from shovel.ig_updates`)
+	checkQuery(t, pg, `select count(*) = 1 from shovel.task_updates`)
 
 	task, err = NewTask(
 		WithPG(pg),
@@ -543,44 +543,44 @@ func TestInitRows(t *testing.T) {
 
 	err = task.initRows(42, hash(42))
 	diff.Test(t, t.Fatalf, err, nil)
-	checkQuery(t, pg, `select count(*) = 4 from e2pg.ig_updates`)
-	checkQuery(t, pg, `select count(*) = 2 from e2pg.task_updates`)
+	checkQuery(t, pg, `select count(*) = 4 from shovel.ig_updates`)
+	checkQuery(t, pg, `select count(*) = 2 from shovel.task_updates`)
 	checkQuery(t, pg, `
 		select count(*) = 1
-		from e2pg.task_updates
+		from shovel.task_updates
 		where src_name = 'foo'
 		and backfill = false
 	`)
 	checkQuery(t, pg, `
 		select count(*) = 1
-		from e2pg.task_updates
+		from shovel.task_updates
 		where src_name = 'foo'
 		and backfill = true
 	`)
 	checkQuery(t, pg, `
 		select count(*) = 1
-		from e2pg.ig_updates
+		from shovel.ig_updates
 		where name = 'bar'
 		and src_name = 'foo'
 		and backfill = true
 	`)
 	checkQuery(t, pg, `
 		select count(*) = 1
-		from e2pg.ig_updates
+		from shovel.ig_updates
 		where name = 'bar'
 		and src_name = 'foo'
 		and backfill = false
 	`)
 	checkQuery(t, pg, `
 		select count(*) = 1
-		from e2pg.ig_updates
+		from shovel.ig_updates
 		where name = 'baz'
 		and src_name = 'foo'
 		and backfill = true
 	`)
 	checkQuery(t, pg, `
 		select count(*) = 1
-		from e2pg.ig_updates
+		from shovel.ig_updates
 		where name = 'baz'
 		and src_name = 'foo'
 		and backfill = false
@@ -830,32 +830,32 @@ func TestLoadTasks_Backfill(t *testing.T) {
 	diff.Test(t, t.Errorf, nil, tasks[0].Setup())
 	checkQuery(t, pg, `
 		select count(*) = 1
-		from e2pg.task_updates
+		from shovel.task_updates
 		where src_name = 'foo'
 		and backfill = false
 	`)
 	checkQuery(t, pg, `
 		select num = 2
-		from e2pg.task_updates
+		from shovel.task_updates
 		where src_name = 'foo'
 		and backfill = false
 	`)
 	checkQuery(t, pg, `
 		select count(*) = 2
-		from e2pg.ig_updates
+		from shovel.ig_updates
 		where src_name = 'foo'
 		and backfill = false
 	`)
 	checkQuery(t, pg, `
 		select num = 2
-		from e2pg.ig_updates
+		from shovel.ig_updates
 		where src_name = 'foo'
 		and name = 'baz'
 		and backfill = false
 	`)
 	checkQuery(t, pg, `
 		select num = 2
-		from e2pg.ig_updates
+		from shovel.ig_updates
 		where src_name = 'foo'
 		and name = 'bar'
 		and backfill = false
@@ -866,32 +866,32 @@ func TestLoadTasks_Backfill(t *testing.T) {
 	diff.Test(t, t.Errorf, uint64(2), tasks[1].stop)
 	checkQuery(t, pg, `
 		select count(*) = 1
-		from e2pg.task_updates
+		from shovel.task_updates
 		where src_name = 'foo'
 		and backfill
 	`)
 	checkQuery(t, pg, `
 		select num = 1
-		from e2pg.task_updates
+		from shovel.task_updates
 		where src_name = 'foo'
 		and backfill
 	`)
 	checkQuery(t, pg, `
 		select count(*) = 2
-		from e2pg.ig_updates
+		from shovel.ig_updates
 		where src_name = 'foo'
 		and backfill
 	`)
 	checkQuery(t, pg, `
 		select num = 2
-		from e2pg.ig_updates
+		from shovel.ig_updates
 		where src_name = 'foo'
 		and name = 'bar'
 		and backfill
 	`)
 	checkQuery(t, pg, `
 		select num = 1
-		from e2pg.ig_updates
+		from shovel.ig_updates
 		where src_name = 'foo'
 		and name = 'baz'
 		and backfill

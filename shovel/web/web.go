@@ -12,7 +12,7 @@ import (
 	"strconv"
 	"sync"
 
-	"github.com/indexsupply/x/e2pg"
+	"github.com/indexsupply/x/shovel"
 	"github.com/indexsupply/x/wstrings"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -38,8 +38,8 @@ var htmlpages = map[string]string{
 type Handler struct {
 	local bool
 	pgp   *pgxpool.Pool
-	mgr   *e2pg.Manager
-	conf  *e2pg.Config
+	mgr   *shovel.Manager
+	conf  *shovel.Config
 
 	clientsMutex sync.Mutex
 	clients      map[string]chan []byte
@@ -47,7 +47,7 @@ type Handler struct {
 	templates map[string]*template.Template
 }
 
-func New(mgr *e2pg.Manager, conf *e2pg.Config, pgp *pgxpool.Pool) *Handler {
+func New(mgr *shovel.Manager, conf *shovel.Config, pgp *pgxpool.Pool) *Handler {
 	return &Handler{
 		pgp:       pgp,
 		mgr:       mgr,
@@ -60,7 +60,7 @@ func New(mgr *e2pg.Manager, conf *e2pg.Config, pgp *pgxpool.Pool) *Handler {
 func (h *Handler) PushUpdates() error {
 	ctx := context.Background()
 	for ; ; h.mgr.Updates() {
-		tus, err := e2pg.TaskUpdates(ctx, h.pgp)
+		tus, err := shovel.TaskUpdates(ctx, h.pgp)
 		if err != nil {
 			return fmt.Errorf("querying task updates: %w", err)
 		}
@@ -73,7 +73,7 @@ func (h *Handler) PushUpdates() error {
 				c <- j
 			}
 		}
-		ius, err := e2pg.IGUpdates(ctx, h.pgp)
+		ius, err := shovel.IGUpdates(ctx, h.pgp)
 		if err != nil {
 			return fmt.Errorf("querying ig updates: %w", err)
 		}
@@ -91,7 +91,7 @@ func (h *Handler) PushUpdates() error {
 
 func (h *Handler) template(name string) (*template.Template, error) {
 	if h.local {
-		b, err := os.ReadFile(fmt.Sprintf("./e2pg/web/%s.html", name))
+		b, err := os.ReadFile(fmt.Sprintf("./shovel/web/%s.html", name))
 		if err != nil {
 			return nil, fmt.Errorf("reading %s: %w", name, err)
 		}
@@ -117,7 +117,7 @@ func (h *Handler) SaveIntegration(w http.ResponseWriter, r *http.Request) {
 	var (
 		err error
 		ctx = r.Context()
-		ig  = e2pg.Integration{}
+		ig  = shovel.Integration{}
 	)
 	defer r.Body.Close()
 	err = json.NewDecoder(r.Body).Decode(&ig)
@@ -126,7 +126,7 @@ func (h *Handler) SaveIntegration(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	testConfig := e2pg.Config{Integrations: []e2pg.Integration{ig}}
+	testConfig := shovel.Config{Integrations: []shovel.Integration{ig}}
 	if err := testConfig.CheckUserInput(); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -137,7 +137,7 @@ func (h *Handler) SaveIntegration(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	const q = `insert into e2pg.integrations(name, conf) values ($1, $2)`
+	const q = `insert into shovel.integrations(name, conf) values ($1, $2)`
 	_, err = h.pgp.Exec(ctx, q, ig.Name, cj)
 	if err != nil {
 		slog.ErrorContext(ctx, "inserting integration", err)
@@ -185,9 +185,9 @@ func (h *Handler) AddIntegration(w http.ResponseWriter, r *http.Request) {
 }
 
 type IndexView struct {
-	TaskUpdates   map[string]e2pg.TaskUpdate
-	IGUpdates     map[string][]e2pg.IGUpdate
-	SourceConfigs []e2pg.SourceConfig
+	TaskUpdates   map[string]shovel.TaskUpdate
+	IGUpdates     map[string][]shovel.IGUpdate
+	SourceConfigs []shovel.SourceConfig
 	ShowBackfill  bool
 }
 
@@ -196,25 +196,25 @@ func (h *Handler) Index(w http.ResponseWriter, r *http.Request) {
 		ctx  = r.Context()
 		view = IndexView{}
 	)
-	tus, err := e2pg.TaskUpdates(ctx, h.pgp)
+	tus, err := shovel.TaskUpdates(ctx, h.pgp)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	ius, err := e2pg.IGUpdates(ctx, h.pgp)
+	ius, err := shovel.IGUpdates(ctx, h.pgp)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	view.IGUpdates = make(map[string][]e2pg.IGUpdate)
+	view.IGUpdates = make(map[string][]shovel.IGUpdate)
 	for _, iu := range ius {
 		view.IGUpdates[iu.TaskID()] = append(
 			view.IGUpdates[iu.TaskID()],
 			iu,
 		)
 	}
-	view.TaskUpdates = make(map[string]e2pg.TaskUpdate)
+	view.TaskUpdates = make(map[string]shovel.TaskUpdate)
 	for _, tu := range tus {
 		view.TaskUpdates[tu.DOMID] = tu
 	}
@@ -313,7 +313,7 @@ func (h *Handler) SaveSource(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	const q = `
-		insert into e2pg.sources(chain_id, name, url)
+		insert into shovel.sources(chain_id, name, url)
 		values ($1, $2, $3)
 	`
 	_, err = h.pgp.Exec(ctx, q, chainID, name, url)
