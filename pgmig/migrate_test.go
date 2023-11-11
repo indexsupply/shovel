@@ -44,8 +44,8 @@ func TestMigrate(t *testing.T) {
 	diff.Test(t, t.Fatalf, err, nil)
 
 	reset := func() {
-		if _, err := pg.Exec(ctx, "drop schema if exists e2pg cascade"); err != nil {
-			t.Fatalf("dropping e2pg schema: %s", err)
+		if _, err := pg.Exec(ctx, "drop schema if exists shovel cascade"); err != nil {
+			t.Fatalf("dropping shovel schema: %s", err)
 		}
 		if _, err := pg.Exec(ctx, "drop schema public cascade"); err != nil {
 			t.Fatalf("dropping schema: %s", err)

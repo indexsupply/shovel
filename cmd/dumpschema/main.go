@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/indexsupply/x/e2pg"
 	"github.com/indexsupply/x/pgmig"
+	"github.com/indexsupply/x/shovel"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -42,7 +42,7 @@ func main() {
 	_, err = pgp.Exec(ctx, fmt.Sprintf(`ALTER DATABASE %s SET TIMEZONE TO 'UTC'`, tmpdb))
 	check(err)
 
-	check(pgmig.Migrate(pgp, e2pg.Migrations))
+	check(pgmig.Migrate(pgp, shovel.Migrations))
 
 	var buf bytes.Buffer
 	pgdump := exec.Command("pg_dump", "-sOx", tmpdb)
@@ -50,7 +50,7 @@ func main() {
 	pgdump.Stderr = os.Stderr
 	check(pgdump.Run())
 
-	f, err := os.Create(filepath.Join("e2pg", "schema.sql"))
+	f, err := os.Create(filepath.Join("shovel", "schema.sql"))
 	check(err)
 	defer f.Close()
 

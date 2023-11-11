@@ -1,4 +1,4 @@
-// migration system for E2PG
+// migration system for Shovel
 package pgmig
 
 import (
@@ -43,9 +43,9 @@ type Migrations map[int]Migration
 //
 // migs is a map because the keys represent the order of migrations
 // and so they should be unique. They keys are written to the idx
-// columne of the e2pg.migrations table.
+// columne of the shovel.migrations table.
 //
-// The e2pg.migrations table will be created if it doesn't
+// The shovel.migrations table will be created if it doesn't
 // already exist.
 //
 // Migrate will use pg_try_advisory_lock to ensure that only
@@ -59,13 +59,13 @@ func Migrate(pgp *pgxpool.Pool, migs Migrations) error {
 	if err != nil || !locked {
 		return fmt.Errorf("locking db for migrations: %w", err)
 	}
-	const q1 = `create schema if not exists e2pg`
+	const q1 = `create schema if not exists shovel`
 	_, err = pgp.Exec(ctx, q1)
 	if err != nil {
-		return fmt.Errorf("creating e2pg schema: %w", err)
+		return fmt.Errorf("creating shovel schema: %w", err)
 	}
 	const q2 = `
-		create table if not exists e2pg.migrations (
+		create table if not exists shovel.migrations (
 			idx int not null,
 			hash bytea not null,
 			inserted_at timestamptz default now() not null,
@@ -124,7 +124,7 @@ func migrate(ctx context.Context, db execer, i int, m Migration) error {
 	if err != nil {
 		return fmt.Errorf("migration %d %x exec error: %w", i, m.Hash(), err)
 	}
-	const q = `insert into e2pg.migrations(idx, hash) values ($1, $2)`
+	const q = `insert into shovel.migrations(idx, hash) values ($1, $2)`
 	_, err = db.Exec(ctx, q, i, m.Hash())
 	if err != nil {
 		return fmt.Errorf("migrations table %d %x insert error: %w", i, m.Hash(), err)
@@ -133,7 +133,7 @@ func migrate(ctx context.Context, db execer, i int, m Migration) error {
 }
 
 func exists(ctx context.Context, db execer, i int, m Migration) (bool, error) {
-	const q = `select true from e2pg.migrations where idx = $1 and hash = $2`
+	const q = `select true from shovel.migrations where idx = $1 and hash = $2`
 	var found bool
 	err := db.QueryRow(ctx, q, i, m.Hash()).Scan(&found)
 	if errors.Is(err, pgx.ErrNoRows) {

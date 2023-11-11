@@ -1,5 +1,5 @@
 {
-    "pg_url": "postgres:///e2pg",
+    "pg_url": "postgres:///shovel",
     "eth_sources": [
         {"name": "goerli", "chain_id": 5, "url": "https://5.rlps.indexsupply.net"}
     ],

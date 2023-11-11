@@ -15,9 +15,9 @@ import (
 	"runtime/pprof"
 	"time"
 
-	"github.com/indexsupply/x/e2pg"
-	"github.com/indexsupply/x/e2pg/web"
 	"github.com/indexsupply/x/pgmig"
+	"github.com/indexsupply/x/shovel"
+	"github.com/indexsupply/x/shovel/web"
 	"github.com/indexsupply/x/wctx"
 	"github.com/indexsupply/x/wos"
 	"github.com/indexsupply/x/wslog"
@@ -78,7 +78,7 @@ func main() {
 	}
 
 	var (
-		conf  e2pg.Config
+		conf  shovel.Config
 		pgurl string
 	)
 	switch {
@@ -94,7 +94,7 @@ func main() {
 	if !skipMigrate {
 		migdb, err := pgxpool.New(ctx, pgurl)
 		check(err)
-		check(pgmig.Migrate(migdb, e2pg.Migrations))
+		check(pgmig.Migrate(migdb, shovel.Migrations))
 		migdb.Close()
 	}
 
@@ -102,7 +102,7 @@ func main() {
 	check(err)
 	var (
 		pbuf bytes.Buffer
-		mgr  = e2pg.NewManager(pg, conf)
+		mgr  = shovel.NewManager(pg, conf)
 		wh   = web.New(mgr, &conf, pg)
 	)
 	mux := http.NewServeMux()
@@ -132,8 +132,8 @@ func main() {
 
 	go func() {
 		for {
-			check(e2pg.PruneIG(ctx, pg))
-			check(e2pg.PruneTask(ctx, pg, 200))
+			check(shovel.PruneIG(ctx, pg))
+			check(shovel.PruneTask(ctx, pg, 200))
 			time.Sleep(time.Minute * 10)
 		}
 	}()
