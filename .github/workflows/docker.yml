@@ -29,6 +29,6 @@ jobs:
         with:
           platforms: linux/amd64,linux/arm64,linux/arm/v8
           context: .
-          file: ./cmd/e2pg/Dockerfile
+          file: ./cmd/shovel/Dockerfile
           push: true
-          tags: indexsupply/e2pg:latest
+          tags: indexsupply/shovel:latest

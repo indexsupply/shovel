@@ -4,8 +4,8 @@ WORKDIR /app
 COPY go.mod go.sum .
 RUN go mod download
 ADD . /app
-RUN go build -o /app/e2pg ./cmd/e2pg/
+RUN go build -o /app/shovel ./cmd/shovel/
 
 FROM alpine:latest
-COPY --from=builder /app/e2pg /usr/local/bin
-CMD ["e2pg"]
+COPY --from=builder /app/shovel /usr/local/bin
+CMD ["shovel"]
