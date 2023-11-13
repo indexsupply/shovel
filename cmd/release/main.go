@@ -40,9 +40,6 @@ func main() {
 	flag.StringVar(&distID, "dist", "", "aws cloudfront dist to invalidate")
 	flag.Parse()
 
-	fmt.Printf("tag: %s\n", tag)
-	os.Exit(1)
-
 	if cmd == "" {
 		check(errors.New("mimssing cmd flag"))
 	}

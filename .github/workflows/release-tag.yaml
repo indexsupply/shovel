@@ -24,6 +24,14 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       -
+        name: Set Tag
+        uses: actions/github-script@v4
+        id: set_tag
+        with:
+          script: |
+            const tag = context.ref.replace('refs/tags/v', '')
+            core.setOutput('tag', tag)
+      -
         name: Build and push
         uses: docker/build-push-action@v4
         with:
@@ -31,9 +39,9 @@ jobs:
           context: .
           file: ./cmd/shovel/Dockerfile
           push: true
-          tags: indexsupply/shovel:${{ replace(github.ref_name, 'v', '') }}
+          tags: indexsupply/shovel:${{ steps.set_tag.outputs.tag }}
   bins:
-    name: s3 binaries
+    name: binaries
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -53,10 +61,17 @@ jobs:
           key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
           restore-keys: |
             ${{ runner.os }}-go-
+      - name: Set Tag
+        uses: actions/github-script@v4
+        id: set_tag
+        with:
+          script: |
+            const tag = context.ref.replace('refs/tags/v', '')
+            core.setOutput('tag', tag)
       - uses: ./.github/actions/release
         id: go-run-release
         with:
-          cmd: ${{ matrix.cmd }} -tag ${{ replace(github.ref_name, 'v', '') }}
+          cmd: ${{ matrix.cmd }} -tag ${{ steps.set_tag.outputs.tag }}
           dist: ${{ secrets.AWS_DISTRIBUTION_ID }}
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
