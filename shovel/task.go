@@ -111,7 +111,7 @@ func NewTask(opts ...Option) (*Task, error) {
 		ctx:        context.Background(),
 		batch:      make([]eth.Block, 1),
 		parts:      parts(1, 1),
-		srcFactory: getSource,
+		srcFactory: GetSource,
 		igFactory:  getDest,
 	}
 	for _, opt := range opts {
@@ -1105,7 +1105,7 @@ func getDest(pgp wpg.Conn, ig Integration) (Destination, error) {
 	}
 }
 
-func getSource(sc SourceConfig) Source {
+func GetSource(sc SourceConfig) Source {
 	switch {
 	case strings.Contains(sc.URL, "rlps"):
 		return rlps.NewClient(sc.ChainID, sc.URL)
