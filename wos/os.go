@@ -17,10 +17,21 @@ func Getenv(s string) string {
 	if strings.HasPrefix(s, "$") {
 		v := os.Getenv(strings.ToUpper(strings.TrimPrefix(s, "$")))
 		if v == "" {
-			fmt.Printf("expected database url in env: %q\n", s)
+			fmt.Printf("expected %s to be set\n", s)
 			os.Exit(1)
 		}
 		return v
 	}
 	return s
+}
+
+type EnvString string
+
+func (es *EnvString) UnmarshalJSON(data []byte) error {
+	if len(data) < 2 {
+		return fmt.Errorf("EnvString must be at leaset 2 bytes")
+	}
+	data = data[1 : len(data)-1] // remove quotes
+	*es = EnvString(Getenv(string(data)))
+	return nil
 }

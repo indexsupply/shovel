@@ -4,6 +4,7 @@ go 1.21
 
 require (
 	blake.io/pqx v0.2.1
+	filippo.io/age v1.0.0
 	github.com/aws/aws-sdk-go v1.44.285
 	github.com/btcsuite/btcd/btcec/v2 v2.3.2
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.1.0
@@ -11,6 +12,7 @@ require (
 	github.com/holiman/uint256 v1.2.3
 	github.com/jackc/pgx/v5 v5.3.1
 	github.com/kr/pretty v0.3.1
+	github.com/kr/session v0.2.1
 	golang.org/x/crypto v0.6.0
 	golang.org/x/net v0.6.0
 	golang.org/x/sync v0.1.0

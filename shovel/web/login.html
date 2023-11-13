@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset="utf-8"><title>Shovel</title>
+		<style>
+			body {
+				font-family: system-ui;
+				max-width: 800px;
+				margin: 0 auto;
+			}
+			.header h1 a {
+				color: #000000;
+				text-decoration: none;
+			}
+			.password input {
+				margin: 0 0 20px 0;
+				width: 200px;
+				font-size: large;
+				font-family: monospace;
+			}
+			.password input[type="submit"] {
+				width: 200px;
+			}
+			p {
+				width: 60%;
+			}
+		</style>
+	</head>
+	<body>
+		<main>
+			<div class="header"><h1><a href="/">Shovel</a> / Login</h1></div>
+			<form action="/login" class="password" method="POST">
+				<input id="password" placeholder="Password" name="password" type="password" autofocus>
+				<br />
+				<input type="submit" value="Submit">
+			</form>
+			<details>
+				<summary>Login Configuration</summary>
+				<p>
+				Authentication is enabled. If a password has not been set, then a random one has been generated and it can be found in the logs. For example:
+				</p>
+				<code><pre>
+password=171658e9feca092b msg=random-temp-password
+				</pre></code>
+				<p>
+				Update the config file to either: disable authentication or update the password. Here is an example config snippet:
+				</p>
+				<code><pre>
+...
+
+"dashboard": {
+	"disable_authn": false,
+	"root_password": "XXX",
+},
+
+...
+				</pre></code>
+			</details>
+		</main>
+	</body>
+</html>

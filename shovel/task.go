@@ -19,6 +19,7 @@ import (
 	"github.com/indexsupply/x/jrpc2"
 	"github.com/indexsupply/x/rlps"
 	"github.com/indexsupply/x/wctx"
+	"github.com/indexsupply/x/wos"
 	"github.com/indexsupply/x/wpg"
 	"github.com/indexsupply/x/wstrings"
 
@@ -1188,7 +1189,14 @@ func (ig Integration) sourceConfig(name string) (SourceConfig, error) {
 	return SourceConfig{}, fmt.Errorf("missing source config for: %s", name)
 }
 
+type DashboardConf struct {
+	EnableLoopbackAuthn bool          `json:"enable_loopback_authn"`
+	DisableAuthn        bool          `json:"disable_authn"`
+	RootPassword        wos.EnvString `json:"root_password"`
+}
+
 type Config struct {
+	Dashboard     DashboardConf  `json:"dashboard"`
 	PGURL         string         `json:"pg_url"`
 	SourceConfigs []SourceConfig `json:"eth_sources"`
 	Integrations  []Integration  `json:"integrations"`
