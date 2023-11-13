@@ -1,6 +1,7 @@
 package web
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/subtle"
@@ -14,8 +15,11 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
+	"time"
 
+	"github.com/indexsupply/x/eth"
 	"github.com/indexsupply/x/shovel"
 	"github.com/indexsupply/x/wstrings"
 
@@ -31,6 +35,9 @@ var (
 	//go:embed login.html
 	loginHTML string
 
+	//go:embed diag.html
+	diagHTML string
+
 	//go:embed add-source.html
 	addSourceHTML string
 
@@ -40,6 +47,7 @@ var (
 
 var htmlpages = map[string]string{
 	"index":           indexHTML,
+	"diag":            diagHTML,
 	"login":           loginHTML,
 	"add-source":      addSourceHTML,
 	"add-integration": addIntegrationHTML,
@@ -149,6 +157,72 @@ func isLoopback(r *http.Request) bool {
 		return false
 	}
 	return net.ParseIP(host).IsLoopback()
+}
+
+type DiagResult struct {
+	Name    string
+	Message string
+	Latency time.Duration
+}
+
+func (h *Handler) Diag(w http.ResponseWriter, r *http.Request) {
+	var (
+		res []DiagResult
+		ctx = r.Context()
+	)
+	run := func(name string, f func() string) {
+		t := time.Now()
+		m := f()
+		res = append(res, DiagResult{
+			Name:    fmt.Sprintf("%-10s", strings.ToLower(name)),
+			Message: fmt.Sprintf("%20s", m),
+			Latency: time.Since(t),
+		})
+	}
+	run("Postgres", func() string {
+		var x uint64
+		err := h.pgp.QueryRow(ctx, "select num from shovel.task_updates limit 1").Scan(&x)
+		if err != nil {
+			return err.Error()
+		}
+		return "ok"
+	})
+	scs, err := h.conf.AllSourceConfigs(ctx, h.pgp)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	for _, sc := range scs {
+		src := shovel.GetSource(sc)
+		run(sc.Name, func() string {
+			n, h, err := src.Latest()
+			if err != nil {
+				return fmt.Sprintf("latest: %s\n", err.Error())
+			}
+			b := []eth.Block{eth.Block{Header: eth.Header{Number: eth.Uint64(n)}}}
+			if err := src.LoadBlocks(nil, b); err != nil {
+				return fmt.Sprintf("loading blocks: %s\n", err.Error())
+			}
+			if !bytes.Equal(b[0].Hash(), h) {
+				return fmt.Sprintf("block mismatch: %.4x != %.4x\n",
+					b[0].Hash(),
+					h,
+				)
+			}
+			return fmt.Sprintf("%d %.4x", n, h)
+		})
+	}
+	tmpl, err := h.template("diag")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if err := tmpl.Execute(w, res); err != nil {
+		slog.ErrorContext(r.Context(), "error", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
 }
 
 func (h *Handler) PushUpdates() error {

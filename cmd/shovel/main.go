@@ -108,6 +108,7 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", wh.Index)
 	mux.HandleFunc("/login", wh.Login)
+	mux.Handle("/diag", wh.Authn(wh.Diag))
 	mux.Handle("/task-updates", wh.Authn(wh.Updates))
 	mux.Handle("/add-source", wh.Authn(wh.AddSource))
 	mux.Handle("/save-source", wh.Authn(wh.SaveSource))
