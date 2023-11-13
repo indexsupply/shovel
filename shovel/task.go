@@ -1188,7 +1188,15 @@ func (ig Integration) sourceConfig(name string) (SourceConfig, error) {
 	return SourceConfig{}, fmt.Errorf("missing source config for: %s", name)
 }
 
+type DashboardConf struct {
+	EnableLoopbackAuthn bool   `json:"enable_loopback_authn"`
+	DisableAuthn        bool   `json:"disable_authn"`
+	CookieSecret        string `json:"cookie_secret"`
+	RootPassword        string `json:"root_password"`
+}
+
 type Config struct {
+	Dashboard     DashboardConf  `json:"dashboard"`
 	PGURL         string         `json:"pg_url"`
 	SourceConfigs []SourceConfig `json:"eth_sources"`
 	Integrations  []Integration  `json:"integrations"`

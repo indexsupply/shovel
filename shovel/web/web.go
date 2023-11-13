@@ -2,11 +2,15 @@ package web
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/subtle"
 	_ "embed"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"html/template"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"strconv"
@@ -15,12 +19,17 @@ import (
 	"github.com/indexsupply/x/shovel"
 	"github.com/indexsupply/x/wstrings"
 
+	"filippo.io/age"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/kr/session"
 )
 
 var (
 	//go:embed index.html
 	indexHTML string
+
+	//go:embed login.html
+	loginHTML string
 
 	//go:embed add-source.html
 	addSourceHTML string
@@ -31,30 +40,115 @@ var (
 
 var htmlpages = map[string]string{
 	"index":           indexHTML,
+	"login":           loginHTML,
 	"add-source":      addSourceHTML,
 	"add-integration": addIntegrationHTML,
 }
 
 type Handler struct {
-	local bool
-	pgp   *pgxpool.Pool
-	mgr   *shovel.Manager
-	conf  *shovel.Config
+	pgp  *pgxpool.Pool
+	mgr  *shovel.Manager
+	conf *shovel.Config
 
 	clientsMutex sync.Mutex
 	clients      map[string]chan []byte
 
 	templates map[string]*template.Template
+
+	sess     session.Config
+	password []byte
 }
 
 func New(mgr *shovel.Manager, conf *shovel.Config, pgp *pgxpool.Pool) *Handler {
-	return &Handler{
+	h := &Handler{
+		local:     true,
 		pgp:       pgp,
 		mgr:       mgr,
 		conf:      conf,
 		clients:   make(map[string]chan []byte),
 		templates: make(map[string]*template.Template),
 	}
+	cookieID, err := age.GenerateX25519Identity()
+	if err != nil {
+		panic(err)
+	}
+	h.sess.Keys = append(h.sess.Keys, cookieID)
+	h.password = []byte(conf.Dashboard.RootPassword)
+	if len(h.password) == 0 {
+		b := make([]byte, 8)
+		rand.Read(b)
+		h.password = make([]byte, hex.EncodedLen(len(b)))
+		hex.Encode(h.password, b)
+	}
+	return h
+}
+
+func (h *Handler) Authn(next http.HandlerFunc) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if h.conf.Dashboard.DisableAuthn {
+			next(w, r)
+			return
+		}
+		if !h.conf.Dashboard.EnableLoopbackAuthn && isLoopback(r) {
+			next(w, r)
+			return
+		}
+		err := session.Get(r, &struct{}{}, &h.sess)
+		if err != nil {
+			http.Redirect(w, r, "/login", http.StatusSeeOther)
+			return
+		}
+		next(w, r)
+	})
+}
+
+func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
+	if h.conf.Dashboard.RootPassword == "" {
+		slog.InfoContext(r.Context(), "random-temp-password",
+			"password", string(h.password),
+		)
+	}
+	switch r.Method {
+	case "GET":
+		tmpl, err := h.template("login")
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if err := tmpl.Execute(w, nil); err != nil {
+			slog.ErrorContext(r.Context(), "error", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	case "POST":
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		supplied := []byte(r.FormValue("password"))
+		if subtle.ConstantTimeCompare(supplied, h.password) != 1 {
+			http.Error(w, "invalid password", http.StatusUnauthorized)
+			return
+		}
+		if isLoopback(r) {
+			c := session.DefaultCookie
+			c.Secure = false
+			h.sess.Cookie = &c
+		}
+		session.Set(w, &struct{}{}, &h.sess)
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+	default:
+		http.Error(w, "must be post or get", http.StatusMethodNotAllowed)
+		return
+	}
+}
+
+func isLoopback(r *http.Request) bool {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return false
+	}
+	return net.ParseIP(host).IsLoopback()
 }
 
 func (h *Handler) PushUpdates() error {
