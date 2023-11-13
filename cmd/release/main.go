@@ -30,13 +30,18 @@ func main() {
 		bucket string
 		tmpdir string
 		cmd    string
+		tag    string
 		awss   = session.Must(session.NewSession())
 	)
 	flag.StringVar(&bucket, "bucket", "bin.indexsupply.net", "s3 bucket")
 	flag.StringVar(&cmd, "cmd", "", "command to build")
+	flag.StringVar(&tag, "tag", "main", "version tag")
 	flag.StringVar(&tmpdir, "dir", "/tmp", "tmp binary storage")
 	flag.StringVar(&distID, "dist", "", "aws cloudfront dist to invalidate")
 	flag.Parse()
+
+	fmt.Printf("tag: %s\n", tag)
+	os.Exit(1)
 
 	if cmd == "" {
 		check(errors.New("mimssing cmd flag"))
@@ -58,7 +63,7 @@ func main() {
 			goarch  = platforms[i][1]
 			binPath = fmt.Sprintf("%s/%s/%s/%s", tmpdir, goos, goarch, cmd)
 			cmdPath = fmt.Sprintf("./cmd/%s", cmd)
-			s3key   = fmt.Sprintf("bin/main/%s/%s/%s", goos, goarch, cmd)
+			s3key   = fmt.Sprintf("bin/%s/%s/%s/%s", tag, goos, goarch, cmd)
 		)
 		check(build(goos, goarch, binPath, cmdPath))
 		f, err := os.Open(binPath)
@@ -66,7 +71,7 @@ func main() {
 		check(putFile(awss, f, bucket, s3key))
 		f.Close()
 		if distID != "" {
-			check(invalidateMain(awss, distID))
+			check(invalidate(tag, awss, distID))
 		}
 		fmt.Printf("- %s/%s\n", bucket, s3key)
 	}
@@ -113,8 +118,8 @@ func randstr() string {
 
 // since we overwrite the binaries in the 'main' dir
 // we need to inform cloudfront's cache of the change
-func invalidateMain(s *session.Session, distID string) error {
-	var paths = []*string{aws.String("/bin/main/*")}
+func invalidate(tag string, s *session.Session, distID string) error {
+	var paths = []*string{aws.String(fmt.Sprintf("/bin/%s/*", tag))}
 	_, err := cloudfront.New(s).CreateInvalidation(&cloudfront.CreateInvalidationInput{
 		DistributionId: &distID,
 		InvalidationBatch: &cloudfront.InvalidationBatch{
