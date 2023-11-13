@@ -26,14 +26,18 @@ func check(err error) {
 
 func main() {
 	var (
-		distID string
-		bucket string
-		tmpdir string
-		cmd    string
-		awss   = session.Must(session.NewSession())
+		buildOnly bool
+		distID    string
+		bucket    string
+		tmpdir    string
+		cmd       string
+		tag       string
+		awss      = session.Must(session.NewSession())
 	)
+	flag.BoolVar(&buildOnly, "b", false, "build only. no upload")
 	flag.StringVar(&bucket, "bucket", "bin.indexsupply.net", "s3 bucket")
 	flag.StringVar(&cmd, "cmd", "", "command to build")
+	flag.StringVar(&tag, "tag", "main", "version tag")
 	flag.StringVar(&tmpdir, "dir", "/tmp", "tmp binary storage")
 	flag.StringVar(&distID, "dist", "", "aws cloudfront dist to invalidate")
 	flag.Parse()
@@ -58,15 +62,18 @@ func main() {
 			goarch  = platforms[i][1]
 			binPath = fmt.Sprintf("%s/%s/%s/%s", tmpdir, goos, goarch, cmd)
 			cmdPath = fmt.Sprintf("./cmd/%s", cmd)
-			s3key   = fmt.Sprintf("bin/main/%s/%s/%s", goos, goarch, cmd)
+			s3key   = fmt.Sprintf("bin/%s/%s/%s/%s", tag, goos, goarch, cmd)
 		)
-		check(build(goos, goarch, binPath, cmdPath))
+		check(build(tag, goos, goarch, binPath, cmdPath))
+		if buildOnly {
+			continue
+		}
 		f, err := os.Open(binPath)
 		check(err)
 		check(putFile(awss, f, bucket, s3key))
 		f.Close()
 		if distID != "" {
-			check(invalidateMain(awss, distID))
+			check(invalidate(tag, awss, distID))
 		}
 		fmt.Printf("- %s/%s\n", bucket, s3key)
 	}
@@ -79,9 +86,10 @@ func hash(f *os.File) string {
 	return fmt.Sprintf("%x", h.Sum(nil))
 }
 
-func build(goos, goarch, binPath, cmdPath string) error {
+func build(tag, goos, goarch, binPath, cmdPath string) error {
 	var out strings.Builder
-	c := exec.Command("go", "build", "-o", binPath, cmdPath)
+	v := fmt.Sprintf("-ldflags=-X main.Version=%s", tag)
+	c := exec.Command("go", "build", v, "-o", binPath, cmdPath)
 	c.Stdout = &out
 	c.Stderr = &out
 	c.Env = append(os.Environ(),
@@ -113,8 +121,8 @@ func randstr() string {
 
 // since we overwrite the binaries in the 'main' dir
 // we need to inform cloudfront's cache of the change
-func invalidateMain(s *session.Session, distID string) error {
-	var paths = []*string{aws.String("/bin/main/*")}
+func invalidate(tag string, s *session.Session, distID string) error {
+	var paths = []*string{aws.String(fmt.Sprintf("/bin/%s/*", tag))}
 	_, err := cloudfront.New(s).CreateInvalidation(&cloudfront.CreateInvalidationInput{
 		DistributionId: &distID,
 		InvalidationBatch: &cloudfront.InvalidationBatch{

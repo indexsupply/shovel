@@ -73,7 +73,7 @@ func main() {
 	})))
 
 	if version {
-		fmt.Printf("v%s-%s\n", Version, Commit)
+		fmt.Printf("v%s %s\n", Version, Commit)
 		os.Exit(0)
 	}
 
