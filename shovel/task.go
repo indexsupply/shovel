@@ -19,6 +19,7 @@ import (
 	"github.com/indexsupply/x/jrpc2"
 	"github.com/indexsupply/x/rlps"
 	"github.com/indexsupply/x/wctx"
+	"github.com/indexsupply/x/wos"
 	"github.com/indexsupply/x/wpg"
 	"github.com/indexsupply/x/wstrings"
 
@@ -1189,9 +1190,9 @@ func (ig Integration) sourceConfig(name string) (SourceConfig, error) {
 }
 
 type DashboardConf struct {
-	EnableLoopbackAuthn bool   `json:"enable_loopback_authn"`
-	DisableAuthn        bool   `json:"disable_authn"`
-	RootPassword        string `json:"root_password"`
+	EnableLoopbackAuthn bool          `json:"enable_loopback_authn"`
+	DisableAuthn        bool          `json:"disable_authn"`
+	RootPassword        wos.EnvString `json:"root_password"`
 }
 
 type Config struct {
