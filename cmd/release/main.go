@@ -26,13 +26,15 @@ func check(err error) {
 
 func main() {
 	var (
-		distID string
-		bucket string
-		tmpdir string
-		cmd    string
-		tag    string
-		awss   = session.Must(session.NewSession())
+		buildOnly bool
+		distID    string
+		bucket    string
+		tmpdir    string
+		cmd       string
+		tag       string
+		awss      = session.Must(session.NewSession())
 	)
+	flag.BoolVar(&buildOnly, "b", false, "build only. no upload")
 	flag.StringVar(&bucket, "bucket", "bin.indexsupply.net", "s3 bucket")
 	flag.StringVar(&cmd, "cmd", "", "command to build")
 	flag.StringVar(&tag, "tag", "main", "version tag")
@@ -62,7 +64,10 @@ func main() {
 			cmdPath = fmt.Sprintf("./cmd/%s", cmd)
 			s3key   = fmt.Sprintf("bin/%s/%s/%s/%s", tag, goos, goarch, cmd)
 		)
-		check(build(goos, goarch, binPath, cmdPath))
+		check(build(tag, goos, goarch, binPath, cmdPath))
+		if buildOnly {
+			continue
+		}
 		f, err := os.Open(binPath)
 		check(err)
 		check(putFile(awss, f, bucket, s3key))
@@ -81,9 +86,10 @@ func hash(f *os.File) string {
 	return fmt.Sprintf("%x", h.Sum(nil))
 }
 
-func build(goos, goarch, binPath, cmdPath string) error {
+func build(tag, goos, goarch, binPath, cmdPath string) error {
 	var out strings.Builder
-	c := exec.Command("go", "build", "-o", binPath, cmdPath)
+	v := fmt.Sprintf("-ldflags=-X main.Version=%s", tag)
+	c := exec.Command("go", "build", v, "-o", binPath, cmdPath)
 	c.Stdout = &out
 	c.Stderr = &out
 	c.Env = append(os.Environ(),
