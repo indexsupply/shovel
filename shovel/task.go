@@ -1191,7 +1191,6 @@ func (ig Integration) sourceConfig(name string) (SourceConfig, error) {
 type DashboardConf struct {
 	EnableLoopbackAuthn bool   `json:"enable_loopback_authn"`
 	DisableAuthn        bool   `json:"disable_authn"`
-	CookieSecret        string `json:"cookie_secret"`
 	RootPassword        string `json:"root_password"`
 }
 

@@ -46,9 +46,10 @@ var htmlpages = map[string]string{
 }
 
 type Handler struct {
-	pgp  *pgxpool.Pool
-	mgr  *shovel.Manager
-	conf *shovel.Config
+	local bool
+	pgp   *pgxpool.Pool
+	mgr   *shovel.Manager
+	conf  *shovel.Config
 
 	clientsMutex sync.Mutex
 	clients      map[string]chan []byte
@@ -61,7 +62,6 @@ type Handler struct {
 
 func New(mgr *shovel.Manager, conf *shovel.Config, pgp *pgxpool.Pool) *Handler {
 	h := &Handler{
-		local:     true,
 		pgp:       pgp,
 		mgr:       mgr,
 		conf:      conf,
