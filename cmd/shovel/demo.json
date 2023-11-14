@@ -1,44 +1,46 @@
 {
     "pg_url": "postgres:///shovel",
     "eth_sources": [
-        {"name": "goerli", "chain_id": 5, "url": "https://5.rlps.indexsupply.net"}
+        {"name": "mainnet", "chain_id": 1, "url": "https://1.rlps.indexsupply.net"},
+        {"name": "base", "chain_id": 8453, "url": "https://8453.rlps.indexsupply.net"}
     ],
     "integrations": [
-        {
-            "name": "t1",
-            "enabled": true,
-            "sources": [{"name": "goerli"}],
-            "table": {
-                "name": "t1",
-                "columns": [
-                    {"name": "chain_id", "type": "numeric"},
-                    {"name": "block_num", "type": "numeric"},
-                    {"name": "tx_hash", "type": "bytea"}
-                ]
-            },
-            "block": [
-                {"name": "chain_id", "column": "chain_id"},
-                {"name": "block_num", "column": "block_num"},
-                {"name": "tx_hash", "column": "tx_hash"}
-            ]
-        },
-        {
-            "name": "t2",
-            "enabled": true,
-            "sources": [{"name": "goerli"}],
-            "table": {
-                "name": "t2",
-                "columns": [
-                    {"name": "chain_id", "type": "numeric"},
-                    {"name": "block_num", "type": "numeric"},
-                    {"name": "tx_hash", "type": "bytea"}
-                ]
-            },
-            "block": [
-                {"name": "chain_id", "column": "chain_id"},
-                {"name": "block_num", "column": "block_num"},
-                {"name": "tx_hash", "column": "tx_hash"}
-            ]
-        }
+		{
+			"name": "usdc-transfer",
+			"enabled": true,
+			"sources": [{"name": "mainnet"}, {"name": "base"}],
+			"table": {
+				"name": "usdc",
+				"columns": [
+					{"name": "log_addr",	"type": "bytea"},
+					{"name": "block_time",	"type": "numeric"},
+					{"name": "f",			"type": "bytea"},
+					{"name": "t",			"type": "bytea"},
+					{"name": "v",			"type": "numeric"}
+				]
+			},
+			"block": [
+				{"name": "block_time", "column": "block_time"},
+				{
+					"name": "log_addr",
+					"column": "log_addr",
+					"filter_op": "contains",
+					"filter_arg": [
+						"a0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+						"833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+					]
+				}
+			],
+			"event": {
+				"name": "Transfer",
+				"type": "event",
+				"anonymous": false,
+				"inputs": [
+					{"indexed": true,  "name": "from",	"type": "address", "column": "f"},
+					{"indexed": true,  "name": "to",	"type": "address", "column": "t"},
+					{"indexed": false, "name": "value",	"type": "uint256", "column": "v"}
+				]
+			}
+		}
     ]
 }
