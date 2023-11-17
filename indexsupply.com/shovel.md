@@ -1,5 +1,4 @@
-<style>
-</style>
+<data id="title">Sho Sho Shovel</data>
 
 # Shovel
 

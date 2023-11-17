@@ -20,6 +20,7 @@ import (
 	"github.com/yuin/goldmark/extension"
 	"github.com/yuin/goldmark/parser"
 	ghtml "github.com/yuin/goldmark/renderer/html"
+	"golang.org/x/net/html"
 )
 
 var (
@@ -113,7 +114,29 @@ func render(f *os.File) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("adding layout %s: %w", f.Name(), err)
 	}
-	return res, nil
+	return title(res), nil
+}
+
+func title(body []byte) []byte {
+	doc, err := html.Parse(bytes.NewReader(body))
+	check(err)
+
+	var title string
+	var f func(*html.Node) *html.Node
+	f = func(n *html.Node) *html.Node {
+		if n.Type == html.ElementNode && n.Data == "title" {
+			title = n.FirstChild.Data
+			return n
+		}
+		for c := n.FirstChild; c != nil; c = c.NextSibling {
+			if d := f(c); d != nil {
+				n.RemoveChild(d)
+			}
+		}
+		return nil
+	}
+	f(doc)
+	return bytes.Replace(body, []byte("{{Title}}"), []byte(title), 1)
 }
 
 func layout(p string, src []byte) ([]byte, error) {
@@ -131,7 +154,7 @@ func layout(p string, src []byte) ([]byte, error) {
 	if len(l) == 0 {
 		return nil, fmt.Errorf("unable to find a _layout.html file")
 	}
-	return bytes.Replace(l, []byte("XXX"), src, 1), nil
+	return bytes.Replace(l, []byte("{{Body}}"), src, 1), nil
 }
 
 func upload(p string, fi os.FileInfo, err error) error {
@@ -195,8 +218,6 @@ func putFile(b []byte, bucket, key string) error {
 	return err
 }
 
-// since we overwrite the binaries in the 'main' dir
-// we need to inform cloudfront's cache of the change
 func invalidate() error {
 	var ref [1 << 5]byte
 	rand.Read(ref[:])

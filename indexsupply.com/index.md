@@ -1,4 +1,4 @@
-# Index Supply, Co.
+# Index Supply
 
 We build open source tools and host services for developers who want an open, simple, reliable, and no-nonsense experience for Ethereum app development.
 
