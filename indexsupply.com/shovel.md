@@ -1,4 +1,4 @@
-<data id="title">Sho Sho Shovel</data>
+<title>Index Supply / Shovel</title>
 
 # Shovel
 

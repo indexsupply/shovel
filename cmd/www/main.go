@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/PuerkitoBio/goquery"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/cloudfront"
@@ -20,7 +21,6 @@ import (
 	"github.com/yuin/goldmark/extension"
 	"github.com/yuin/goldmark/parser"
 	ghtml "github.com/yuin/goldmark/renderer/html"
-	"golang.org/x/net/html"
 )
 
 var (
@@ -93,7 +93,6 @@ func render(f *os.File) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("reading %s: %w", f.Name(), err)
 	}
-
 	var buf bytes.Buffer
 	md := goldmark.New(
 		goldmark.WithRendererOptions(
@@ -114,29 +113,28 @@ func render(f *os.File) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("adding layout %s: %w", f.Name(), err)
 	}
-	return title(res), nil
+	return updateMetadata(res)
 }
 
-func title(body []byte) []byte {
-	doc, err := html.Parse(bytes.NewReader(body))
-	check(err)
-
-	var title string
-	var f func(*html.Node) *html.Node
-	f = func(n *html.Node) *html.Node {
-		if n.Type == html.ElementNode && n.Data == "title" {
-			title = n.FirstChild.Data
-			return n
-		}
-		for c := n.FirstChild; c != nil; c = c.NextSibling {
-			if d := f(c); d != nil {
-				n.RemoveChild(d)
-			}
-		}
-		return nil
+func updateMetadata(src []byte) ([]byte, error) {
+	doc, err := goquery.NewDocumentFromReader(bytes.NewReader(src))
+	if err != nil {
+		return nil, fmt.Errorf("loading goquery doc: %w", err)
 	}
-	f(doc)
-	return bytes.Replace(body, []byte("{{Title}}"), []byte(title), 1)
+	mdt := doc.Find(`body title`).First()
+	mdt.Remove()
+	doc.Find("title").SetText(mdt.Text())
+
+	mds := doc.Find(`body style`)
+	mds.Remove()
+	mdsHtml, err := goquery.OuterHtml(mds)
+	if err != nil {
+		return nil, fmt.Errorf("rendering style html: %w", err)
+	}
+	doc.Find("head").AppendHtml(mdsHtml)
+
+	r, err := doc.Find("html").Html()
+	return []byte(r), err
 }
 
 func layout(p string, src []byte) ([]byte, error) {
