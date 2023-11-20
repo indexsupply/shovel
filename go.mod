@@ -5,6 +5,7 @@ go 1.21
 require (
 	blake.io/pqx v0.2.1
 	filippo.io/age v1.0.0
+	github.com/PuerkitoBio/goquery v1.8.1
 	github.com/aws/aws-sdk-go v1.44.285
 	github.com/btcsuite/btcd/btcec/v2 v2.3.2
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.1.0
@@ -22,7 +23,6 @@ require (
 )
 
 require (
-	github.com/PuerkitoBio/goquery v1.8.1 // indirect
 	github.com/andybalholm/cascadia v1.3.1 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20221227161230-091c0ba34f0a // indirect
