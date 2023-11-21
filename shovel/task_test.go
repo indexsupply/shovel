@@ -790,7 +790,7 @@ func TestLoadTasks_Backfill(t *testing.T) {
 					},
 				},
 				SourceConfigs: []SourceConfig{
-					SourceConfig{Name: "foo", Start: 2},
+					SourceConfig{Name: "foo", Start: 2, Stop: 3},
 				},
 			},
 			Integration{
@@ -809,7 +809,7 @@ func TestLoadTasks_Backfill(t *testing.T) {
 					},
 				},
 				SourceConfigs: []SourceConfig{
-					SourceConfig{Name: "foo", Start: 1},
+					SourceConfig{Name: "foo", Start: 1, Stop: 3},
 				},
 			},
 		},
@@ -817,14 +817,16 @@ func TestLoadTasks_Backfill(t *testing.T) {
 	tasks, err := loadTasks(ctx, pg, conf)
 	diff.Test(t, t.Fatalf, err, nil)
 	diff.Test(t, t.Fatalf, len(tasks), 2)
-
 	diff.Test(t, t.Fatalf, tasks[0].backfill, false)
+	diff.Test(t, t.Errorf, tasks[1].backfill, true)
 
 	tg := &testGeth{}
 	tg.add(0, hash(0), hash(0))
 	tg.add(1, hash(1), hash(0))
 	tg.add(2, hash(2), hash(1))
 	tg.add(3, hash(3), hash(2))
+	tg.add(4, hash(4), hash(3))
+	tg.add(5, hash(5), hash(4))
 
 	tasks[0].parts[0].src = tg
 	diff.Test(t, t.Errorf, nil, tasks[0].Setup())
@@ -835,7 +837,7 @@ func TestLoadTasks_Backfill(t *testing.T) {
 		and backfill = false
 	`)
 	checkQuery(t, pg, `
-		select num = 2
+		select num = 4
 		from shovel.task_updates
 		where src_name = 'foo'
 		and backfill = false
@@ -847,14 +849,14 @@ func TestLoadTasks_Backfill(t *testing.T) {
 		and backfill = false
 	`)
 	checkQuery(t, pg, `
-		select num = 2
+		select num = 4
 		from shovel.ig_updates
 		where src_name = 'foo'
 		and name = 'baz'
 		and backfill = false
 	`)
 	checkQuery(t, pg, `
-		select num = 2
+		select num = 4
 		from shovel.ig_updates
 		where src_name = 'foo'
 		and name = 'bar'
@@ -863,7 +865,7 @@ func TestLoadTasks_Backfill(t *testing.T) {
 	tasks[1].parts[0].src = tg
 	diff.Test(t, t.Errorf, nil, tasks[1].Setup())
 	diff.Test(t, t.Errorf, uint64(1), tasks[1].start)
-	diff.Test(t, t.Errorf, uint64(2), tasks[1].stop)
+	diff.Test(t, t.Errorf, uint64(3), tasks[1].stop)
 	checkQuery(t, pg, `
 		select count(*) = 1
 		from shovel.task_updates

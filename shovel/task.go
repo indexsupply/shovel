@@ -231,6 +231,9 @@ func (t *Task) Setup() error {
 			if t.igRange[i].start < t.start || t.start == 0 {
 				t.start = t.igRange[i].start
 			}
+			if t.igRange[i].stop > sc.Stop && sc.Stop > 0 {
+				t.igRange[i].stop = sc.Stop
+			}
 			if t.igRange[i].stop > t.stop {
 				t.stop = t.igRange[i].stop
 			}
