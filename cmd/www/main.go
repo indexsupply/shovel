@@ -100,7 +100,10 @@ func render(f *os.File) ([]byte, error) {
 			ghtml.WithUnsafe(),
 			ghtml.WithXHTML(),
 		),
-		goldmark.WithExtensions(extension.Typographer),
+		goldmark.WithExtensions(
+			extension.Typographer,
+			extension.GFM,
+		),
 		goldmark.WithParserOptions(
 			parser.WithAutoHeadingID(),
 		),
@@ -174,7 +177,7 @@ func upload(p string, fi os.FileInfo, err error) error {
 		if err != nil {
 			return fmt.Errorf("rendering file %s: %w", f.Name(), err)
 		}
-		return putFile(b, bucket, key(p))
+		return putFile(b, bucket, key(f.Name()))
 	case filepath.Ext(p) == ".md":
 		f, err := os.Open(p)
 		if err != nil {

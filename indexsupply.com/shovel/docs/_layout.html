@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<title></title>
+	<meta charset="utf-8">
+	<meta name="Description" content="Software for indexing Ethereum.">
+	<meta name=viewport content=initial-scale=1>
+	<style>
+		html { overflow-x:hidden; }
+		body {
+			overflow-x:hidden;
+
+			font-family: system-ui, Georgia, serif;
+			font-size: 0.95em;
+			letter-spacing: -0.005em;
+			line-height: 1.58;
+
+			max-width: 700px;
+			margin: 0 auto;
+
+			display: flex;
+			flex-wrap: wrap;
+			flex-direction: row;
+		}
+		h1 {
+			font-size: 2em;
+			font-weight: 600;
+			margin: 0 0 10px 0;
+		}
+		h2 {
+			font-weight: 400;
+			margin: 0 0 5px 0;
+		}
+		a:link {color: #24303d}
+		a:visited {color: #24303d}
+		img {
+			background: transparent;
+			width: 98vw;
+			max-width: 100%;
+		}
+		ul {
+			margin-top: 0px;
+			padding-left: 15px;
+			list-style-type: "- ";
+		}
+		pre {
+			margin: 0 0 20px 0;
+			padding: 5px;
+			background-color: whitesmoke;
+			overflow: scroll;
+		}
+		details {
+			margin: 10px 0 0 0;
+		}
+		summary h2 {
+			display: inline;
+		}
+		footer {
+			font-size: small;
+		}
+		@media (prefers-color-scheme: dark) {
+			body {
+				background-color: rgb(40,40,41);
+				color: rgb(220,220,220);
+			}
+			a:link {color: rgb(220,220,220);}
+			a:visited {color: rgb(220,220,220);}
+			img { background-color: whitesmoke;}
+        	pre {background-color: #202020;}
+		}
+		nav {
+			position: fixed;
+			width: 200px;
+		}
+		header h1 {
+			margin-top: 0;
+			padding-top: 0;
+		}
+		main {
+			margin-left: 200px;
+			width: 500px;
+		}
+	</style>
+</head>
+<body>
+	<nav>
+		<header><h1>Shovel Docs</h1></header>
+		<ul><li><a href="#getting-started">Getting Started</a></li></ul>
+	</nav>
+	<main>
+		<header><h1 id="getting-started">Getting Started</h1></header>
+		<section>{{Body}}</section>
+		<footer>
+			<a href="mailto:info@indexsupply.com">info@indexsupply.com</a>
+			<span>,</span>
+			<a href="https://twitter.com/indexsupply">@indexsupply</a>
+			<span>,</span>
+			<a href="https://github.com/indexsupply/code">github.com/indexsupply</a>
+		</footer>
+	</main>
+</body>
+</html>
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+	let navList = document.querySelector("nav ul");
+	document.querySelectorAll("h2, h3").forEach(h => {
+		let a = document.createElement("a");
+		a.appendChild(document.createTextNode(h.textContent));
+		a.href = `#${h.id}`
+
+		let li = document.createElement("li");
+		li.appendChild(a);
+		navList.appendChild(li);
+	});
+});
+</script>
