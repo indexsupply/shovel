@@ -100,7 +100,10 @@ func render(f *os.File) ([]byte, error) {
 			ghtml.WithUnsafe(),
 			ghtml.WithXHTML(),
 		),
-		goldmark.WithExtensions(extension.Typographer),
+		goldmark.WithExtensions(
+			extension.Typographer,
+			extension.GFM,
+		),
 		goldmark.WithParserOptions(
 			parser.WithAutoHeadingID(),
 		),
@@ -174,7 +177,10 @@ func upload(p string, fi os.FileInfo, err error) error {
 		if err != nil {
 			return fmt.Errorf("rendering file %s: %w", f.Name(), err)
 		}
-		return putFile(b, bucket, key(p))
+		var key string
+		key = fmt.Sprintf("%s/index.html", p)
+		key = strings.TrimPrefix(key, dir)
+		return putFile(b, bucket, key)
 	case filepath.Ext(p) == ".md":
 		f, err := os.Open(p)
 		if err != nil {
@@ -186,24 +192,13 @@ func upload(p string, fi os.FileInfo, err error) error {
 		if err != nil {
 			return fmt.Errorf("rendering file %s: %w", f.Name(), err)
 		}
-		return putFile(b, bucket, key(p))
+		var key string
+		key = strings.TrimPrefix(p, dir)
+		key = strings.TrimSuffix(key, filepath.Ext(key))
+		return putFile(b, bucket, key)
 	default:
 		return nil
 	}
-}
-
-func key(fileName string) string {
-	k := strings.TrimSuffix(
-		strings.TrimPrefix(
-			fileName,
-			dir,
-		),
-		filepath.Ext(fileName),
-	)
-	if k == "" {
-		k = "index.html"
-	}
-	return k
 }
 
 func putFile(b []byte, bucket, key string) error {
