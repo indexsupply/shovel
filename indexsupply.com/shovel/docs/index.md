@@ -1,3 +1,5 @@
+<title>Shovel Docs</title>
+
 Here are things you'll need before you get started
 
 1. Linux or Mac
