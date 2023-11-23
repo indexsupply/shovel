@@ -1,0 +1,21 @@
+{
+  "pg_url": "postgres:///shovel",
+  "eth_sources": [
+	  {
+		  "name": "fast",
+		  "chain_id": 1,
+		  "url": "https://1.rlps.indexsupply.net",
+		  "concurrency": 10,
+		  "batch_size": 100
+	  }
+  ],
+  "integrations": [{
+    "name": "fast",
+    "enabled": true,
+    "sources": [{"name": "fast", "start": 1}],
+    "table": {"name": "fast", "columns": []},
+    "block": [],
+    "event": {}
+  }]
+}
+

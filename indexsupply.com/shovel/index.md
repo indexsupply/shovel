@@ -43,7 +43,7 @@ Shovel is configured using declarative JSON that maps the data you care about on
             {"name": "log_addr",   "type": "bytea"},
             {"name": "block_time", "type": "numeric"},
             {"name": "f",          "type": "bytea"},
-            {"name": "t"           "type": "bytea"},
+            {"name": "t",          "type": "bytea"},
             {"name": "v",          "type": "numeric"}
           ]
       },

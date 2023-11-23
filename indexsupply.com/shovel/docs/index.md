@@ -1,5 +1,44 @@
 <title>Shovel Docs</title>
 
+Shovel's main thing is indexing Transactions and Events.
+
+To do this, you will create a JSON config file defining the events and block data that you want to save along with the Postgres table that will store the saved data. With this file, you can start indexing by running Shovel:
+
+```
+./shovel -config config.json
+```
+
+<details>
+<summary>Here is the smallest possible config file</summary>
+
+```
+{
+  "pg_url": "postgres:///shovel",
+  "eth_sources": [{"name": "m", "chain_id": 1, "url": "https://1.rlps.indexsupply.net"}],
+  "integrations": [{
+    "name": "small",
+    "enabled": true,
+    "sources": [{"name": "m"}],
+    "table": {"name": "small", "columns": []},
+    "block": [],
+    "event": {}
+  }]
+}
+```
+_This config file works because there are required columns that are added to the table and to the block object array by default._
+</details>
+
+It's likely that you will want to index actual data. To do that, you'll need to fill in the `block` and `event` fields in the config object. See the following sections for instructions on how to do that:
+
+1. [Event](#event)
+2. [Block](#block)
+
+You can also browse [Examples](#examples) to find one that does what you need.
+
+<hr>
+
+## Install
+
 Here are things you'll need before you get started
 
 1. Linux or Mac
@@ -430,4 +469,312 @@ For the backfill task, when the delta is 0 the task exits. For a main task, when
 
 <hr>
 
+## Examples
 
+<details>
+<summary>Transaction Inputs</summary>
+
+```
+{
+  "pg_url": "postgres:///shovel",
+  "eth_sources": [
+    {
+      "name": "mainnet",
+      "chain_id": 1,
+      "url": "https://1.rlps.indexsupply.net"
+    }
+  ],
+  "integrations": [
+    {
+      "name": "specific-tx",
+      "enabled": true,
+      "sources": [
+        {
+          "name": "mainnet"
+        }
+      ],
+      "table": {
+        "name": "tx",
+        "columns": [
+          {
+            "name": "tx_input",
+            "type": "bytea"
+          }
+        ]
+      },
+      "block": [
+        {
+          "name": "tx_input",
+          "column": "tx_input",
+          "filter_op": "contains",
+          "filter_arg": [
+            "a1671295"
+          ]
+        }
+      ]
+    }
+  ]
+}
+```
+```
+shovel=# \d tx
+                  Table "public.tx"
+  Column   |  Type   | Collation | Nullable | Default
+-----------+---------+-----------+----------+---------
+ tx_input  | bytea   |           |          |
+ ig_name   | text    |           |          |
+ src_name  | text    |           |          |
+ block_num | numeric |           |          |
+ tx_idx    | integer |           |          |
+Indexes:
+    "u_tx" UNIQUE, btree (ig_name, src_name, block_num, tx_idx)
+```
+</details>
+
+<details>
+<summary>Backfilling with Concurrency</summary>
+
+```
+{
+  "pg_url": "postgres:///shovel",
+  "eth_sources": [
+    {
+      "name": "fast",
+      "chain_id": 1,
+      "url": "https://1.rlps.indexsupply.net",
+      "concurrency": 10,
+      "batch_size": 100
+    }
+  ],
+  "integrations": [{
+    "name": "fast",
+    "enabled": true,
+    "sources": [{"name": "fast", "start": 1}],
+    "table": {"name": "fast", "columns": []},
+    "block": [],
+    "event": {}
+  }]
+}
+```
+</details>
+
+<details>
+<summary>USDC Transfers on Multiple Chains</summary>
+
+```
+{
+  "pg_url": "postgres:///shovel",
+  "eth_sources": [
+    {"name": "mainnet", "chain_id": 1, "url": "https://1.rlps.indexsupply.net"},
+    {"name": "goerli",  "chain_id": 5, "url": "https://5.rlps.indexsupply.net"}
+  ],
+  "integrations": [
+    {
+      "name": "tokens",
+      "enabled": true,
+      "sources": [{"name": "mainnet"}, {"name": "goerli"}],
+      "table": {
+        "name": "transfers",
+          "columns": [
+            {"name": "chain_id",   "type": "numeric"},
+            {"name": "log_addr",   "type": "bytea"},
+            {"name": "block_time", "type": "numeric"},
+            {"name": "f",          "type": "bytea"},
+            {"name": "t"           "type": "bytea"},
+            {"name": "v",          "type": "numeric"}
+          ]
+      },
+      "block": [
+        {"name": "chain_id", "column": "chain_id"},
+        {"name": "block_time", "column": "block_time"},
+        {
+          "name": "log_addr",
+          "column": "log_addr",
+          "filter_op": "contains",
+          "filter_arg": ["a0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"]
+        }
+      ],
+      "event": {
+        "name": "Transfer",
+        "type": "event",
+        "anonymous": false,
+        "inputs": [
+          {"indexed": true,  "name": "from",  "type": "address", "column": "f"},
+          {"indexed": true,  "name": "to",    "type": "address", "column": "t"},
+          {"indexed": false, "name": "value", "type": "uint256", "column": "v"}
+        ]
+      }
+    }
+  ]
+}
+```
+```
+shovel=# \d transfers
+                Table "public.transfers"
+   Column   |   Type   | Collation | Nullable | Default
+------------+----------+-----------+----------+---------
+ chain_id   | numeric  |           |          |
+ log_addr   | bytea    |           |          |
+ block_time | numeric  |           |          |
+ f          | bytea    |           |          |
+ t          | bytea    |           |          |
+ v          | numeric  |           |          |
+ ig_name    | text     |           |          |
+ src_name   | text     |           |          |
+ block_num  | numeric  |           |          |
+ tx_idx     | integer  |           |          |
+ log_idx    | smallint |           |          |
+ abi_idx    | smallint |           |          |
+Indexes:
+    "u_transfers" UNIQUE, btree (ig_name, src_name, block_num, tx_idx, log_idx, abi_idx)
+```
+</details>
+
+<details>
+<summary>Seaport Sales (Complex ABI Decoding)</summary>
+
+```
+{
+  "pg_url": "postgres:///shovel",
+  "eth_sources": [
+    {
+      "name": "mainnet",
+      "chain_id": 1,
+      "url": "https://1.rlps.indexsupply.net"
+    }
+  ],
+  "integrations": [
+    {
+      "name": "seaport-orders",
+      "enabled": true,
+      "sources": [
+        {
+          "name": "mainnet"
+        }
+      ],
+      "table": {
+        "name": "seaport_orders",
+        "columns": [
+          {
+            "name": "order_hash",
+            "type": "bytea"
+          }
+        ]
+      },
+      "block": [],
+      "event": {
+        "name": "OrderFulfilled",
+        "type": "event",
+        "anonymous": false,
+        "inputs": [
+          {
+            "indexed": false,
+            "internalType": "bytes32",
+            "name": "orderHash",
+            "column": "order_hash",
+            "type": "bytes32"
+          },
+          {
+            "indexed": true,
+            "internalType": "address",
+            "name": "offerer",
+            "type": "address"
+          },
+          {
+            "indexed": true,
+            "internalType": "address",
+            "name": "zone",
+            "type": "address"
+          },
+          {
+            "indexed": false,
+            "internalType": "address",
+            "name": "recipient",
+            "type": "address"
+          },
+          {
+            "indexed": false,
+            "internalType": "struct SpentItem[]",
+            "name": "offer",
+            "type": "tuple[]",
+            "components": [
+              {
+                "internalType": "enum ItemType",
+                "name": "itemType",
+                "type": "uint8"
+              },
+              {
+                "internalType": "address",
+                "name": "token",
+                "type": "address"
+              },
+              {
+                "internalType": "uint256",
+                "name": "identifier",
+                "type": "uint256"
+              },
+              {
+                "internalType": "uint256",
+                "name": "amount",
+                "type": "uint256"
+              }
+            ]
+          },
+          {
+            "indexed": false,
+            "internalType": "struct ReceivedItem[]",
+            "name": "consideration",
+            "type": "tuple[]",
+            "components": [
+              {
+                "internalType": "enum ItemType",
+                "name": "itemType",
+                "type": "uint8"
+              },
+              {
+                "internalType": "address",
+                "name": "token",
+                "type": "address"
+              },
+              {
+                "internalType": "uint256",
+                "name": "identifier",
+                "type": "uint256"
+              },
+              {
+                "internalType": "uint256",
+                "name": "amount",
+                "type": "uint256"
+              },
+              {
+                "internalType": "address payable",
+                "name": "recipient",
+                "type": "address"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}
+```
+```
+shovel=# \d seaport_orders
+             Table "public.seaport_orders"
+   Column   |   Type   | Collation | Nullable | Default
+------------+----------+-----------+----------+---------
+ order_hash | bytea    |           |          |
+ ig_name    | text     |           |          |
+ src_name   | text     |           |          |
+ block_num  | numeric  |           |          |
+ tx_idx     | integer  |           |          |
+ log_idx    | smallint |           |          |
+ abi_idx    | smallint |           |          |
+Indexes:
+    "u_seaport_orders" UNIQUE, btree (ig_name, src_name, block_num, tx_idx, log_idx, abi_idx)
+```
+</details>
+
+You've reached the end. Thank you for reading.
+<hr>
