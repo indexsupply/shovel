@@ -9,10 +9,12 @@ Own your blockchain data without vendor lock-in.
 
 - Use **Ethereum**, **Base**, **Optimism**, **Arbitrum**, or any other EVM chain
 - Connect to hosted nodes (Alchemy, Quicknode) or local nodes (Geth, Reth)
-- Decode and save events to Postgres without writing custom functions
+- Decode and save events to Postgres <ins>without custom functions</ins>
 - Index Transactions and Block metadata too
 - Stay in sync with the latest blocks across many chains
 - Concurrently backfill data
+
+Learn more in the [docs](/shovel/docs).
 
 ## Checkout this Demo
 
