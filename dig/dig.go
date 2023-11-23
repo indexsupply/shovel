@@ -939,7 +939,7 @@ func (ig Integration) processLog(rows [][]any, lwc *logWithCtx) ([][]any, error)
 		return rows, nil
 	case !bytes.Equal(ig.sighash, lwc.l.Topics[0]):
 		return rows, nil
-	case ig.numSelected > ig.numIndexed:
+	case len(lwc.l.Data) > 0:
 		err := ig.resultCache.Scan(lwc.l.Data)
 		if err != nil {
 			return nil, fmt.Errorf("scanning abi data: %w", err)
