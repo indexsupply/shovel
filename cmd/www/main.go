@@ -169,7 +169,7 @@ func upload(p string, fi os.FileInfo, err error) error {
 	case fi.IsDir():
 		f, err := os.Open(path.Join(p, "index.md"))
 		if err != nil {
-			fmt.Printf("skipping %s: %s\n", f.Name(), err)
+			fmt.Printf("skipping %s: %s\n", p, err)
 			return nil
 		}
 		defer f.Close()
