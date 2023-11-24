@@ -144,6 +144,28 @@ These logs indicate that Shovel has initialized and is beginning to index data.
 
 <hr>
 
+## Postgres
+
+A single shovel connects to a single postgres. A connection is made using the URL defined in the config object.
+
+```
+{
+  "pg_url": "postgres:///shovel",
+  ...
+}
+```
+
+It is possible to use an environment variable in the config object so that you don't have to embed your database password into the file.
+
+```
+{
+  "pg_url": "$DATABASE_URL",
+  ...
+}
+```
+
+Any value that is prefixed with a `$` will instruct Shovel to read from the environment. So something like `$PG_URL` works too.
+
 ## Ethereum Sources
 
 A single Shovel process can connect to many Ethereum sources. Each Ethereum source is identified by name and is supplemented with a chain id and a URL. Shovel will use the JSON RPC API on the other end of the URL. Shovel uses the following RPC methods:
