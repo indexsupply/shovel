@@ -144,6 +144,59 @@ These logs indicate that Shovel has initialized and is beginning to index data.
 
 <hr>
 
+## Ethereum Sources
+
+A single Shovel process can connect to many Ethereum sources. Each Ethereum source is identified by name and is supplemented with a chain id and a URL. Shovel will use the JSON RPC API on the other end of the URL. Shovel uses the following RPC methods:
+
+1. eth_getBlockByNumber
+2. eth_getLogs
+
+Upon startup, Shovel will use `eth_getBlockByNumber` to find the latest block. It will then compare that with its latest block in Postgres to figure out where to begin. While indexing data, Shovel will make batched calls to `eth_getBlockByNumber` and a single call to `eth_getLogs` (depending on the configured batch size).
+
+Ethereum sources are defined at the top level configuration object and then referenced in each integration.
+
+```
+{
+  ...
+  "eth_sources": [
+    {
+      "name": "",
+      "chain_id": 0,
+      "url": "",
+      "batch_size": 1,
+      "concurrency": 1
+    }
+  ],
+  "integrations": [
+    {
+      ...
+      "sources": [
+        {
+          "name": "",
+          "start": 0,
+          "stop": 0
+      ]
+    }
+  ]
+}
+```
+
+**eth_sources**
+
+- **name** A unique name identifying the Ethereum source. This will be used throughout the system to identify the source of the data. It is also used as a foreign key in `integrations[].sources.name`
+- **chain_id** There isn't a whole lot that depends on this value at the moment (ie no crypto functions) but it will end up in the integrations tables.
+- **url** A URL that points to a JSON RPC API. This can be a local {G,R}eth node or a Quicknode.
+- **batch_size** The maximum number of batched requests to make to the JSON RPC API. This can speed up backfill operations but will potentially use a lot of API credits if you are running on a hosted node.
+- **concurrency** The maximum number of concurrent threads to run within a task. This value relates to `batch_size` in that for each task, the `batch_size` is partitioned amongst `concurrency` threads.
+
+**integrations[].sources**
+
+- **name** References the Ethereum source in the top level `eth_sources` field.
+- **start** Optional. Only required if you want to backfill the integration. When you set start > 0 Shovel will create a task to track the latest blocks on the chain while concurrently creating a backfill task starting at `start`.
+- **stop** Optional. If for some reason you don't want to backfill the entire chain but only a portion you can specify a `stop` value and the backfill will not index data that is < start or > stop.
+
+<hr>
+
 ## Table
 
 Each integration contains a `table` object. It is possible for many integrations to write to the same table even if they have unique sets of columns. On startup, Shovel will create the table if it doesn't exist (using the name) and then add missing columns.
@@ -245,7 +298,7 @@ Here is a config snippet outlining how to index block data
   - `tx_type   int`
   - `log_idx   int`
   - `log_addr  bytea`
-- **column** The name of the coresponding column in the table definition.
+- **column** The name of the corresponding column in the table definition.
 - **filter_op** See [filters](#filters) for available operations and usage.
 - **filter_arg** See [filters](#filters) for available operations and usage.
 
@@ -285,7 +338,7 @@ This config uses the contains filter operation on the tx_input to index transact
 
 ## Event
 
-The event config object is used for decoding logs/events. By adding an annotated ABI snippet to the event config, Shovel will match relevenat logs, decode the logs using our optimized ABI decoder, and save the decoded result into your integration's table.
+The event config object is used for decoding logs/events. By adding an annotated ABI snippet to the event config, Shovel will match relevant logs, decode the logs using our optimized ABI decoder, and save the decoded result into your integration's table.
 
 Here is a config snippet outlining how to index event data
 
@@ -339,7 +392,7 @@ In both cases, an item can be filtered using two fields: `filter_op` and `filter
 
 **filter_op**
 
-Current filter operations include: `conatins` and `!contains`
+Current filter operations include: `contains` and `!contains`
 
 **contains** takes an item (implicitly) and an array of hex encoded bytes. It compares the item to see if the item is contained in at least one of the hex encoded byte arrays in the argument.
 
@@ -373,7 +426,7 @@ Date:   Mon Nov 13 20:54:17 2023 -0800
 
 ## Database Schema
 
-There are 2 parts to Shovel's databse schema. The first are the tables that are created in the `public` schema as a result of the table definitions in each integration's config. The second are tables located in the `shovel` schema that are related to Shovel's internal operations.
+There are 2 parts to Shovel's database schema. The first are the tables that are created in the `public` schema as a result of the table definitions in each integration's config. The second are tables located in the `shovel` schema that are related to Shovel's internal operations.
 
 As Shovel indexes batches of blocks, each set of database operations are done within a Postgres transaction. This means that the internal tables and public integration tables are atomically updated. Therefore the database remains consistent in the event of a crash. For example, if there is a task_update record for block X then you can be sure that the integration tables contain data for block X --and vice versa.
 
@@ -463,7 +516,7 @@ Therefore, on startup, Shovel parses the config, and creates a set of tasks, one
 
 The tasks then are initialized, where they setup their book keeping records in the database, and then each task begins Converging.
 
-Convergence is the process where the task figures out the Ethereum Source's latest block, and it figures out the task's latest block in the database, and then proceeds to download and index the detla.
+Convergence is the process where the task figures out the Ethereum Source's latest block, and it figures out the task's latest block in the database, and then proceeds to download and index the delta.
 
 For the backfill task, when the delta is 0 the task exits. For a main task, when the delta is 0, it sleeps for a second before attempting to converge again.
 
