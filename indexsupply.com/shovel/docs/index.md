@@ -166,6 +166,8 @@ It is possible to use an environment variable in the config object so that you d
 
 Any value that is prefixed with a `$` will instruct Shovel to read from the environment. So something like `$PG_URL` works too.
 
+<hr>
+
 ## Ethereum Sources
 
 A single Shovel process can connect to many Ethereum sources. Each Ethereum source is identified by name and is supplemented with a chain id and a URL. Shovel will use the JSON RPC API on the other end of the URL. Shovel uses the following RPC methods:
@@ -541,6 +543,64 @@ The tasks then are initialized, where they setup their book keeping records in t
 Convergence is the process where the task figures out the Ethereum Source's latest block, and it figures out the task's latest block in the database, and then proceeds to download and index the delta.
 
 For the backfill task, when the delta is 0 the task exits. For a main task, when the delta is 0, it sleeps for a second before attempting to converge again.
+
+<hr>
+
+## Dashboard
+
+Shovel comes with a dashboard that can be used to:
+
+1. Monitor the status of Shovel
+2. Add new Ethereum Sources
+3. Add new Integrations
+
+Since the dashboard can affect the operations of Shovel it requires authentication. Here is how the authentication works:
+
+By default non localhost requests will require authentication. This is to prevent someone accidentally exposing their unsecured Shovel dashboard to the internet.
+
+By default localhost requests will require no authentication.
+
+When authentication is enabled (by default or otherwise) the password will be either:
+
+1. Set via the config
+2. Randomly generated when the config file doesn't specify a password.
+
+To set a password using the config file
+
+```
+{
+  ...
+  "dashboard": {
+    "root_password": ""
+  }
+}
+```
+
+If the config is ommitted then Shovel will print the randomly generated password to the logs when a login web request is made. It will look like this
+
+```
+... password=171658e9feca092b msg=random-temp-password ...
+```
+
+Localhost authentication may be desirable for Shovel developers wanting to test the authentication bits. This is achieved with the following config
+```
+{
+  ...
+  "dashboard": {
+    "enable_loopback_authn": true
+  }
+}
+```
+
+Authentication can be disabled entirely via:
+```
+{
+  ...
+  "dashboard": {
+    "disable_authn": true
+  }
+}
+```
 
 <hr>
 
