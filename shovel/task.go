@@ -228,6 +228,10 @@ func (t *Task) Setup() error {
 			if err := t.igRange[i].load(t.ctx, t.pgp, ig.Name, sc.Name); err != nil {
 				return fmt.Errorf("loading dest range for %s/%s: %w", ig.Name, sc.Name, err)
 			}
+			if t.igRange[i].complete() {
+				slog.InfoContext(t.ctx, "complete", "src", sc.Name, "ig", ig.Name)
+				continue
+			}
 			if t.igRange[i].start < t.start || t.start == 0 {
 				t.start = t.igRange[i].start
 			}
@@ -609,6 +613,10 @@ func validateChain(ctx context.Context, parent []byte, blks []eth.Block) error {
 }
 
 type igRange struct{ start, stop uint64 }
+
+func (r *igRange) complete() bool {
+	return r.start+1 == r.stop
+}
 
 func (r *igRange) load(ctx context.Context, pg wpg.Conn, name, srcName string) error {
 	const startQuery = `
