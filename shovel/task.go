@@ -1118,10 +1118,10 @@ func getDest(pgp wpg.Conn, ig Integration) (Destination, error) {
 
 func GetSource(sc SourceConfig) Source {
 	switch {
-	case strings.Contains(sc.URL, "rlps"):
-		return rlps.NewClient(sc.ChainID, sc.URL)
-	case strings.HasPrefix(sc.URL, "http"):
-		return jrpc2.New(sc.ChainID, sc.URL)
+	case strings.Contains(string(sc.URL), "rlps"):
+		return rlps.NewClient(sc.ChainID, string(sc.URL))
+	case strings.HasPrefix(string(sc.URL), "http"):
+		return jrpc2.New(sc.ChainID, string(sc.URL))
 	default:
 		// TODO add back support for local geth
 		panic(fmt.Sprintf("unsupported src type: %v", sc))
@@ -1167,13 +1167,13 @@ func SourceConfigs(ctx context.Context, pgp *pgxpool.Pool) ([]SourceConfig, erro
 }
 
 type SourceConfig struct {
-	Name        string `json:"name"`
-	ChainID     uint64 `json:"chain_id"`
-	URL         string `json:"url"`
-	Start       uint64 `json:"start"`
-	Stop        uint64 `json:"stop"`
-	Concurrency int    `json:"concurrency"`
-	BatchSize   int    `json:"batch_size"`
+	Name        string        `json:"name"`
+	ChainID     uint64        `json:"chain_id"`
+	URL         wos.EnvString `json:"url"`
+	Start       uint64        `json:"start"`
+	Stop        uint64        `json:"stop"`
+	Concurrency int           `json:"concurrency"`
+	BatchSize   int           `json:"batch_size"`
 }
 
 type Compiled struct {

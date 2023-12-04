@@ -219,6 +219,21 @@ Ethereum sources are defined at the top level configuration object and then refe
 - **start** Optional. Only required if you want to backfill the integration. When you set start > 0 Shovel will create a task to track the latest blocks on the chain while concurrently creating a backfill task starting at `start`.
 - **stop** Optional. If for some reason you don't want to backfill the entire chain but only a portion you can specify a `stop` value and the backfill will not index data that is < start or > stop.
 
+It is possible to use an environment variable in the config object so that you don't have to embed your node url secret into the file.
+
+```
+{
+  ...
+  "eth_sources": [
+    {
+      ...
+      "url": "$RPC_URL"
+    }
+  ],
+```
+
+Any value that is prefixed with a `$` will instruct Shovel to read from the environment. So something like `$L1_URL` works too.
+
 <hr>
 
 ## Table
