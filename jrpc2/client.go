@@ -92,6 +92,13 @@ func (c *Client) Latest() (uint64, []byte, error) {
 	if err := json.NewDecoder(c.debug(resp)).Decode(&bresp); err != nil {
 		return 0, nil, fmt.Errorf("unable to decode json into response: %w", err)
 	}
+	if bresp.Error.Code != 0 {
+		return 0, nil, fmt.Errorf("rpc error: %s %d %s",
+			"eth_getBlockByNumber-latest",
+			bresp.Error.Code,
+			bresp.Error.Message,
+		)
+	}
 	return bresp.Num(), bresp.Hash(), nil
 }
 
@@ -109,6 +116,13 @@ func (c *Client) Hash(n uint64) ([]byte, error) {
 	bresp := blockResp{Block: &eth.Block{}}
 	if err := json.NewDecoder(resp).Decode(&bresp); err != nil {
 		return nil, fmt.Errorf("unable to decode json into response: %w", err)
+	}
+	if bresp.Error.Code != 0 {
+		return nil, fmt.Errorf("rpc error: %s %d %s",
+			"eth_getBlockByNumber-hash",
+			bresp.Error.Code,
+			bresp.Error.Message,
+		)
 	}
 	return bresp.Hash(), nil
 }
