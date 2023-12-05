@@ -427,6 +427,10 @@ func (task *Task) Converge(notx bool) error {
 			gethNum = task.stop
 		}
 		if localNum > gethNum {
+			slog.ErrorContext(task.ctx, "ahead",
+				"local", fmt.Sprintf("%d %.4x", localNum, localHash),
+				"remote", fmt.Sprintf("%d %.4x", gethNum, gethHash),
+			)
 			return ErrAhead
 		}
 		if localNum == gethNum {
