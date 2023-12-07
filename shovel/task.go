@@ -251,10 +251,10 @@ func (t *Task) Setup() error {
 			return fmt.Errorf("resetting backfill task %s: %q", t.srcConfig.Name, err)
 		}
 		const iq = `
-			insert into shovel.task_updates(src_name, backfill, num, hash)
-			values ($1, $2, $3, $4)
+			insert into shovel.task_updates(chain_id, src_name, backfill, num, hash)
+			values ($1, $2, $3, $4, $5)
 		`
-		_, err = t.pgp.Exec(t.ctx, iq, t.srcConfig.Name, t.backfill, t.start, h)
+		_, err = t.pgp.Exec(t.ctx, iq, t.srcConfig.ChainID, t.srcConfig.Name, t.backfill, t.start, h)
 		if err != nil {
 			return fmt.Errorf("inserting into task table: %w", err)
 		}
@@ -303,10 +303,10 @@ func (t *Task) initRows(n uint64, h []byte) error {
 	switch {
 	case errors.Is(err, pgx.ErrNoRows):
 		const iq = `
-			insert into shovel.task_updates(src_name, backfill, num, hash)
-			values ($1, $2, $3, $4)
+			insert into shovel.task_updates(chain_id, src_name, backfill, num, hash)
+			values ($1, $2, $3, $4, $5)
 		`
-		_, err := t.pgp.Exec(t.ctx, iq, t.srcConfig.Name, t.backfill, n, h)
+		_, err := t.pgp.Exec(t.ctx, iq, t.srcConfig.ChainID, t.srcConfig.Name, t.backfill, n, h)
 		if err != nil {
 			return fmt.Errorf("inserting into task table: %w", err)
 		}
@@ -479,6 +479,7 @@ func (task *Task) Converge(notx bool) error {
 			var last = task.batch[delta-1]
 			const uq = `
 				insert into shovel.task_updates (
+					chain_id,
 					src_name,
 					backfill,
 					num,
@@ -490,9 +491,10 @@ func (task *Task) Converge(notx bool) error {
 					nrows,
 					latency
 				)
-				values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+				values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 			`
 			_, err := pg.Exec(task.ctx, uq,
+				task.srcConfig.ChainID,
 				task.srcConfig.Name,
 				task.backfill,
 				last.Num(),

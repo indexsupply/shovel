@@ -56,7 +56,7 @@ CREATE TABLE shovel.sources (
 
 
 CREATE TABLE shovel.task_updates (
-    num bigint,
+    num numeric,
     hash bytea,
     insert_at timestamp with time zone DEFAULT now(),
     src_hash bytea,
@@ -66,7 +66,8 @@ CREATE TABLE shovel.task_updates (
     latency interval,
     backfill boolean DEFAULT false,
     src_name text,
-    stop numeric
+    stop numeric,
+    chain_id integer
 );
 
 

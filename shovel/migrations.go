@@ -71,4 +71,7 @@ var Migrations = map[int]pgmig.Migration{
 			where (backfill = false);
 		`,
 	},
+	1: pgmig.Migration{
+		SQL: "alter table shovel.task_updates add column chain_id int",
+	},
 }
