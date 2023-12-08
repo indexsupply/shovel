@@ -830,6 +830,7 @@ func (ig Integration) Insert(ctx context.Context, pg wpg.Conn, blocks []eth.Bloc
 	)
 	for bidx := range blocks {
 		lwc.b = &blocks[bidx]
+		lwc.lpos = 0
 		for ridx := range blocks[bidx].Receipts {
 			lwc.r = &lwc.b.Receipts[ridx]
 			lwc.t = &lwc.b.Txs[ridx]
@@ -843,11 +844,11 @@ func (ig Integration) Insert(ctx context.Context, pg wpg.Conn, blocks []eth.Bloc
 			}
 			for lidx := range blocks[bidx].Receipts[ridx].Logs {
 				lwc.l = &lwc.r.Logs[lidx]
-				lwc.lidx = lidx
 				rows, err = ig.processLog(rows, lwc)
 				if err != nil {
 					return 0, fmt.Errorf("processing log: %w", err)
 				}
+				lwc.lpos++
 			}
 		}
 	}
@@ -860,12 +861,13 @@ func (ig Integration) Insert(ctx context.Context, pg wpg.Conn, blocks []eth.Bloc
 }
 
 type logWithCtx struct {
-	ctx        context.Context
-	b          *eth.Block
-	t          *eth.Tx
-	r          *eth.Receipt
-	l          *eth.Log
-	ridx, lidx int
+	ctx  context.Context
+	b    *eth.Block
+	t    *eth.Tx
+	r    *eth.Receipt
+	l    *eth.Log
+	ridx int
+	lpos int
 }
 
 func (lwc *logWithCtx) get(name string) any {
@@ -902,7 +904,7 @@ func (lwc *logWithCtx) get(name string) any {
 	case "tx_type":
 		return lwc.t.Type
 	case "log_idx":
-		return lwc.lidx
+		return lwc.lpos
 	case "log_addr":
 		return lwc.l.Address.Bytes()
 	default:
