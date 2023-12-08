@@ -75,7 +75,6 @@ func CreateTable(ctx context.Context, pg Conn, t Table) error {
 		s.Reset()
 		const q = "alter table %s add column if not exists %s %s"
 		s.WriteString(fmt.Sprintf(q, t.Name, c.Name, c.Type))
-		slog.InfoContext(ctx, "create-table-diff", "add-column", s.String())
 		if _, err := pg.Exec(ctx, s.String()); err != nil {
 			return fmt.Errorf("adding column %s/%s: %w", t.Name, c.Name, err)
 		}
