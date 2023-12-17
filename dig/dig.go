@@ -368,7 +368,6 @@ type Input struct {
 	Components []Input `json:"components"`
 
 	Column string `json:"column"`
-	Pos    int    `json:"column_pos"`
 	Filter
 }
 
@@ -485,7 +484,6 @@ func (inp Input) Selected() []Input {
 type BlockData struct {
 	Name   string `json:"name"`
 	Column string `json:"column"`
-	Pos    int    `json:"column_pos"`
 	Filter
 }
 
@@ -640,11 +638,6 @@ func (ig *Integration) validateSQL() error {
 }
 
 func (ig *Integration) validateCols() error {
-	type config struct {
-		c wpg.Column
-		i Input
-		b BlockData
-	}
 	var (
 		ucols   = map[string]struct{}{}
 		uinputs = map[string]struct{}{}
