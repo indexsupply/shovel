@@ -24,7 +24,6 @@ import (
 
 	"github.com/holiman/uint256"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type atype struct {
@@ -1025,53 +1024,4 @@ func dbtype(t string, d []byte) any {
 	default:
 		return d
 	}
-}
-
-func (ig Integration) Count(ctx context.Context, pg *pgxpool.Pool, chainID uint64) string {
-	const q = `
-		select trim(to_char(count(*), '999,999,999,999'))
-		from %s
-		where chain_id = $1
-	`
-	var (
-		res string
-		fq  = fmt.Sprintf(q, ig.Table.Name)
-	)
-	err := pg.QueryRow(ctx, fq, chainID).Scan(&res)
-	if err != nil {
-		return err.Error()
-	}
-	switch {
-	case res == "0":
-		return "pending"
-	case strings.HasPrefix(res, "-"):
-		return "pending"
-	default:
-		return res
-	}
-}
-
-func (ig Integration) RecentRows(ctx context.Context, pgp *pgxpool.Pool, chainID uint64) []map[string]any {
-	var q strings.Builder
-	q.WriteString("select ")
-	for i, def := range ig.coldefs {
-		q.WriteString(def.Column.Name)
-		q.WriteString("::text")
-		if i+1 < len(ig.coldefs) {
-			q.WriteString(", ")
-		}
-	}
-	q.WriteString(" from ")
-	q.WriteString(ig.Table.Name)
-	q.WriteString(" where chain_id = $1")
-	q.WriteString(" order by block_num desc limit 10")
-
-	rows, _ := pgp.Query(ctx, q.String(), chainID)
-	defer rows.Close()
-	res, err := pgx.CollectRows(rows, pgx.RowToMap)
-	if err != nil {
-		slog.Error("error", fmt.Errorf("querying integration: %w", err))
-		return nil
-	}
-	return res
 }
