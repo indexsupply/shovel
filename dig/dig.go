@@ -801,16 +801,12 @@ func (ig Integration) Delete(ctx context.Context, pg wpg.Conn, n uint64) error {
 		and block_num >= $3
 	`
 	_, err := pg.Exec(ctx,
-		ig.tname(q),
+		fmt.Sprintf(q, ig.Table.Name),
 		wctx.SrcName(ctx),
 		ig.name,
 		n,
 	)
 	return err
-}
-
-func (ig Integration) tname(query string) string {
-	return fmt.Sprintf(query, ig.Table.Name)
 }
 
 func (ig Integration) Insert(ctx context.Context, pg wpg.Conn, blocks []eth.Block) (int64, error) {
