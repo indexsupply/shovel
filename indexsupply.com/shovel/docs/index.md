@@ -433,7 +433,7 @@ In both cases, an item can be filtered using two fields: `filter_op` and `filter
 
 Current filter operations include: `contains` and `!contains`
 
-**contains** takes an item (implicitly) and an array of hex encoded bytes. It compares the item to see if the item is contained in at least one of the hex encoded byte arrays in the argument.
+**contains** takes an item (implicitly) and an array of hex encoded bytes. The bytes may be prefixed with '0x'. It compares the item to see if the item is contained in at least one of the hex encoded byte arrays in the argument.
 
 **!contains** is the inverse of **contains**
 

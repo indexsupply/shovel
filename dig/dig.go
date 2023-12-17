@@ -7,7 +7,6 @@ package dig
 import (
 	"bytes"
 	"context"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -380,8 +379,7 @@ func (f Filter) Accept(d []byte) bool {
 	case strings.HasSuffix(f.Op, "contains"):
 		var res bool
 		for i := range f.Arg {
-			hb, _ := hex.DecodeString(f.Arg[i])
-			if bytes.Contains(d, hb) {
+			if bytes.Contains(d, eth.DecodeHex(f.Arg[i])) {
 				res = true
 				break
 			}
