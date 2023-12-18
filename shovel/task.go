@@ -2,14 +2,11 @@ package shovel
 
 import (
 	"bytes"
-	"cmp"
 	"context"
 	_ "embed"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
-	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -18,10 +15,9 @@ import (
 	"github.com/indexsupply/x/eth"
 	"github.com/indexsupply/x/jrpc2"
 	"github.com/indexsupply/x/rlps"
+	"github.com/indexsupply/x/shovel/config"
 	"github.com/indexsupply/x/wctx"
-	"github.com/indexsupply/x/wos"
 	"github.com/indexsupply/x/wpg"
-	"github.com/indexsupply/x/wstrings"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -47,13 +43,13 @@ type Destination interface {
 
 type Option func(t *Task)
 
-func WithSourceFactory(f func(SourceConfig) Source) Option {
+func WithSourceFactory(f func(config.Source) Source) Option {
 	return func(t *Task) {
 		t.srcFactory = f
 	}
 }
 
-func WithSourceConfig(sc SourceConfig) Option {
+func WithSourceConfig(sc config.Source) Option {
 	return func(t *Task) {
 		t.srcConfig = sc
 		t.ctx = wctx.WithChainID(t.ctx, sc.ChainID)
@@ -87,13 +83,13 @@ func WithConcurrency(numParts, batchSize int) Option {
 	}
 }
 
-func WithIntegrationFactory(f func(wpg.Conn, Integration) (Destination, error)) Option {
+func WithIntegrationFactory(f func(config.Integration) (Destination, error)) Option {
 	return func(t *Task) {
 		t.igFactory = f
 	}
 }
 
-func WithIntegrations(igs ...Integration) Option {
+func WithIntegrations(igs ...config.Integration) Option {
 	return func(t *Task) {
 		for i := range igs {
 			if !igs[i].Enabled {
@@ -106,13 +102,44 @@ func WithIntegrations(igs ...Integration) Option {
 	}
 }
 
+var compiled = map[string]Destination{}
+
+func NewIntegration(ig config.Integration) (Destination, error) {
+	switch {
+	case len(ig.Compiled.Name) > 0:
+		dest, ok := compiled[ig.Name]
+		if !ok {
+			return nil, fmt.Errorf("unable to find compiled integration: %s", ig.Name)
+		}
+		return dest, nil
+	default:
+		dest, err := dig.New(ig.Name, ig.Event, ig.Block, ig.Table)
+		if err != nil {
+			return nil, fmt.Errorf("building abi integration: %w", err)
+		}
+		return dest, nil
+	}
+}
+
+func NewSource(sc config.Source) Source {
+	switch {
+	case strings.Contains(string(sc.URL), "rlps"):
+		return rlps.NewClient(sc.ChainID, string(sc.URL))
+	case strings.HasPrefix(string(sc.URL), "http"):
+		return jrpc2.New(sc.ChainID, string(sc.URL))
+	default:
+		// TODO add back support for local geth
+		panic(fmt.Sprintf("unsupported src type: %v", sc))
+	}
+}
+
 func NewTask(opts ...Option) (*Task, error) {
 	t := &Task{
 		ctx:        context.Background(),
 		batch:      make([]eth.Block, 1),
 		parts:      parts(1, 1),
-		srcFactory: GetSource,
-		igFactory:  getDest,
+		srcFactory: NewSource,
+		igFactory:  NewIntegration,
 	}
 	for _, opt := range opts {
 		opt(t)
@@ -120,7 +147,7 @@ func NewTask(opts ...Option) (*Task, error) {
 	for i := range t.parts {
 		t.parts[i].src = t.srcFactory(t.srcConfig)
 		for j := range t.igs {
-			dest, err := t.igFactory(t.pgp, t.igs[j])
+			dest, err := t.igFactory(t.igs[j])
 			if err != nil {
 				return nil, fmt.Errorf("initializing integration: %w", err)
 			}
@@ -148,11 +175,11 @@ type Task struct {
 	backfill    bool
 	start, stop uint64
 
-	srcFactory func(SourceConfig) Source
-	srcConfig  SourceConfig
+	srcFactory func(config.Source) Source
+	srcConfig  config.Source
 
-	igFactory   func(wpg.Conn, Integration) (Destination, error)
-	igs         []Integration
+	igFactory   func(config.Integration) (Destination, error)
+	igs         []config.Integration
 	igRange     []igRange
 	igUpdateBuf *igUpdateBuf
 
@@ -209,9 +236,9 @@ func (t *Task) Setup() error {
 			return nil
 		}
 		for i, ig := range t.igs {
-			sc, err := ig.sourceConfig(t.srcConfig.Name)
+			sc, err := ig.Source(t.srcConfig.Name)
 			if err != nil {
-				return fmt.Errorf("missing ig.sourceConfig for %s/%s: %w", ig.Name, t.srcConfig.Name, err)
+				return fmt.Errorf("missing source for %s/%s: %w", ig.Name, t.srcConfig.Name, err)
 			}
 			if sc.Start == 0 { // no backfill request
 				continue
@@ -958,8 +985,6 @@ func IGUpdates(ctx context.Context, pg wpg.Conn) ([]IGUpdate, error) {
 	return ius, nil
 }
 
-var compiled = map[string]Destination{}
-
 // Loads, Starts, and provides method for Restarting tasks
 // based on config stored in the DB and in the config file.
 type Manager struct {
@@ -968,10 +993,10 @@ type Manager struct {
 	tasks   []*Task
 	updates chan uint64
 	pgp     *pgxpool.Pool
-	conf    Config
+	conf    config.Root
 }
 
-func NewManager(pgp *pgxpool.Pool, conf Config) *Manager {
+func NewManager(pgp *pgxpool.Pool, conf config.Root) *Manager {
 	return &Manager{
 		restart: make(chan struct{}),
 		updates: make(chan uint64),
@@ -1060,12 +1085,12 @@ func (tm *Manager) Run(ec chan error) {
 	wg.Wait()
 }
 
-func loadTasks(ctx context.Context, pgp *pgxpool.Pool, conf Config) ([]*Task, error) {
-	igs, err := conf.IntegrationsBySource(ctx, pgp)
+func loadTasks(ctx context.Context, pgp *pgxpool.Pool, c config.Root) ([]*Task, error) {
+	igs, err := c.IntegrationsBySource(ctx, pgp)
 	if err != nil {
 		return nil, fmt.Errorf("loading integrations: %w", err)
 	}
-	scs, err := conf.AllSourceConfigs(ctx, pgp)
+	scs, err := c.AllSources(ctx, pgp)
 	if err != nil {
 		return nil, fmt.Errorf("loading source configs: %w", err)
 	}
@@ -1093,204 +1118,4 @@ func loadTasks(ctx context.Context, pgp *pgxpool.Pool, conf Config) ([]*Task, er
 		tasks = append(tasks, mt, bt)
 	}
 	return tasks, nil
-}
-
-func getDest(pgp wpg.Conn, ig Integration) (Destination, error) {
-	switch {
-	case len(ig.Compiled.Name) > 0:
-		dest, ok := compiled[ig.Name]
-		if !ok {
-			return nil, fmt.Errorf("unable to find compiled integration: %s", ig.Name)
-		}
-		return dest, nil
-	default:
-		ctx := context.Background()
-		dest, err := dig.New(ig.Name, ig.Event, ig.Block, ig.Table)
-		if err != nil {
-			return nil, fmt.Errorf("building abi integration: %w", err)
-		}
-		if err := wpg.CreateTable(ctx, pgp, dest.Table); err != nil {
-			return nil, fmt.Errorf("create ig table: %w", err)
-		}
-		if err := wpg.Rename(ctx, pgp, dest.Table); err != nil {
-			return nil, fmt.Errorf("renaming ig table: %w", err)
-		}
-		if err := wpg.CreateUIDX(ctx, pgp, dest.Table); err != nil {
-			return nil, fmt.Errorf("create ig unique index: %w", err)
-		}
-		return dest, nil
-	}
-}
-
-func GetSource(sc SourceConfig) Source {
-	switch {
-	case strings.Contains(string(sc.URL), "rlps"):
-		return rlps.NewClient(sc.ChainID, string(sc.URL))
-	case strings.HasPrefix(string(sc.URL), "http"):
-		return jrpc2.New(sc.ChainID, string(sc.URL))
-	default:
-		// TODO add back support for local geth
-		panic(fmt.Sprintf("unsupported src type: %v", sc))
-	}
-}
-
-func Integrations(ctx context.Context, pg wpg.Conn) ([]Integration, error) {
-	var res []Integration
-	const q = `select conf from shovel.integrations`
-	rows, err := pg.Query(ctx, q)
-	if err != nil {
-		return nil, fmt.Errorf("querying integrations: %w", err)
-	}
-	for rows.Next() {
-		var buf = []byte{}
-		if err := rows.Scan(&buf); err != nil {
-			return nil, fmt.Errorf("scanning integration: %w", err)
-		}
-		var ig Integration
-		if err := json.Unmarshal(buf, &ig); err != nil {
-			return nil, fmt.Errorf("unmarshaling integration: %w", err)
-		}
-		res = append(res, ig)
-	}
-	return res, nil
-}
-
-func SourceConfigs(ctx context.Context, pgp *pgxpool.Pool) ([]SourceConfig, error) {
-	var res []SourceConfig
-	const q = `select name, chain_id, url from shovel.sources`
-	rows, err := pgp.Query(ctx, q)
-	if err != nil {
-		return nil, fmt.Errorf("querying sources: %w", err)
-	}
-	for rows.Next() {
-		var s SourceConfig
-		if err := rows.Scan(&s.Name, &s.ChainID, &s.URL); err != nil {
-			return nil, fmt.Errorf("scanning source: %w", err)
-		}
-		res = append(res, s)
-	}
-	return res, nil
-}
-
-type SourceConfig struct {
-	Name        string        `json:"name"`
-	ChainID     uint64        `json:"chain_id"`
-	URL         wos.EnvString `json:"url"`
-	Start       uint64        `json:"start"`
-	Stop        uint64        `json:"stop"`
-	Concurrency int           `json:"concurrency"`
-	BatchSize   int           `json:"batch_size"`
-}
-
-type Compiled struct {
-	Name   string          `json:"name"`
-	Config json.RawMessage `json:"config"`
-}
-
-type Integration struct {
-	Name          string          `json:"name"`
-	Enabled       bool            `json:"enabled"`
-	SourceConfigs []SourceConfig  `json:"sources"`
-	Table         wpg.Table       `json:"table"`
-	Compiled      Compiled        `json:"compiled"`
-	Block         []dig.BlockData `json:"block"`
-	Event         dig.Event       `json:"event"`
-}
-
-func (ig Integration) sourceConfig(name string) (SourceConfig, error) {
-	for _, sc := range ig.SourceConfigs {
-		if sc.Name == name {
-			return sc, nil
-		}
-	}
-	return SourceConfig{}, fmt.Errorf("missing source config for: %s", name)
-}
-
-type DashboardConf struct {
-	EnableLoopbackAuthn bool          `json:"enable_loopback_authn"`
-	DisableAuthn        bool          `json:"disable_authn"`
-	RootPassword        wos.EnvString `json:"root_password"`
-}
-
-type Config struct {
-	Dashboard     DashboardConf  `json:"dashboard"`
-	PGURL         string         `json:"pg_url"`
-	SourceConfigs []SourceConfig `json:"eth_sources"`
-	Integrations  []Integration  `json:"integrations"`
-}
-
-func (conf Config) CheckUserInput() error {
-	var (
-		err   error
-		check = func(name, val string) {
-			if err != nil {
-				return
-			}
-			err = wstrings.Safe(val)
-			if err != nil {
-				err = fmt.Errorf("%q %w", val, err)
-			}
-		}
-	)
-	for _, ig := range conf.Integrations {
-		check("integration name", ig.Name)
-		check("table name", ig.Table.Name)
-		for _, c := range ig.Table.Columns {
-			check("column name", c.Name)
-			check("column type", c.Type)
-		}
-	}
-	for _, sc := range conf.SourceConfigs {
-		check("source config name", sc.Name)
-	}
-	return err
-}
-
-func (conf Config) AllIntegrations(ctx context.Context, pg wpg.Conn) ([]Integration, error) {
-	res, err := Integrations(ctx, pg)
-	if err != nil {
-		return nil, fmt.Errorf("loading db integrations: %w", err)
-	}
-	for i := range conf.Integrations {
-		res = append(res, conf.Integrations[i])
-	}
-	return res, nil
-}
-
-func (conf Config) IntegrationsBySource(ctx context.Context, pg wpg.Conn) (map[string][]Integration, error) {
-	igs, err := conf.AllIntegrations(ctx, pg)
-	if err != nil {
-		return nil, fmt.Errorf("querying all integrations: %w", err)
-	}
-	res := make(map[string][]Integration)
-	for _, ig := range igs {
-		for _, sc := range ig.SourceConfigs {
-			res[sc.Name] = append(res[sc.Name], ig)
-		}
-	}
-	return res, nil
-}
-
-func (conf Config) AllSourceConfigs(ctx context.Context, pgp *pgxpool.Pool) ([]SourceConfig, error) {
-	indb, err := SourceConfigs(ctx, pgp)
-	if err != nil {
-		return nil, fmt.Errorf("loading db integrations: %w", err)
-	}
-
-	var uniq = map[uint64]SourceConfig{}
-	for _, sc := range indb {
-		uniq[sc.ChainID] = sc
-	}
-	for _, sc := range conf.SourceConfigs {
-		uniq[sc.ChainID] = sc
-	}
-
-	var res []SourceConfig
-	for _, sc := range uniq {
-		res = append(res, sc)
-	}
-	slices.SortFunc(res, func(a, b SourceConfig) int {
-		return cmp.Compare(a.ChainID, b.ChainID)
-	})
-	return res, nil
 }

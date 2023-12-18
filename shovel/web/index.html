@@ -127,7 +127,7 @@
 			</div>
 		</div>
 		<div class="taskHeader">
-			{{ if (gt (len .SourceConfigs) 0) -}}
+			{{ if (gt (len .Sources) 0) -}}
 			<div class="Name">Source</div>
 			<div class="NRows">Rows</div>
 			<div class="Latency"><span>Latency</span></div>
@@ -137,7 +137,7 @@
 			{{ end -}}
 		</div>
 		<div class="tasks">
-			{{ range $sc := .SourceConfigs -}}
+			{{ range $sc := .Sources -}}
 				{{ with $tu := (index $.TaskUpdates (printf "%s-main" $sc.Name)) -}}
 				<div class="task" id="{{ $tu.DOMID }}">
 					<div class="source">
@@ -168,7 +168,7 @@
 			{{ if .ShowBackfill -}}
 			<h2>Backfill Tasks</h2>
 			<div class="backfill-tasks">
-				{{ range $sc := .SourceConfigs -}}
+				{{ range $sc := .Sources -}}
 				{{ with $tu := (index $.TaskUpdates (printf "%s-backfill" $sc.Name)) -}}
 				<div class="task" id="{{ $tu.DOMID }}">
 					<div class="source">

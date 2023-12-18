@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"slices"
 	"strconv"
 	"strings"
 
@@ -19,7 +18,6 @@ import (
 	"github.com/indexsupply/x/isxhash"
 	"github.com/indexsupply/x/wctx"
 	"github.com/indexsupply/x/wpg"
-	"github.com/indexsupply/x/wstrings"
 
 	"github.com/holiman/uint256"
 	"github.com/jackc/pgx/v5"
@@ -553,10 +551,11 @@ type coldef struct {
 
 // Implements the [shovel.Integration] interface
 type Integration struct {
-	name    string
-	Event   Event
-	Block   []BlockData
-	Table   wpg.Table
+	name  string
+	Event Event
+	Block []BlockData
+	Table wpg.Table
+
 	Columns []string
 	coldefs []coldef
 
@@ -568,25 +567,6 @@ type Integration struct {
 	sighash     []byte
 }
 
-// js must be a json encoded abi event.
-//
-//	{"name": "MyEent", "type": "event", "inputs": [{"indexed": true, "name": "f", "type": "t"}]}
-//
-// Each input may include the following field:
-//
-//	"column": "my_column"
-//
-// This indicates that the input is mapped to the database column `my_column`
-//
-// A top level `extra` key is required to map an event onto a database table.
-//
-//	{"extra": {"table": {"name": "my_table", column: [{"name": "my_column", "type": "db_type"]}}}
-//
-// Each column may include a `filter_op` and `filter_arg` key so
-// that rows may be removed before they are inserted into the database.
-// For example:
-//
-//	{"name": "my_column", "type": "db_type", "filter_op": "contains", "filter_arg": ["0x000"]}
 func New(name string, ev Event, bd []BlockData, table wpg.Table) (Integration, error) {
 	ig := Integration{
 		name:  name,
@@ -598,96 +578,8 @@ func New(name string, ev Event, bd []BlockData, table wpg.Table) (Integration, e
 		resultCache: NewResult(ev.ABIType()),
 		sighash:     ev.SignatureHash(),
 	}
-	if err := ig.validateSQL(); err != nil {
-		return ig, fmt.Errorf("validating sql input: %w", err)
-	}
-
-	ig.addRequiredFields()
-	if err := ig.validateCols(); err != nil {
-		return ig, fmt.Errorf("validating columns: %w", err)
-	}
 	ig.setCols()
-	ig.addUniqueIndex()
 	return ig, nil
-}
-
-func (ig *Integration) validateSQL() error {
-	var (
-		err   error
-		check = func(name, val string) {
-			if err != nil {
-				return
-			}
-			err = wstrings.Safe(val)
-			if err != nil {
-				err = fmt.Errorf("%q %w", val, err)
-			}
-		}
-	)
-
-	check("integration name", ig.name)
-	check("table name", ig.Table.Name)
-	for _, c := range ig.Table.Columns {
-		check("column name", c.Name)
-		check("column type", c.Type)
-	}
-	return err
-}
-
-func (ig *Integration) validateCols() error {
-	var (
-		ucols   = map[string]struct{}{}
-		uinputs = map[string]struct{}{}
-		ubd     = map[string]struct{}{}
-	)
-	for _, c := range ig.Table.Columns {
-		if _, ok := ucols[c.Name]; ok {
-			return fmt.Errorf("duplicate column: %s", c.Name)
-		}
-		ucols[c.Name] = struct{}{}
-	}
-	for _, inp := range ig.Event.Inputs {
-		if _, ok := uinputs[inp.Name]; ok {
-			return fmt.Errorf("duplicate input: %s", inp.Name)
-		}
-		uinputs[inp.Name] = struct{}{}
-	}
-	for _, bd := range ig.Block {
-		if _, ok := ubd[bd.Name]; ok {
-			return fmt.Errorf("duplicate block data field: %s", bd.Name)
-		}
-		ubd[bd.Name] = struct{}{}
-	}
-	// Every selected input must have a coresponding column
-	for _, inp := range ig.Event.Selected() {
-		var found bool
-		for _, c := range ig.Table.Columns {
-			if c.Name == inp.Column {
-				found = true
-				break
-			}
-		}
-		if !found {
-			return fmt.Errorf("missing column for %s", inp.Name)
-		}
-	}
-	// Every selected block field must have a coresponding column
-	for _, bd := range ig.Block {
-		if len(bd.Column) == 0 {
-			return fmt.Errorf("missing column for block.%s", bd.Name)
-		}
-		var found bool
-		for _, c := range ig.Table.Columns {
-			if c.Name == bd.Column {
-				found = true
-				break
-			}
-		}
-		if !found {
-			return fmt.Errorf("missing column for block.%s", bd.Name)
-		}
-	}
-	return nil
 }
 
 func (ig *Integration) setCols() {
@@ -716,74 +608,6 @@ func (ig *Integration) setCols() {
 			Column:    c,
 		})
 		ig.numBDSelected++
-	}
-}
-
-// sets default unique columns unless already set by user
-func (ig *Integration) addUniqueIndex() {
-	if len(ig.Table.Unique) > 0 {
-		return
-	}
-	possible := []string{
-		"ig_name",
-		"src_name",
-		"block_num",
-		"tx_idx",
-		"log_idx",
-		"abi_idx",
-	}
-	var uidx []string
-	for _, name := range possible {
-		if slices.Contains(ig.Columns, name) {
-			uidx = append(uidx, name)
-		}
-	}
-	if len(uidx) > 0 {
-		ig.Table.Unique = append(ig.Table.Unique, uidx)
-	}
-}
-
-func (ig *Integration) addRequiredFields() {
-	hasBD := func(name string) bool {
-		for _, bd := range ig.Block {
-			if bd.Name == name {
-				return true
-			}
-		}
-		return false
-	}
-	hasCol := func(name string) bool {
-		for _, c := range ig.Table.Columns {
-			if c.Name == name {
-				return true
-			}
-		}
-		return false
-	}
-	add := func(name, t string) {
-		if !hasBD(name) {
-			ig.Block = append(ig.Block, BlockData{Name: name, Column: name})
-		}
-		if !hasCol(name) {
-			ig.Table.Columns = append(ig.Table.Columns, wpg.Column{
-				Name: name,
-				Type: t,
-			})
-		}
-	}
-
-	add("ig_name", "text")
-	add("src_name", "text")
-	add("block_num", "numeric")
-	add("tx_idx", "int4")
-
-	if len(ig.Event.Selected()) > 0 {
-		add("log_idx", "int2")
-	}
-	for _, inp := range ig.Event.Selected() {
-		if !inp.Indexed {
-			add("abi_idx", "int2")
-		}
 	}
 }
 

@@ -11,6 +11,7 @@ import (
 
 	"github.com/indexsupply/x/dig"
 	"github.com/indexsupply/x/eth"
+	"github.com/indexsupply/x/shovel/config"
 	"github.com/indexsupply/x/tc"
 	"github.com/indexsupply/x/wpg"
 
@@ -31,12 +32,12 @@ type testDestination struct {
 	chain map[uint64]eth.Block
 }
 
-func (dest *testDestination) factory(_ wpg.Conn, ig Integration) (Destination, error) {
+func (dest *testDestination) factory(ig config.Integration) (Destination, error) {
 	return dest, nil
 }
 
-func (dest *testDestination) ig() Integration {
-	return Integration{Name: dest.name, Enabled: true}
+func (dest *testDestination) ig() config.Integration {
+	return config.Integration{Name: dest.name, Enabled: true}
 }
 
 func newTestDestination(name string) *testDestination {
@@ -193,8 +194,8 @@ func TestSetup(t *testing.T) {
 		dest      = newTestDestination("foo")
 		task, err = NewTask(
 			WithPG(pg),
-			WithSourceConfig(SourceConfig{Name: "foo"}),
-			WithSourceFactory(func(SourceConfig) Source { return tg }),
+			WithSourceConfig(config.Source{Name: "foo"}),
+			WithSourceFactory(func(config.Source) Source { return tg }),
 			WithIntegrations(dest.ig()),
 			WithIntegrationFactory(dest.factory),
 		)
@@ -221,8 +222,8 @@ func TestConverge_Zero(t *testing.T) {
 		dest      = newTestDestination("foo")
 		task, err = NewTask(
 			WithPG(pg),
-			WithSourceConfig(SourceConfig{Name: "foo"}),
-			WithSourceFactory(func(SourceConfig) Source { return &testGeth{} }),
+			WithSourceConfig(config.Source{Name: "foo"}),
+			WithSourceFactory(func(config.Source) Source { return &testGeth{} }),
 			WithIntegrations(dest.ig()),
 			WithIntegrationFactory(dest.factory),
 		)
@@ -238,8 +239,8 @@ func TestConverge_EmptyDestination(t *testing.T) {
 		dest      = newTestDestination("foo")
 		task, err = NewTask(
 			WithPG(pg),
-			WithSourceConfig(SourceConfig{Name: "foo"}),
-			WithSourceFactory(func(SourceConfig) Source { return tg }),
+			WithSourceConfig(config.Source{Name: "foo"}),
+			WithSourceFactory(func(config.Source) Source { return tg }),
 			WithIntegrations(dest.ig()),
 			WithIntegrationFactory(dest.factory),
 		)
@@ -260,8 +261,8 @@ func TestConverge_Reorg(t *testing.T) {
 		dest      = newTestDestination("foo")
 		task, err = NewTask(
 			WithPG(pg),
-			WithSourceConfig(SourceConfig{Name: "foo"}),
-			WithSourceFactory(func(SourceConfig) Source { return tg }),
+			WithSourceConfig(config.Source{Name: "foo"}),
+			WithSourceFactory(func(config.Source) Source { return tg }),
 			WithIntegrations(dest.ig()),
 			WithIntegrationFactory(dest.factory),
 		)
@@ -295,8 +296,8 @@ func TestConverge_DeltaBatchSize(t *testing.T) {
 		task, err = NewTask(
 			WithPG(pg),
 			WithConcurrency(workers, batchSize),
-			WithSourceConfig(SourceConfig{Name: "foo"}),
-			WithSourceFactory(func(SourceConfig) Source { return tg }),
+			WithSourceConfig(config.Source{Name: "foo"}),
+			WithSourceFactory(func(config.Source) Source { return tg }),
 			WithIntegrations(dest.ig()),
 			WithIntegrationFactory(dest.factory),
 		)
@@ -327,16 +328,16 @@ func TestConverge_MultipleTasks(t *testing.T) {
 		task1, err1 = NewTask(
 			WithPG(pg),
 			WithConcurrency(1, 3),
-			WithSourceConfig(SourceConfig{Name: "a"}),
-			WithSourceFactory(func(SourceConfig) Source { return tg }),
+			WithSourceConfig(config.Source{Name: "a"}),
+			WithSourceFactory(func(config.Source) Source { return tg }),
 			WithIntegrations(dest1.ig()),
 			WithIntegrationFactory(dest1.factory),
 		)
 		task2, err2 = NewTask(
 			WithPG(pg),
 			WithConcurrency(1, 3),
-			WithSourceConfig(SourceConfig{Name: "b"}),
-			WithSourceFactory(func(SourceConfig) Source { return tg }),
+			WithSourceConfig(config.Source{Name: "b"}),
+			WithSourceFactory(func(config.Source) Source { return tg }),
 			WithIntegrations(dest2.ig()),
 			WithIntegrationFactory(dest2.factory),
 		)
@@ -364,8 +365,8 @@ func TestConverge_LocalAhead(t *testing.T) {
 		task, err = NewTask(
 			WithPG(pg),
 			WithConcurrency(1, 3),
-			WithSourceConfig(SourceConfig{Name: "foo"}),
-			WithSourceFactory(func(SourceConfig) Source { return tg }),
+			WithSourceConfig(config.Source{Name: "foo"}),
+			WithSourceFactory(func(config.Source) Source { return tg }),
 			WithIntegrations(dest.ig()),
 			WithIntegrationFactory(dest.factory),
 		)
@@ -389,8 +390,8 @@ func TestConverge_Done(t *testing.T) {
 		task, err1 = NewTask(
 			WithPG(pg),
 			WithConcurrency(1, 1),
-			WithSourceConfig(SourceConfig{Name: "foo"}),
-			WithSourceFactory(func(SourceConfig) Source { return tg }),
+			WithSourceConfig(config.Source{Name: "foo"}),
+			WithSourceFactory(func(config.Source) Source { return tg }),
 			WithIntegrations(dest.ig()),
 			WithIntegrationFactory(dest.factory),
 		)
@@ -398,8 +399,8 @@ func TestConverge_Done(t *testing.T) {
 			WithBackfill(true),
 			WithPG(pg),
 			WithConcurrency(1, 1),
-			WithSourceConfig(SourceConfig{Name: "foo"}),
-			WithSourceFactory(func(SourceConfig) Source { return tg }),
+			WithSourceConfig(config.Source{Name: "foo"}),
+			WithSourceFactory(func(config.Source) Source { return tg }),
 			WithIntegrations(dest.ig()),
 			WithIntegrationFactory(dest.factory),
 		)
@@ -478,8 +479,8 @@ func TestPruneIG(t *testing.T) {
 	checkQuery(t, pg, `select count(*) = 3 from shovel.ig_updates`)
 }
 
-func destFactory(dests ...*testDestination) func(wpg.Conn, Integration) (Destination, error) {
-	return func(_ wpg.Conn, ig Integration) (Destination, error) {
+func destFactory(dests ...*testDestination) func(config.Integration) (Destination, error) {
+	return func(ig config.Integration) (Destination, error) {
 		for i := range dests {
 			if dests[i].name == ig.Name {
 				return dests[i], nil
@@ -501,8 +502,8 @@ func TestInitRows(t *testing.T) {
 	)
 	task, err := NewTask(
 		WithPG(pg),
-		WithSourceConfig(SourceConfig{Name: "foo"}),
-		WithSourceFactory(func(SourceConfig) Source { return &testGeth{} }),
+		WithSourceConfig(config.Source{Name: "foo"}),
+		WithSourceFactory(func(config.Source) Source { return &testGeth{} }),
 		WithIntegrations(bar.ig()),
 		WithIntegrationFactory(bar.factory),
 	)
@@ -519,8 +520,8 @@ func TestInitRows(t *testing.T) {
 
 	task, err = NewTask(
 		WithPG(pg),
-		WithSourceConfig(SourceConfig{Name: "foo"}),
-		WithSourceFactory(func(SourceConfig) Source { return &testGeth{} }),
+		WithSourceConfig(config.Source{Name: "foo"}),
+		WithSourceFactory(func(config.Source) Source { return &testGeth{} }),
 		WithIntegrations(bar.ig(), baz.ig()),
 		WithIntegrationFactory(destFactory(bar, baz)),
 	)
@@ -534,8 +535,8 @@ func TestInitRows(t *testing.T) {
 	task, err = NewTask(
 		WithPG(pg),
 		WithBackfill(true),
-		WithSourceConfig(SourceConfig{Name: "foo"}),
-		WithSourceFactory(func(SourceConfig) Source { return &testGeth{} }),
+		WithSourceConfig(config.Source{Name: "foo"}),
+		WithSourceFactory(func(config.Source) Source { return &testGeth{} }),
 		WithIntegrations(bar.ig(), baz.ig()),
 		WithIntegrationFactory(destFactory(bar, baz)),
 	)
@@ -596,16 +597,16 @@ func TestDestRanges_Load(t *testing.T) {
 	dest := newTestDestination("bar")
 	task1, err1 := NewTask(
 		WithPG(pg),
-		WithSourceConfig(SourceConfig{Name: "foo"}),
-		WithSourceFactory(func(SourceConfig) Source { return &testGeth{} }),
+		WithSourceConfig(config.Source{Name: "foo"}),
+		WithSourceFactory(func(config.Source) Source { return &testGeth{} }),
 		WithIntegrations(dest.ig()),
 		WithIntegrationFactory(dest.factory),
 	)
 	task2, err2 := NewTask(
 		WithPG(pg),
 		WithBackfill(true),
-		WithSourceConfig(SourceConfig{Name: "foo"}),
-		WithSourceFactory(func(SourceConfig) Source { return &testGeth{} }),
+		WithSourceConfig(config.Source{Name: "foo"}),
+		WithSourceFactory(func(config.Source) Source { return &testGeth{} }),
 		WithIntegrations(dest.ig()),
 		WithIntegrationFactory(dest.factory),
 	)
@@ -716,17 +717,17 @@ func TestLoadTasks(t *testing.T) {
 	pg, err := pgxpool.New(ctx, pqxtest.DSNForTest(t))
 	diff.Test(t, t.Fatalf, err, nil)
 
-	conf := Config{
+	conf := config.Root{
 		PGURL: pqxtest.DSNForTest(t),
-		SourceConfigs: []SourceConfig{
-			SourceConfig{
+		Sources: []config.Source{
+			config.Source{
 				Name:    "foo",
 				ChainID: 888,
 				URL:     "http://foo",
 			},
 		},
-		Integrations: []Integration{
-			Integration{
+		Integrations: []config.Integration{
+			config.Integration{
 				Enabled: true,
 				Name:    "bar",
 				Table: wpg.Table{
@@ -741,8 +742,8 @@ func TestLoadTasks(t *testing.T) {
 						Column: "block_hash",
 					},
 				},
-				SourceConfigs: []SourceConfig{
-					SourceConfig{Name: "foo"},
+				Sources: []config.Source{
+					config.Source{Name: "foo"},
 				},
 			},
 		},
@@ -764,17 +765,17 @@ func TestLoadTasks_Backfill(t *testing.T) {
 	pg, err := pgxpool.New(ctx, pqxtest.DSNForTest(t))
 	diff.Test(t, t.Fatalf, err, nil)
 
-	conf := Config{
+	conf := config.Root{
 		PGURL: pqxtest.DSNForTest(t),
-		SourceConfigs: []SourceConfig{
-			SourceConfig{
+		Sources: []config.Source{
+			config.Source{
 				Name:    "foo",
 				ChainID: 888,
 				URL:     "http://foo",
 			},
 		},
-		Integrations: []Integration{
-			Integration{
+		Integrations: []config.Integration{
+			config.Integration{
 				Enabled: true,
 				Name:    "bar",
 				Table: wpg.Table{
@@ -789,11 +790,11 @@ func TestLoadTasks_Backfill(t *testing.T) {
 						Column: "block_hash",
 					},
 				},
-				SourceConfigs: []SourceConfig{
-					SourceConfig{Name: "foo", Start: 2, Stop: 3},
+				Sources: []config.Source{
+					config.Source{Name: "foo", Start: 2, Stop: 3},
 				},
 			},
-			Integration{
+			config.Integration{
 				Enabled: true,
 				Name:    "baz",
 				Table: wpg.Table{
@@ -808,8 +809,8 @@ func TestLoadTasks_Backfill(t *testing.T) {
 						Column: "block_hash",
 					},
 				},
-				SourceConfigs: []SourceConfig{
-					SourceConfig{Name: "foo", Start: 1, Stop: 3},
+				Sources: []config.Source{
+					config.Source{Name: "foo", Start: 1, Stop: 3},
 				},
 			},
 		},

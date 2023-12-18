@@ -16,23 +16,36 @@ func TestMain(m *testing.M) {
 	pqxtest.TestMain(m)
 }
 
-func TestCreate_Empty(t *testing.T) {
-	ctx := context.Background()
-	pqxtest.CreateDB(t, "")
-	pg, err := pgxpool.New(ctx, pqxtest.DSNForTest(t))
-	diff.Test(t, t.Fatalf, nil, err)
-
-	t1 := Table{}
-	diff.Test(t, t.Errorf, "no columns to add", CreateTable(ctx, pg, t1).Error())
-
-	t2 := Table{
-		Name:    "x",
-		Columns: []Column{{Name: "x", Type: "integer"}},
+func TestDDL(t *testing.T) {
+	cases := []struct {
+		table Table
+		want  []string
+	}{
+		{
+			Table{},
+			nil,
+		},
+		{
+			Table{
+				Name: "foo",
+				Columns: []Column{
+					{Name: "a", Type: "int"},
+					{Name: "b", Type: "int"},
+				},
+				Unique: [][]string{{"a", "b"}},
+			},
+			[]string{
+				"create table if not exists foo(a int, b int)",
+				"create unique index if not exists u_foo on foo (a, b)",
+			},
+		},
 	}
-	diff.Test(t, t.Errorf, nil, CreateTable(ctx, pg, t2))
+	for _, tc := range cases {
+		diff.Test(t, t.Errorf, tc.table.DDL(), tc.want)
+	}
 }
 
-func TestCreate(t *testing.T) {
+func TestMigrate(t *testing.T) {
 	cases := []struct {
 		old    Table
 		new    Table
@@ -57,12 +70,12 @@ func TestCreate(t *testing.T) {
 	diff.Test(t, t.Fatalf, nil, err)
 
 	for _, tc := range cases {
-		CreateTable(ctx, pg, tc.old)
+		tc.old.Migrate(ctx, pg)
 		before, err := Diff(ctx, pg, tc.new.Name, tc.new.Columns)
 		diff.Test(t, t.Fatalf, nil, err)
 		diff.Test(t, t.Fatalf, tc.before, before)
 
-		CreateTable(ctx, pg, tc.new)
+		tc.new.Migrate(ctx, pg)
 		after, err := Diff(ctx, pg, tc.new.Name, tc.new.Columns)
 		diff.Test(t, t.Fatalf, nil, err)
 		diff.Test(t, t.Fatalf, tc.after, after)
@@ -122,7 +135,7 @@ func TestDiff(t *testing.T) {
 	diff.Test(t, t.Fatalf, nil, err)
 
 	for _, tc := range cases {
-		diff.Test(t, t.Fatalf, nil, CreateTable(ctx, pg, tc.table))
+		diff.Test(t, t.Fatalf, nil, tc.table.Migrate(ctx, pg))
 		got, err := Diff(context.Background(), pg, tc.table.Name, tc.input)
 		diff.Test(t, t.Errorf, nil, err)
 		diff.Test(t, t.Errorf, tc.want, got)

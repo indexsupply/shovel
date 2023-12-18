@@ -1,8 +1,7 @@
 {
     "pg_url": "postgres:///shovel",
     "eth_sources": [
-        {"name": "mainnet", "chain_id": 1, "url": "https://1.rlps.indexsupply.net"},
-        {"name": "base", "chain_id": 8453, "url": "https://8453.rlps.indexsupply.net"}
+        {"name": "mainnet", "chain_id": 1, "url": "https://1.rlps.indexsupply.net"}
     ],
     "integrations": [
 		{
@@ -16,7 +15,8 @@
 					{"name": "block_time",	"type": "numeric"},
 					{"name": "f",			"type": "bytea"},
 					{"name": "t",			"type": "bytea"},
-					{"name": "v",			"type": "numeric"}
+					{"name": "v",			"type": "numeric"},
+					{"name": "extra",       "type": "text"}
 				]
 			},
 			"block": [
