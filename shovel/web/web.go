@@ -194,7 +194,7 @@ func (h *Handler) Diag(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	for _, sc := range scs {
-		src := shovel.GetSource(sc)
+		src := shovel.NewSource(sc)
 		run(sc.Name, func() string {
 			n, h, err := src.Latest()
 			if err != nil {
@@ -296,7 +296,7 @@ func (h *Handler) SaveIntegration(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	testConfig := config.Root{Integrations: []config.Integration{ig}}
-	if err := testConfig.CheckUserInput(); err != nil {
+	if err := config.CheckUserInput(testConfig); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

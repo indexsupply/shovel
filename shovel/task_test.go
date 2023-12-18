@@ -32,7 +32,7 @@ type testDestination struct {
 	chain map[uint64]eth.Block
 }
 
-func (dest *testDestination) factory(_ wpg.Conn, ig config.Integration) (Destination, error) {
+func (dest *testDestination) factory(ig config.Integration) (Destination, error) {
 	return dest, nil
 }
 
@@ -479,8 +479,8 @@ func TestPruneIG(t *testing.T) {
 	checkQuery(t, pg, `select count(*) = 3 from shovel.ig_updates`)
 }
 
-func destFactory(dests ...*testDestination) func(wpg.Conn, config.Integration) (Destination, error) {
-	return func(_ wpg.Conn, ig config.Integration) (Destination, error) {
+func destFactory(dests ...*testDestination) func(config.Integration) (Destination, error) {
+	return func(ig config.Integration) (Destination, error) {
 		for i := range dests {
 			if dests[i].name == ig.Name {
 				return dests[i], nil

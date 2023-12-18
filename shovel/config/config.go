@@ -22,7 +22,155 @@ type Root struct {
 	Integrations []Integration `json:"integrations"`
 }
 
-func (conf Root) CheckUserInput() error {
+func union(a, b wpg.Table) wpg.Table {
+	for i := range b.Columns {
+		var found bool
+		for j := range a.Columns {
+			if b.Columns[i].Name == a.Columns[j].Name {
+				found = true
+				break
+			}
+		}
+		if !found {
+			a.Columns = append(a.Columns, wpg.Column{
+				Name: b.Columns[i].Name,
+				Type: b.Columns[i].Type,
+			})
+		}
+	}
+	return a
+}
+
+func Migrate(ctx context.Context, pg wpg.Conn, conf Root) error {
+	for _, ig := range conf.Integrations {
+		if err := ig.Table.Migrate(ctx, pg); err != nil {
+			return fmt.Errorf("migrating integration: %s: %w", ig.Name, err)
+		}
+	}
+	return nil
+}
+
+func DDL(conf Root) []string {
+	var tables = map[string]wpg.Table{}
+	for i := range conf.Integrations {
+		nt := conf.Integrations[i].Table
+		et, exists := tables[nt.Name]
+		if exists {
+			nt = union(nt, et)
+		}
+		tables[nt.Name] = nt
+	}
+	var res []string
+	for _, t := range tables {
+		for _, stmt := range t.DDL() {
+			res = append(res, stmt)
+		}
+	}
+	return res
+}
+
+func ValidateFix(conf *Root) error {
+	if err := CheckUserInput(*conf); err != nil {
+		return fmt.Errorf("checking config for dangerous strings: %w", err)
+	}
+	for i := range conf.Integrations {
+		conf.Integrations[i].AddRequiredFields()
+		AddUniqueIndex(&conf.Integrations[i].Table)
+		if err := ValidateColRefs(conf.Integrations[i]); err != nil {
+			return fmt.Errorf("checking config for references: %w", err)
+		}
+	}
+	return nil
+}
+
+func ValidateColRefs(ig Integration) error {
+	var (
+		ucols   = map[string]struct{}{}
+		uinputs = map[string]struct{}{}
+		ubd     = map[string]struct{}{}
+	)
+	for _, c := range ig.Table.Columns {
+		if _, ok := ucols[c.Name]; ok {
+			return fmt.Errorf("duplicate column: %s", c.Name)
+		}
+		ucols[c.Name] = struct{}{}
+	}
+	for _, inp := range ig.Event.Inputs {
+		if _, ok := uinputs[inp.Name]; ok {
+			return fmt.Errorf("duplicate input: %s", inp.Name)
+		}
+		uinputs[inp.Name] = struct{}{}
+	}
+	for _, bd := range ig.Block {
+		if _, ok := ubd[bd.Name]; ok {
+			return fmt.Errorf("duplicate block data field: %s", bd.Name)
+		}
+		ubd[bd.Name] = struct{}{}
+	}
+	// Every selected input must have a coresponding column
+	for _, inp := range ig.Event.Selected() {
+		var found bool
+		for _, c := range ig.Table.Columns {
+			if c.Name == inp.Column {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return fmt.Errorf("missing column for %s", inp.Name)
+		}
+	}
+	// Every selected block field must have a coresponding column
+	for _, bd := range ig.Block {
+		if len(bd.Column) == 0 {
+			return fmt.Errorf("missing column for block.%s", bd.Name)
+		}
+		var found bool
+		for _, c := range ig.Table.Columns {
+			if c.Name == bd.Column {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return fmt.Errorf("missing column for block.%s", bd.Name)
+		}
+	}
+	return nil
+}
+
+// sets default unique columns unless already set by user
+func AddUniqueIndex(table *wpg.Table) {
+	if len(table.Unique) > 0 {
+		return
+	}
+	possible := []string{
+		"ig_name",
+		"src_name",
+		"block_num",
+		"tx_idx",
+		"log_idx",
+		"abi_idx",
+	}
+	var uidx []string
+	for i := range possible {
+		var found bool
+		for j := range table.Columns {
+			if table.Columns[j].Name == possible[i] {
+				found = true
+				break
+			}
+		}
+		if found {
+			uidx = append(uidx, possible[i])
+		}
+	}
+	if len(uidx) > 0 {
+		table.Unique = append(table.Unique, uidx)
+	}
+}
+
+func CheckUserInput(conf Root) error {
 	var (
 		err   error
 		check = func(name, val string) {
@@ -95,6 +243,48 @@ type Integration struct {
 	Compiled Compiled        `json:"compiled"`
 	Block    []dig.BlockData `json:"block"`
 	Event    dig.Event       `json:"event"`
+}
+
+func (ig *Integration) AddRequiredFields() {
+	hasBD := func(name string) bool {
+		for _, bd := range ig.Block {
+			if bd.Name == name {
+				return true
+			}
+		}
+		return false
+	}
+	hasCol := func(name string) bool {
+		for _, c := range ig.Table.Columns {
+			if c.Name == name {
+				return true
+			}
+		}
+		return false
+	}
+	add := func(name, t string) {
+		if !hasBD(name) {
+			ig.Block = append(ig.Block, dig.BlockData{Name: name, Column: name})
+		}
+		if !hasCol(name) {
+			ig.Table.Columns = append(ig.Table.Columns, wpg.Column{
+				Name: name,
+				Type: t,
+			})
+		}
+	}
+	add("ig_name", "text")
+	add("src_name", "text")
+	add("block_num", "numeric")
+	add("tx_idx", "int4")
+	if len(ig.Event.Selected()) > 0 {
+		add("log_idx", "int2")
+	}
+	for _, inp := range ig.Event.Selected() {
+		if !inp.Indexed {
+			add("abi_idx", "int2")
+		}
+	}
 }
 
 func Integrations(ctx context.Context, pg wpg.Conn) ([]Integration, error) {

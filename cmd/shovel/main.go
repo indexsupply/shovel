@@ -13,6 +13,7 @@ import (
 	"os"
 	"runtime/debug"
 	"runtime/pprof"
+	"strings"
 	"time"
 
 	"github.com/indexsupply/x/pgmig"
@@ -31,6 +32,13 @@ func check(err error) {
 		fmt.Printf("%s\n", err)
 		os.Exit(1)
 	}
+}
+
+func sqlfmt(s string) string {
+	s = strings.ReplaceAll(s, "(", "(\n\t")
+	s = strings.ReplaceAll(s, ")", "\n)")
+	s = strings.ReplaceAll(s, ", ", ",\n\t")
+	return s + ";"
 }
 
 func main() {
@@ -89,6 +97,7 @@ func main() {
 		f, err := os.Open(cfile)
 		check(err)
 		check(json.NewDecoder(f).Decode(&conf))
+		check(config.ValidateFix(&conf))
 		pgurl = wos.Getenv(conf.PGURL)
 	}
 
@@ -96,6 +105,7 @@ func main() {
 		migdb, err := pgxpool.New(ctx, pgurl)
 		check(err)
 		check(pgmig.Migrate(migdb, shovel.Migrations))
+		check(config.Migrate(ctx, migdb, conf))
 		migdb.Close()
 	}
 

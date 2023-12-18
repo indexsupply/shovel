@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/indexsupply/x/bint"
-	"github.com/indexsupply/x/wpg"
 
 	"kr.dev/diff"
 )
@@ -311,105 +310,4 @@ func TestNumIndexed(t *testing.T) {
 		},
 	}
 	diff.Test(t, t.Errorf, 3, event.numIndexed())
-}
-
-func TestNew(t *testing.T) {
-	var (
-		table = wpg.Table{
-			Name: "foo",
-			Columns: []wpg.Column{
-				wpg.Column{Name: "block_num", Type: "numeric"},
-				wpg.Column{Name: "b", Type: "bytea"},
-				wpg.Column{Name: "c", Type: "bytea"},
-			},
-		}
-		block = []BlockData{
-			BlockData{Name: "block_num", Column: "block_num"},
-		}
-		event = Event{
-			Name: "bar",
-			Inputs: []Input{
-				Input{Indexed: true, Name: "a"},
-				Input{Indexed: true, Name: "b", Column: "b"},
-				Input{Indexed: false, Name: "c", Column: "c"},
-			},
-		}
-	)
-	ig, err := New("foo", event, block, table)
-	diff.Test(t, t.Errorf, nil, err)
-	want := []string{
-		"b",
-		"c",
-		"block_num",
-		"ig_name",
-		"src_name",
-		"tx_idx",
-		"log_idx",
-		"abi_idx",
-	}
-	diff.Test(t, t.Errorf, want, ig.Columns)
-}
-
-func TestValidate_AddRequired(t *testing.T) {
-	ig := Integration{
-		name: "foo",
-		Table: wpg.Table{
-			Name: "foo",
-			Columns: []wpg.Column{
-				wpg.Column{Name: "b", Type: "bytea"},
-				wpg.Column{Name: "c", Type: "bytea"},
-			},
-		},
-		Event: Event{
-			Name: "bar",
-			Inputs: []Input{
-				Input{Indexed: true, Name: "a"},
-				Input{Indexed: true, Name: "b", Column: "b"},
-				Input{Indexed: true, Name: "c", Column: "c"},
-			},
-		},
-	}
-	ig.addRequiredFields()
-	want := []wpg.Column{
-		{Name: "b", Type: "bytea"},
-		{Name: "c", Type: "bytea"},
-		{Name: "ig_name", Type: "text"},
-		{Name: "src_name", Type: "text"},
-		{Name: "block_num", Type: "numeric"},
-		{Name: "tx_idx", Type: "int4"},
-		{Name: "log_idx", Type: "int2"},
-	}
-	diff.Test(t, t.Errorf, want, ig.Table.Columns)
-}
-
-func TestValidate_MissingCols(t *testing.T) {
-	ig := Integration{
-		name: "foo",
-		Table: wpg.Table{
-			Name: "foo",
-			Columns: []wpg.Column{
-				wpg.Column{Name: "c", Type: "bytea"},
-			},
-		},
-		Event: Event{
-			Name: "bar",
-			Inputs: []Input{
-				Input{Indexed: true, Name: "a"},
-				Input{Indexed: true, Name: "b", Column: "b"},
-				Input{Indexed: true, Name: "c", Column: "c"},
-			},
-		},
-	}
-	const want = "missing column for b"
-	diff.Test(t, t.Errorf, want, ig.validateCols().Error())
-}
-
-func TestAddUniqueIndex(t *testing.T) {
-	ig := Integration{}
-	ig.addRequiredFields()
-	ig.setCols()
-	ig.addUniqueIndex()
-	want := []string{"ig_name", "src_name", "block_num", "tx_idx"}
-	diff.Test(t, t.Fatalf, 1, len(ig.Table.Unique))
-	diff.Test(t, t.Errorf, want, ig.Table.Unique[0])
 }

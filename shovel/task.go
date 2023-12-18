@@ -83,7 +83,7 @@ func WithConcurrency(numParts, batchSize int) Option {
 	}
 }
 
-func WithIntegrationFactory(f func(wpg.Conn, config.Integration) (Destination, error)) Option {
+func WithIntegrationFactory(f func(config.Integration) (Destination, error)) Option {
 	return func(t *Task) {
 		t.igFactory = f
 	}
@@ -102,13 +102,44 @@ func WithIntegrations(igs ...config.Integration) Option {
 	}
 }
 
+var compiled = map[string]Destination{}
+
+func NewIntegration(ig config.Integration) (Destination, error) {
+	switch {
+	case len(ig.Compiled.Name) > 0:
+		dest, ok := compiled[ig.Name]
+		if !ok {
+			return nil, fmt.Errorf("unable to find compiled integration: %s", ig.Name)
+		}
+		return dest, nil
+	default:
+		dest, err := dig.New(ig.Name, ig.Event, ig.Block, ig.Table)
+		if err != nil {
+			return nil, fmt.Errorf("building abi integration: %w", err)
+		}
+		return dest, nil
+	}
+}
+
+func NewSource(sc config.Source) Source {
+	switch {
+	case strings.Contains(string(sc.URL), "rlps"):
+		return rlps.NewClient(sc.ChainID, string(sc.URL))
+	case strings.HasPrefix(string(sc.URL), "http"):
+		return jrpc2.New(sc.ChainID, string(sc.URL))
+	default:
+		// TODO add back support for local geth
+		panic(fmt.Sprintf("unsupported src type: %v", sc))
+	}
+}
+
 func NewTask(opts ...Option) (*Task, error) {
 	t := &Task{
 		ctx:        context.Background(),
 		batch:      make([]eth.Block, 1),
 		parts:      parts(1, 1),
-		srcFactory: GetSource,
-		igFactory:  getDest,
+		srcFactory: NewSource,
+		igFactory:  NewIntegration,
 	}
 	for _, opt := range opts {
 		opt(t)
@@ -116,7 +147,7 @@ func NewTask(opts ...Option) (*Task, error) {
 	for i := range t.parts {
 		t.parts[i].src = t.srcFactory(t.srcConfig)
 		for j := range t.igs {
-			dest, err := t.igFactory(t.pgp, t.igs[j])
+			dest, err := t.igFactory(t.igs[j])
 			if err != nil {
 				return nil, fmt.Errorf("initializing integration: %w", err)
 			}
@@ -147,7 +178,7 @@ type Task struct {
 	srcFactory func(config.Source) Source
 	srcConfig  config.Source
 
-	igFactory   func(wpg.Conn, config.Integration) (Destination, error)
+	igFactory   func(config.Integration) (Destination, error)
 	igs         []config.Integration
 	igRange     []igRange
 	igUpdateBuf *igUpdateBuf
@@ -954,8 +985,6 @@ func IGUpdates(ctx context.Context, pg wpg.Conn) ([]IGUpdate, error) {
 	return ius, nil
 }
 
-var compiled = map[string]Destination{}
-
 // Loads, Starts, and provides method for Restarting tasks
 // based on config stored in the DB and in the config file.
 type Manager struct {
@@ -1089,43 +1118,4 @@ func loadTasks(ctx context.Context, pgp *pgxpool.Pool, c config.Root) ([]*Task, 
 		tasks = append(tasks, mt, bt)
 	}
 	return tasks, nil
-}
-
-func getDest(pgp wpg.Conn, ig config.Integration) (Destination, error) {
-	switch {
-	case len(ig.Compiled.Name) > 0:
-		dest, ok := compiled[ig.Name]
-		if !ok {
-			return nil, fmt.Errorf("unable to find compiled integration: %s", ig.Name)
-		}
-		return dest, nil
-	default:
-		ctx := context.Background()
-		dest, err := dig.New(ig.Name, ig.Event, ig.Block, ig.Table)
-		if err != nil {
-			return nil, fmt.Errorf("building abi integration: %w", err)
-		}
-		if err := wpg.CreateTable(ctx, pgp, dest.Table); err != nil {
-			return nil, fmt.Errorf("create ig table: %w", err)
-		}
-		if err := wpg.Rename(ctx, pgp, dest.Table); err != nil {
-			return nil, fmt.Errorf("renaming ig table: %w", err)
-		}
-		if err := wpg.CreateUIDX(ctx, pgp, dest.Table); err != nil {
-			return nil, fmt.Errorf("create ig unique index: %w", err)
-		}
-		return dest, nil
-	}
-}
-
-func GetSource(sc config.Source) Source {
-	switch {
-	case strings.Contains(string(sc.URL), "rlps"):
-		return rlps.NewClient(sc.ChainID, string(sc.URL))
-	case strings.HasPrefix(string(sc.URL), "http"):
-		return jrpc2.New(sc.ChainID, string(sc.URL))
-	default:
-		// TODO add back support for local geth
-		panic(fmt.Sprintf("unsupported src type: %v", sc))
-	}
 }

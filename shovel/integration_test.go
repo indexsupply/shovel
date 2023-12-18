@@ -25,7 +25,7 @@ func check(t testing.TB, err error) {
 // In the case that it needs to fetch the data, an RPC
 // client will be used. The RPC endpoint needs to support
 // the debug_dbAncient and debug_dbGet methods.
-func process(tb testing.TB, pg *pgxpool.Pool, ig config.Integration, n uint64) *Task {
+func process(tb testing.TB, pg *pgxpool.Pool, conf config.Root, n uint64) *Task {
 	gethTest := gethtest.New(tb, "http://hera:8545")
 	geth := NewGeth(gethTest.FileCache, gethTest.Client)
 
@@ -33,11 +33,14 @@ func process(tb testing.TB, pg *pgxpool.Pool, ig config.Integration, n uint64) *
 	check(tb, err)
 	gethTest.SetLatest(n, cur)
 
+	check(tb, config.ValidateFix(&conf))
+	check(tb, config.Migrate(context.Background(), pg, conf))
+
 	task, err := NewTask(
 		WithPG(pg),
 		WithSourceConfig(config.Source{Name: "testhelper"}),
 		WithSourceFactory(func(config.Source) Source { return geth }),
-		WithIntegrations(ig),
+		WithIntegrations(conf.Integrations...),
 		WithRange(n, n+1),
 	)
 	check(tb, err)
@@ -116,9 +119,9 @@ func TestIntegrations(t *testing.T) {
 	}
 	for _, tc := range cases {
 		pg := wpg.TestPG(t, Schema)
-		ig := config.Integration{}
-		decode(t, read(t, tc.config), &ig)
-		task := process(t, pg, ig, tc.blockNum)
+		conf := config.Root{Integrations: []config.Integration{{}}}
+		decode(t, read(t, tc.config), &conf.Integrations[0])
+		task := process(t, pg, conf, tc.blockNum)
 		for i, q := range tc.queries {
 			var found bool
 			err := pg.QueryRow(context.Background(), q).Scan(&found)
@@ -131,7 +134,8 @@ func TestIntegrations(t *testing.T) {
 			}
 		}
 
-		task.Delete(pg, tc.blockNum)
+		check(t, task.Delete(pg, tc.blockNum))
+
 		var deleted bool
 		err := pg.QueryRow(context.Background(), tc.deleteQuery).Scan(&deleted)
 		diff.Test(t, t.Errorf, nil, err)
