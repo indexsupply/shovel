@@ -109,7 +109,7 @@
 <script>
 document.addEventListener("DOMContentLoaded", function() {
 	let navList = document.querySelector("nav ul");
-	document.querySelectorAll("h2, h3").forEach(h => {
+	document.querySelectorAll("h2").forEach(h => {
 		let a = document.createElement("a");
 		a.appendChild(document.createTextNode(h.textContent));
 		a.href = `#${h.id}`

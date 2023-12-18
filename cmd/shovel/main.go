@@ -46,6 +46,7 @@ func main() {
 		ctx   = context.Background()
 		cfile string
 
+		printSchema bool
 		skipMigrate bool
 		listen      string
 		notx        bool
@@ -53,6 +54,7 @@ func main() {
 		version     bool
 	)
 	flag.StringVar(&cfile, "config", "", "task config file")
+	flag.BoolVar(&printSchema, "print-schema", false, "print schema and exit")
 	flag.BoolVar(&skipMigrate, "skip-migrate", false, "do not run db migrations on startup")
 	flag.StringVar(&listen, "l", ":8546", "dashboard server listen address")
 	flag.BoolVar(&notx, "notx", false, "disable pg tx")
@@ -99,6 +101,13 @@ func main() {
 		check(json.NewDecoder(f).Decode(&conf))
 		check(config.ValidateFix(&conf))
 		pgurl = wos.Getenv(conf.PGURL)
+	}
+
+	if printSchema {
+		for _, stmt := range config.DDL(conf) {
+			fmt.Printf("%s\n", sqlfmt(stmt))
+		}
+		os.Exit(0)
 	}
 
 	if !skipMigrate {

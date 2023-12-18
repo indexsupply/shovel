@@ -539,6 +539,26 @@ Indexes:
 
 `src_name`, `ig_name`, and `block_num` are used in the case of a reorg. When a reorg is detected, Shovel will delete rows from its `shovel.task_updates` and `shovel.ig_updates` tables and for each pruned block Shovel will also delete rows from the integration tables using the aforementioned columns.
 
+### Printing the Schema
+
+Shovel has a command line flag that will print the schema based on the config's integrations.
+
+```
+./shovel -config minimal.json --print-schema
+create table if not exists x(
+	ig_name text,
+	src_name text,
+	block_num numeric,
+	tx_idx int
+);
+create unique index if not exists u_x on x (
+	ig_name,
+	src_name,
+	block_num,
+	tx_idx
+);
+```
+
 <hr>
 
 ## Tasks
