@@ -276,9 +276,9 @@ func (ig *Integration) AddRequiredFields() {
 	add("ig_name", "text")
 	add("src_name", "text")
 	add("block_num", "numeric")
-	add("tx_idx", "int4")
+	add("tx_idx", "int")
 	if len(ig.Event.Selected()) > 0 {
-		add("log_idx", "int2")
+		add("log_idx", "int")
 	}
 	for _, inp := range ig.Event.Selected() {
 		if !inp.Indexed {
