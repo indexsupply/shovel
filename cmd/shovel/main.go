@@ -17,6 +17,7 @@ import (
 
 	"github.com/indexsupply/x/pgmig"
 	"github.com/indexsupply/x/shovel"
+	"github.com/indexsupply/x/shovel/config"
 	"github.com/indexsupply/x/shovel/web"
 	"github.com/indexsupply/x/wctx"
 	"github.com/indexsupply/x/wos"
@@ -78,7 +79,7 @@ func main() {
 	}
 
 	var (
-		conf  shovel.Config
+		conf  config.Root
 		pgurl string
 	)
 	switch {

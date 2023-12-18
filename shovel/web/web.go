@@ -21,6 +21,7 @@ import (
 
 	"github.com/indexsupply/x/eth"
 	"github.com/indexsupply/x/shovel"
+	"github.com/indexsupply/x/shovel/config"
 	"github.com/indexsupply/x/wstrings"
 
 	"filippo.io/age"
@@ -57,7 +58,7 @@ type Handler struct {
 	local bool
 	pgp   *pgxpool.Pool
 	mgr   *shovel.Manager
-	conf  *shovel.Config
+	conf  *config.Root
 
 	clientsMutex sync.Mutex
 	clients      map[string]chan []byte
@@ -68,7 +69,7 @@ type Handler struct {
 	password []byte
 }
 
-func New(mgr *shovel.Manager, conf *shovel.Config, pgp *pgxpool.Pool) *Handler {
+func New(mgr *shovel.Manager, conf *config.Root, pgp *pgxpool.Pool) *Handler {
 	h := &Handler{
 		pgp:       pgp,
 		mgr:       mgr,
@@ -187,7 +188,7 @@ func (h *Handler) Diag(w http.ResponseWriter, r *http.Request) {
 		}
 		return "ok"
 	})
-	scs, err := h.conf.AllSourceConfigs(ctx, h.pgp)
+	scs, err := h.conf.AllSources(ctx, h.pgp)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -285,7 +286,7 @@ func (h *Handler) SaveIntegration(w http.ResponseWriter, r *http.Request) {
 	var (
 		err error
 		ctx = r.Context()
-		ig  = shovel.Integration{}
+		ig  = config.Integration{}
 	)
 	defer r.Body.Close()
 	err = json.NewDecoder(r.Body).Decode(&ig)
@@ -294,7 +295,7 @@ func (h *Handler) SaveIntegration(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	testConfig := shovel.Config{Integrations: []shovel.Integration{ig}}
+	testConfig := config.Root{Integrations: []config.Integration{ig}}
 	if err := testConfig.CheckUserInput(); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -330,7 +331,7 @@ func (h *Handler) AddIntegration(w http.ResponseWriter, r *http.Request) {
 		ctx  = r.Context()
 		view = AddIntegrationView{}
 	)
-	srcs, err := h.conf.AllSourceConfigs(ctx, h.pgp)
+	srcs, err := h.conf.AllSources(ctx, h.pgp)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -353,10 +354,10 @@ func (h *Handler) AddIntegration(w http.ResponseWriter, r *http.Request) {
 }
 
 type IndexView struct {
-	TaskUpdates   map[string]shovel.TaskUpdate
-	IGUpdates     map[string][]shovel.IGUpdate
-	SourceConfigs []shovel.SourceConfig
-	ShowBackfill  bool
+	TaskUpdates  map[string]shovel.TaskUpdate
+	IGUpdates    map[string][]shovel.IGUpdate
+	Sources      []config.Source
+	ShowBackfill bool
 }
 
 func (h *Handler) Index(w http.ResponseWriter, r *http.Request) {
@@ -394,7 +395,7 @@ func (h *Handler) Index(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	view.SourceConfigs, err = h.conf.AllSourceConfigs(ctx, h.pgp)
+	view.Sources, err = h.conf.AllSources(ctx, h.pgp)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

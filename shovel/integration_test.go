@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/indexsupply/x/geth/gethtest"
+	"github.com/indexsupply/x/shovel/config"
 	"github.com/indexsupply/x/wpg"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"kr.dev/diff"
@@ -24,7 +25,7 @@ func check(t testing.TB, err error) {
 // In the case that it needs to fetch the data, an RPC
 // client will be used. The RPC endpoint needs to support
 // the debug_dbAncient and debug_dbGet methods.
-func process(tb testing.TB, pg *pgxpool.Pool, ig Integration, n uint64) *Task {
+func process(tb testing.TB, pg *pgxpool.Pool, ig config.Integration, n uint64) *Task {
 	gethTest := gethtest.New(tb, "http://hera:8545")
 	geth := NewGeth(gethTest.FileCache, gethTest.Client)
 
@@ -34,8 +35,8 @@ func process(tb testing.TB, pg *pgxpool.Pool, ig Integration, n uint64) *Task {
 
 	task, err := NewTask(
 		WithPG(pg),
-		WithSourceConfig(SourceConfig{Name: "testhelper"}),
-		WithSourceFactory(func(SourceConfig) Source { return geth }),
+		WithSourceConfig(config.Source{Name: "testhelper"}),
+		WithSourceFactory(func(config.Source) Source { return geth }),
 		WithIntegrations(ig),
 		WithRange(n, n+1),
 	)
@@ -115,7 +116,7 @@ func TestIntegrations(t *testing.T) {
 	}
 	for _, tc := range cases {
 		pg := wpg.TestPG(t, Schema)
-		ig := Integration{}
+		ig := config.Integration{}
 		decode(t, read(t, tc.config), &ig)
 		task := process(t, pg, ig, tc.blockNum)
 		for i, q := range tc.queries {
