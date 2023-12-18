@@ -105,7 +105,10 @@ func main() {
 		migdb, err := pgxpool.New(ctx, pgurl)
 		check(err)
 		check(pgmig.Migrate(migdb, shovel.Migrations))
-		check(config.Migrate(ctx, migdb, conf))
+		dbtx, err := migdb.Begin(ctx)
+		check(err)
+		check(config.Migrate(ctx, dbtx, conf))
+		check(dbtx.Commit(ctx))
 		migdb.Close()
 	}
 
