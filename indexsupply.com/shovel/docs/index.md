@@ -37,6 +37,24 @@ You can also browse [Examples](#examples) to find one that does what you need.
 
 <hr>
 
+## Versions
+
+Latest stable version is: **1.0beta**
+
+```
+https://indexsupply.net/bin/1.0beta/darwin/arm64/shovel
+https://indexsupply.net/bin/1.0beta/linux/amd64/shovel
+```
+
+Latest version on main:
+
+```
+https://indexsupply.net/bin/main/darwin/arm64/shovel
+https://indexsupply.net/bin/main/linux/amd64/shovel
+```
+
+<hr>
+
 ## Install
 
 Here are things you'll need before you get started
