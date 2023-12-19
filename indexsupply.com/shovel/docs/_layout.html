@@ -118,5 +118,27 @@ document.addEventListener("DOMContentLoaded", function() {
 		li.appendChild(a);
 		navList.appendChild(li);
 	});
+
+	document.querySelectorAll("h2, h3").forEach(h => {
+		const original = h.innerHTML;
+		h.addEventListener("mouseenter", e => {
+			const a = h.querySelector("a");
+			if (!a) {
+				const base = location.protocol + '//' + location.host + location.pathname;
+				const href = `${base}#${h.id}`
+				h.innerHTML = `${original} <a href="${href}">#</a>`
+			}
+		});
+		h.addEventListener("mouseleave", e => {
+			h.innerHTML = original;
+		});
+		h.addEventListener("click", e => {
+			e.preventDefault();
+			const a = h.querySelector("a");
+			a.style.color = "orange";
+			setTimeout(() => {a.style.color = ""}, 150);
+			navigator.clipboard.writeText(a.href);
+		});
+	});
 });
 </script>
