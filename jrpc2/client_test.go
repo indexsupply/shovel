@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/indexsupply/x/eth"
+	"github.com/indexsupply/x/shovel/glf"
 	"kr.dev/diff"
 )
 
@@ -44,7 +45,7 @@ func TestError(t *testing.T) {
 	defer ts.Close()
 
 	blocks := []eth.Block{eth.Block{Header: eth.Header{Number: 1000001}}}
-	c := New(0, ts.URL)
+	c := New(ts.URL, glf.Filter{UseBlocks: true})
 	want := "getting blocks: rpc error: eth_getBlockByNumber -32012 credits"
 	diff.Test(t, t.Errorf, want, c.LoadBlocks(nil, blocks).Error())
 }
@@ -65,7 +66,7 @@ func TestNoLogs(t *testing.T) {
 	defer ts.Close()
 
 	blocks := []eth.Block{eth.Block{Header: eth.Header{Number: 1000001}}}
-	c := New(0, ts.URL)
+	c := New(ts.URL, glf.Filter{UseBlocks: true, UseLogs: true})
 	err := c.LoadBlocks(nil, blocks)
 	diff.Test(t, t.Errorf, nil, err)
 
@@ -93,7 +94,7 @@ func TestLatest(t *testing.T) {
 	defer ts.Close()
 
 	blocks := []eth.Block{eth.Block{Header: eth.Header{Number: 18000000}}}
-	c := New(0, ts.URL)
+	c := New(ts.URL, glf.Filter{UseBlocks: true, UseLogs: true})
 	err := c.LoadBlocks(nil, blocks)
 	diff.Test(t, t.Errorf, nil, err)
 

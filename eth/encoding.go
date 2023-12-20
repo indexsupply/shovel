@@ -13,3 +13,8 @@ func DecodeHex(s string) []byte {
 	h, _ := hex.DecodeString(s)
 	return h
 }
+
+// 0x prefixed hex encoded string
+func EncodeHex(b []byte) string {
+	return "0x" + hex.EncodeToString(b)
+}

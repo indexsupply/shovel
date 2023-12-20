@@ -16,6 +16,7 @@ import (
 	"github.com/indexsupply/x/jrpc2"
 	"github.com/indexsupply/x/rlps"
 	"github.com/indexsupply/x/shovel/config"
+	"github.com/indexsupply/x/shovel/glf"
 	"github.com/indexsupply/x/wctx"
 	"github.com/indexsupply/x/wpg"
 
@@ -36,6 +37,7 @@ type Source interface {
 
 type Destination interface {
 	Name() string
+	Filter() glf.Filter
 	Insert(context.Context, wpg.Conn, []eth.Block) (int64, error)
 	Delete(context.Context, wpg.Conn, uint64) error
 	Events(context.Context) [][]byte
@@ -43,7 +45,7 @@ type Destination interface {
 
 type Option func(t *Task)
 
-func WithSourceFactory(f func(config.Source) Source) Option {
+func WithSourceFactory(f func(config.Source, glf.Filter) Source) Option {
 	return func(t *Task) {
 		t.srcFactory = f
 	}
@@ -121,12 +123,12 @@ func NewIntegration(ig config.Integration) (Destination, error) {
 	}
 }
 
-func NewSource(sc config.Source) Source {
+func NewSource(sc config.Source, filter glf.Filter) Source {
 	switch {
 	case strings.Contains(string(sc.URL), "rlps"):
 		return rlps.NewClient(sc.ChainID, string(sc.URL))
 	case strings.HasPrefix(string(sc.URL), "http"):
-		return jrpc2.New(sc.ChainID, string(sc.URL))
+		return jrpc2.New(string(sc.URL), filter)
 	default:
 		// TODO add back support for local geth
 		panic(fmt.Sprintf("unsupported src type: %v", sc))
@@ -145,24 +147,15 @@ func NewTask(opts ...Option) (*Task, error) {
 		opt(t)
 	}
 	for i := range t.parts {
-		t.parts[i].src = t.srcFactory(t.srcConfig)
 		for j := range t.igs {
 			dest, err := t.igFactory(t.igs[j])
 			if err != nil {
 				return nil, fmt.Errorf("initializing integration: %w", err)
 			}
 			t.parts[i].dests = append(t.parts[i].dests, dest)
+			t.filter.Merge(dest.Filter())
 		}
-	}
-	for i := range t.parts[0].dests {
-		e := t.parts[0].dests[i].Events(t.ctx)
-		// if one integration has no filter
-		// then the task must consider all data
-		if len(e) == 0 {
-			t.filter = t.filter[:0]
-			break
-		}
-		t.filter = append(t.filter, e...)
+		t.parts[i].src = t.srcFactory(t.srcConfig, t.filter)
 	}
 	slog.InfoContext(t.ctx, "new-task", "integrations", len(t.igs))
 	return t, nil
@@ -175,7 +168,7 @@ type Task struct {
 	backfill    bool
 	start, stop uint64
 
-	srcFactory func(config.Source) Source
+	srcFactory func(config.Source, glf.Filter) Source
 	srcConfig  config.Source
 
 	igFactory   func(config.Integration) (Destination, error)
@@ -183,7 +176,7 @@ type Task struct {
 	igRange     []igRange
 	igUpdateBuf *igUpdateBuf
 
-	filter [][]byte
+	filter glf.Filter
 	batch  []eth.Block
 	parts  []part
 }
@@ -542,7 +535,7 @@ func (task *Task) Converge(notx bool) error {
 			if err := commit(); err != nil {
 				return fmt.Errorf("commit converge tx: %w", err)
 			}
-			slog.InfoContext(task.ctx, "converge", "n", last.Num())
+			slog.InfoContext(task.ctx, "converge", "n", last.Num(), "elapsed", time.Since(start))
 			return nil
 		}
 	}
@@ -568,14 +561,18 @@ func (task *Task) loadinsert(localHash []byte, pg wpg.Conn, delta uint64) (int64
 			continue
 		}
 		eg1.Go(func() error {
-			return task.parts[i].src.LoadBlocks(task.filter, b)
+			return task.parts[i].src.LoadBlocks(nil, b)
 		})
 	}
 	if err := eg1.Wait(); err != nil {
 		return 0, err
 	}
-	if err := validateChain(task.ctx, localHash, task.batch[:delta]); err != nil {
-		return 0, fmt.Errorf("validating new chain: %w", err)
+	switch {
+	case task.filter.UseBlocks:
+		err := validateChain(task.ctx, localHash, task.batch[:delta])
+		if err != nil {
+			return 0, fmt.Errorf("validating new chain: %w", err)
+		}
 	}
 	var (
 		nrows int64

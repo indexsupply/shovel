@@ -6,34 +6,34 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"slices"
 	"strconv"
 	"strings"
 
-	"golang.org/x/sync/errgroup"
-
 	"github.com/indexsupply/x/eth"
+	"github.com/indexsupply/x/shovel/glf"
+
+	"golang.org/x/sync/errgroup"
 )
 
-func New(chainID uint64, url string) *Client {
+func New(url string, filter glf.Filter) *Client {
 	return &Client{
-		chainID: chainID,
-		d:       strings.Contains(url, "debug"),
-		hc:      &http.Client{},
-		url:     url,
+		d:      strings.Contains(url, "debug"),
+		hc:     &http.Client{},
+		url:    url,
+		filter: filter,
 	}
 }
 
 type Client struct {
-	d       bool
-	chainID uint64
-	url     string
-	hc      *http.Client
+	d      bool
+	url    string
+	hc     *http.Client
+	filter glf.Filter
 }
-
-func (c *Client) ChainID() uint64 { return c.chainID }
 
 func (c *Client) debug(r io.Reader) io.Reader {
 	if !c.d {
@@ -82,7 +82,7 @@ func (c *Client) Latest() (uint64, []byte, error) {
 		ID:      "1",
 		Version: "2.0",
 		Method:  "eth_getBlockByNumber",
-		Params:  []any{"latest", true},
+		Params:  []any{"latest", false},
 	})
 	if err != nil {
 		return 0, nil, fmt.Errorf("unable request hash: %w", err)
@@ -107,7 +107,7 @@ func (c *Client) Hash(n uint64) ([]byte, error) {
 		ID:      "1",
 		Version: "2.0",
 		Method:  "eth_getBlockByNumber",
-		Params:  []any{"0x" + strconv.FormatUint(n, 16), true},
+		Params:  []any{"0x" + strconv.FormatUint(n, 16), false},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("unable request hash: %w", err)
@@ -149,6 +149,10 @@ type blockResp struct {
 }
 
 func (c *Client) blocks(blocks []eth.Block) error {
+	if !c.filter.UseBlocks {
+		slog.Debug("jrpc2: skipping blocks")
+		return nil
+	}
 	var (
 		reqs  = make([]request, len(blocks))
 		resps = make([]blockResp, len(blocks))
@@ -159,7 +163,7 @@ func (c *Client) blocks(blocks []eth.Block) error {
 			ID:      "1",
 			Version: "2.0",
 			Method:  "eth_getBlockByNumber",
-			Params:  []any{n, true},
+			Params:  []any{n, c.filter.UseTxs},
 		}
 		resps[i].Block = &blocks[i]
 	}
@@ -178,6 +182,90 @@ func (c *Client) blocks(blocks []eth.Block) error {
 				resps[i].Error.Code,
 				resps[i].Error.Message,
 			)
+		}
+	}
+	return nil
+}
+
+type receiptResult struct {
+	BlockHash eth.Bytes  `json:"blockHash"`
+	BlockNum  eth.Uint64 `json:"blockNumber"`
+	TxHash    eth.Bytes  `json:"transactionHash"`
+	TxIdx     eth.Uint64 `json:"transactionIndex"`
+	TxType    eth.Byte   `json:"type"`
+	TxFrom    eth.Bytes  `json:"from"`
+	TxTo      eth.Bytes  `json:"to"`
+	Status    eth.Byte   `json:"status"`
+	GasUsed   eth.Uint64 `json:"gasUsed"`
+	Logs      eth.Logs   `json:"logs"`
+	Removed   bool       `json:"removed"`
+}
+
+type receiptResp struct {
+	Result []receiptResult `json:"result"`
+	Error  struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+	} `json:"error"`
+}
+
+func (c *Client) receipts(blocks []eth.Block) error {
+	if !c.filter.UseReceipts {
+		slog.Debug("jrpc2: skipping receipts")
+		return nil
+	}
+	var (
+		reqs  = make([]request, len(blocks))
+		resps = make([]receiptResp, len(blocks))
+	)
+	for i := range blocks {
+		n := "0x" + strconv.FormatUint(blocks[i].Num(), 16)
+		reqs[i] = request{
+			ID:      "1",
+			Version: "2.0",
+			Method:  "eth_getBlockReceipts",
+			Params:  []any{n},
+		}
+	}
+	resp, err := c.do(reqs)
+	if err != nil {
+		return fmt.Errorf("requesting blocks: %w", err)
+	}
+	defer resp.Close()
+	if err := json.NewDecoder(c.debug(resp)).Decode(&resps); err != nil {
+		return fmt.Errorf("unable to decode json into response: %w", err)
+	}
+	for i := range resps {
+		if resps[i].Error.Code == 0 {
+			continue
+		}
+		return fmt.Errorf("rpc error: %s %d %s",
+			"eth_getBlockByNumber",
+			resps[i].Error.Code,
+			resps[i].Error.Message,
+		)
+	}
+
+	var blocksByNum = map[uint64]*eth.Block{}
+	for i := range blocks {
+		blocksByNum[blocks[i].Num()] = &blocks[i]
+	}
+	for i := range resps {
+		b, ok := blocksByNum[uint64(resps[i].Result[0].BlockNum)]
+		if !ok {
+			return fmt.Errorf("block not found")
+		}
+		b.Header.Hash = resps[i].Result[0].BlockHash
+		b.Txs = make(eth.Txs, len(resps[i].Result))
+		b.Receipts = make(eth.Receipts, len(resps[i].Result))
+		for j := range resps[i].Result {
+			b.Txs[j].PrecompHash = resps[i].Result[j].TxHash
+			b.Txs[j].Type = resps[i].Result[j].TxType
+			b.Txs[j].From = resps[i].Result[j].TxFrom
+			b.Txs[j].To = resps[i].Result[j].TxTo
+			b.Receipts[j].Status = resps[i].Result[j].Status
+			b.Receipts[j].GasUsed = resps[i].Result[j].GasUsed
+			b.Receipts[j].Logs.Copy(resps[i].Result[j].Logs)
 		}
 	}
 	return nil
@@ -202,13 +290,20 @@ type logResp struct {
 }
 
 func (c *Client) logs(blocks []eth.Block) error {
+	if !c.filter.UseLogs {
+		slog.Debug("jrpc2: skipping logs")
+		return nil
+	}
 	lf := struct {
-		From   string   `json:"fromBlock"`
-		To     string   `json:"toBlock"`
-		Topics []string `json:"topics"`
+		From    string     `json:"fromBlock"`
+		To      string     `json:"toBlock"`
+		Address []string   `json:"address"`
+		Topics  [][]string `json:"topics"`
 	}{
-		From: "0x" + strconv.FormatUint(blocks[0].Num(), 16),
-		To:   "0x" + strconv.FormatUint(blocks[len(blocks)-1].Num(), 16),
+		From:    "0x" + strconv.FormatUint(blocks[0].Num(), 16),
+		To:      "0x" + strconv.FormatUint(blocks[len(blocks)-1].Num(), 16),
+		Address: c.filter.Address,
+		Topics:  c.filter.Topics,
 	}
 	resp, err := c.do(request{
 		ID:      "1",
@@ -234,18 +329,41 @@ func (c *Client) logs(blocks []eth.Block) error {
 	slices.SortFunc(lresp.Result, func(a, b logResult) int {
 		return cmp.Compare(a.LogIdx, b.LogIdx)
 	})
-	for i, b := 0, new(eth.Block); i < len(lresp.Result); i++ {
-		if uint64(lresp.Result[i].BlockNum) != b.Num() {
-			for j := range blocks {
-				if blocks[j].Num() == uint64(lresp.Result[i].BlockNum) {
-					b = &blocks[j]
-				}
-			}
+	var blocksByNum = map[uint64]*eth.Block{}
+	for i := range blocks {
+		blocksByNum[blocks[i].Num()] = &blocks[i]
+	}
+	for i := 0; i < len(lresp.Result); i++ {
+		b, ok := blocksByNum[uint64(lresp.Result[i].BlockNum)]
+		if !ok {
+			return fmt.Errorf("block not found")
 		}
-		b.Receipts[int(lresp.Result[i].TxIdx)].Logs = append(
-			b.Receipts[int(lresp.Result[i].TxIdx)].Logs,
-			*lresp.Result[i].Log,
+		b.Header.Hash = lresp.Result[i].BlockHash
+		var (
+			tx *eth.Tx
+			re *eth.Receipt
 		)
+		ti := int(lresp.Result[i].TxIdx)
+		b.Txs, tx = get(b.Txs, ti)
+		b.Receipts, re = get(b.Receipts, ti)
+		tx.PrecompHash = lresp.Result[i].TxHash
+		re.Logs = append(re.Logs, *lresp.Result[i].Log)
 	}
 	return nil
+}
+
+// returns pointer to x[i]. extends x if i >= len(x)
+func get[X ~[]E, E any](x X, i int) (X, *E) {
+	switch {
+	case i < 0:
+		panic("cannot be negative")
+	case i < len(x):
+		return x, &x[i]
+	case i >= len(x):
+		n := max(1, i+1-len(x))
+		x = append(x, make(X, n)...)
+		return x, &x[i]
+	default:
+		panic("default")
+	}
 }

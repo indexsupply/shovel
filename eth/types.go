@@ -2,7 +2,9 @@
 package eth
 
 import (
+	"bytes"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"sync"
 
@@ -65,17 +67,22 @@ func (hn *Uint64) UnmarshalJSON(data []byte) error {
 	return err
 }
 
-type hbyte byte
+type Byte byte
 
-func (hb *hbyte) UnmarshalJSON(data []byte) error {
+func (b *Byte) UnmarshalJSON(data []byte) error {
 	if len(data) < 4 {
 		return fmt.Errorf("must be at leaset 4 bytes")
 	}
 	data = data[1 : len(data)-1] // remove quotes
 	data = data[2:]              // remove 0x
 	n, err := decode(string(data))
-	*hb = hbyte(n)
+	*b = Byte(n)
 	return err
+}
+
+func (b *Byte) Write(p []byte) (int, error) {
+	*b = Byte(p[0])
+	return 1, nil
 }
 
 type Bytes []byte
@@ -170,8 +177,18 @@ func (ls *Logs) UnmarshalRLP(b []byte) {
 	*ls = (*ls)[:i]
 }
 
+func (ls *Logs) Copy(other []Log) {
+	var i int
+	for i = range other {
+		var l *Log
+		*ls, l = get(*ls, i)
+		*l = other[i]
+	}
+	*ls = (*ls)[:i]
+}
+
 type Receipt struct {
-	Status  Bytes
+	Status  Byte
 	GasUsed Uint64
 	Logs    Logs
 }
@@ -281,8 +298,38 @@ func (txs *Txs) UnmarshalRLP(b []byte) {
 	*txs = (*txs)[:i]
 }
 
+func (txs *Txs) UnmarshalJSON(d []byte) error {
+	switch {
+	case len(d) < 2:
+		return fmt.Errorf("unable to decode txs %s", string(d))
+	case d[0] == '[' && d[1] == ']':
+		return nil
+	case d[1] == '"':
+		var hashes []Bytes
+		if err := json.NewDecoder(bytes.NewReader(d)).Decode(&hashes); err != nil {
+			return err
+		}
+		for i := range hashes {
+			var tx *Tx
+			*txs, tx = get(*txs, i)
+			tx.Reset()
+			tx.PrecompHash.Write([]byte(hashes[i]))
+		}
+		return nil
+	case d[1] == '{':
+		var t []Tx
+		if err := json.NewDecoder(bytes.NewReader(d)).Decode(&t); err != nil {
+			return err
+		}
+		*txs = t
+		return nil
+	default:
+		return fmt.Errorf("unkown txs data: %s", string(d))
+	}
+}
+
 type Tx struct {
-	Type     hbyte       `json:"type"`
+	Type     Byte        `json:"type"`
 	ChainID  uint256.Int `json:"chainID"`
 	Nonce    Uint64      `json:"nonce"`
 	GasPrice uint256.Int `json:"gasPrice"`

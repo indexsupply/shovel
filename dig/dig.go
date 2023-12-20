@@ -16,6 +16,7 @@ import (
 	"github.com/indexsupply/x/bint"
 	"github.com/indexsupply/x/eth"
 	"github.com/indexsupply/x/isxhash"
+	"github.com/indexsupply/x/shovel/glf"
 	"github.com/indexsupply/x/wctx"
 	"github.com/indexsupply/x/wpg"
 
@@ -563,6 +564,7 @@ type Integration struct {
 	numSelected   int
 	numBDSelected int
 
+	filter      glf.Filter
 	resultCache *Result
 	sighash     []byte
 }
@@ -579,7 +581,27 @@ func New(name string, ev Event, bd []BlockData, table wpg.Table) (Integration, e
 		sighash:     ev.SignatureHash(),
 	}
 	ig.setCols()
+	ig.setFilter()
 	return ig, nil
+}
+
+func (ig *Integration) setFilter() {
+	var (
+		fields []string
+		addrs  []string
+	)
+	for i := range ig.Block {
+		fields = append(fields, ig.Block[i].Name)
+
+		if ig.Block[i].Name == "log_addr" && len(ig.Block[i].Filter.Arg) > 0 {
+			for _, arg := range ig.Block[i].Filter.Arg {
+				addrs = append(addrs, eth.EncodeHex(eth.DecodeHex(arg)))
+			}
+		}
+	}
+	ig.filter.Needs(fields)
+	ig.filter.Address = addrs
+	ig.filter.Topics = [][]string{{eth.EncodeHex(ig.sighash)}}
 }
 
 func (ig *Integration) setCols() {
@@ -610,6 +632,8 @@ func (ig *Integration) setCols() {
 		ig.numBDSelected++
 	}
 }
+
+func (ig Integration) Filter() glf.Filter { return ig.filter }
 
 func (ig Integration) Name() string { return ig.name }
 

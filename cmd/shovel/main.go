@@ -56,7 +56,7 @@ func main() {
 	flag.StringVar(&cfile, "config", "", "task config file")
 	flag.BoolVar(&printSchema, "print-schema", false, "print schema and exit")
 	flag.BoolVar(&skipMigrate, "skip-migrate", false, "do not run db migrations on startup")
-	flag.StringVar(&listen, "l", ":8546", "dashboard server listen address")
+	flag.StringVar(&listen, "l", "localhost:8546", "dashboard server listen address")
 	flag.BoolVar(&notx, "notx", false, "disable pg tx")
 	flag.StringVar(&profile, "profile", "", "run profile after indexing")
 	flag.BoolVar(&version, "version", false, "version")

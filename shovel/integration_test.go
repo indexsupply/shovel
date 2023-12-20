@@ -8,6 +8,7 @@ import (
 
 	"github.com/indexsupply/x/geth/gethtest"
 	"github.com/indexsupply/x/shovel/config"
+	"github.com/indexsupply/x/shovel/glf"
 	"github.com/indexsupply/x/wpg"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"kr.dev/diff"
@@ -39,11 +40,13 @@ func process(tb testing.TB, pg *pgxpool.Pool, conf config.Root, n uint64) *Task 
 	task, err := NewTask(
 		WithPG(pg),
 		WithSourceConfig(config.Source{Name: "testhelper"}),
-		WithSourceFactory(func(config.Source) Source { return geth }),
+		WithSourceFactory(func(config.Source, glf.Filter) Source { return geth }),
 		WithIntegrations(conf.Integrations...),
 		WithRange(n, n+1),
 	)
 	check(tb, err)
+	//TODO find a better way
+	task.filter = glf.Filter{UseBlocks: true, UseLogs: true}
 	check(tb, task.Setup())
 	check(tb, task.Converge(true))
 	gethTest.Done()

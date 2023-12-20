@@ -12,6 +12,7 @@ import (
 	"github.com/indexsupply/x/dig"
 	"github.com/indexsupply/x/eth"
 	"github.com/indexsupply/x/shovel/config"
+	"github.com/indexsupply/x/shovel/glf"
 	"github.com/indexsupply/x/tc"
 	"github.com/indexsupply/x/wpg"
 
@@ -88,6 +89,10 @@ func (dest *testDestination) Delete(_ context.Context, pg wpg.Conn, n uint64) er
 
 func (dest *testDestination) Events(_ context.Context) [][]byte {
 	return nil
+}
+
+func (dest *testDestination) Filter() glf.Filter {
+	return glf.Filter{UseBlocks: true, UseLogs: true}
 }
 
 func (dest *testDestination) Name() string {
@@ -195,7 +200,7 @@ func TestSetup(t *testing.T) {
 		task, err = NewTask(
 			WithPG(pg),
 			WithSourceConfig(config.Source{Name: "foo"}),
-			WithSourceFactory(func(config.Source) Source { return tg }),
+			WithSourceFactory(func(config.Source, glf.Filter) Source { return tg }),
 			WithIntegrations(dest.ig()),
 			WithIntegrationFactory(dest.factory),
 		)
@@ -223,7 +228,7 @@ func TestConverge_Zero(t *testing.T) {
 		task, err = NewTask(
 			WithPG(pg),
 			WithSourceConfig(config.Source{Name: "foo"}),
-			WithSourceFactory(func(config.Source) Source { return &testGeth{} }),
+			WithSourceFactory(func(config.Source, glf.Filter) Source { return &testGeth{} }),
 			WithIntegrations(dest.ig()),
 			WithIntegrationFactory(dest.factory),
 		)
@@ -240,7 +245,7 @@ func TestConverge_EmptyDestination(t *testing.T) {
 		task, err = NewTask(
 			WithPG(pg),
 			WithSourceConfig(config.Source{Name: "foo"}),
-			WithSourceFactory(func(config.Source) Source { return tg }),
+			WithSourceFactory(func(config.Source, glf.Filter) Source { return tg }),
 			WithIntegrations(dest.ig()),
 			WithIntegrationFactory(dest.factory),
 		)
@@ -262,12 +267,14 @@ func TestConverge_Reorg(t *testing.T) {
 		task, err = NewTask(
 			WithPG(pg),
 			WithSourceConfig(config.Source{Name: "foo"}),
-			WithSourceFactory(func(config.Source) Source { return tg }),
+			WithSourceFactory(func(config.Source, glf.Filter) Source { return tg }),
 			WithIntegrations(dest.ig()),
 			WithIntegrationFactory(dest.factory),
 		)
 	)
 	diff.Test(t, t.Errorf, err, nil)
+	//TODO find a better way
+	task.filter = glf.Filter{UseBlocks: true, UseLogs: true}
 
 	tg.add(0, hash(0), hash(0))
 	tg.add(1, hash(2), hash(0))
@@ -297,7 +304,7 @@ func TestConverge_DeltaBatchSize(t *testing.T) {
 			WithPG(pg),
 			WithConcurrency(workers, batchSize),
 			WithSourceConfig(config.Source{Name: "foo"}),
-			WithSourceFactory(func(config.Source) Source { return tg }),
+			WithSourceFactory(func(config.Source, glf.Filter) Source { return tg }),
 			WithIntegrations(dest.ig()),
 			WithIntegrationFactory(dest.factory),
 		)
@@ -329,7 +336,7 @@ func TestConverge_MultipleTasks(t *testing.T) {
 			WithPG(pg),
 			WithConcurrency(1, 3),
 			WithSourceConfig(config.Source{Name: "a"}),
-			WithSourceFactory(func(config.Source) Source { return tg }),
+			WithSourceFactory(func(config.Source, glf.Filter) Source { return tg }),
 			WithIntegrations(dest1.ig()),
 			WithIntegrationFactory(dest1.factory),
 		)
@@ -337,7 +344,7 @@ func TestConverge_MultipleTasks(t *testing.T) {
 			WithPG(pg),
 			WithConcurrency(1, 3),
 			WithSourceConfig(config.Source{Name: "b"}),
-			WithSourceFactory(func(config.Source) Source { return tg }),
+			WithSourceFactory(func(config.Source, glf.Filter) Source { return tg }),
 			WithIntegrations(dest2.ig()),
 			WithIntegrationFactory(dest2.factory),
 		)
@@ -366,7 +373,7 @@ func TestConverge_LocalAhead(t *testing.T) {
 			WithPG(pg),
 			WithConcurrency(1, 3),
 			WithSourceConfig(config.Source{Name: "foo"}),
-			WithSourceFactory(func(config.Source) Source { return tg }),
+			WithSourceFactory(func(config.Source, glf.Filter) Source { return tg }),
 			WithIntegrations(dest.ig()),
 			WithIntegrationFactory(dest.factory),
 		)
@@ -391,7 +398,7 @@ func TestConverge_Done(t *testing.T) {
 			WithPG(pg),
 			WithConcurrency(1, 1),
 			WithSourceConfig(config.Source{Name: "foo"}),
-			WithSourceFactory(func(config.Source) Source { return tg }),
+			WithSourceFactory(func(config.Source, glf.Filter) Source { return tg }),
 			WithIntegrations(dest.ig()),
 			WithIntegrationFactory(dest.factory),
 		)
@@ -400,7 +407,7 @@ func TestConverge_Done(t *testing.T) {
 			WithPG(pg),
 			WithConcurrency(1, 1),
 			WithSourceConfig(config.Source{Name: "foo"}),
-			WithSourceFactory(func(config.Source) Source { return tg }),
+			WithSourceFactory(func(config.Source, glf.Filter) Source { return tg }),
 			WithIntegrations(dest.ig()),
 			WithIntegrationFactory(dest.factory),
 		)
@@ -503,7 +510,7 @@ func TestInitRows(t *testing.T) {
 	task, err := NewTask(
 		WithPG(pg),
 		WithSourceConfig(config.Source{Name: "foo"}),
-		WithSourceFactory(func(config.Source) Source { return &testGeth{} }),
+		WithSourceFactory(func(config.Source, glf.Filter) Source { return &testGeth{} }),
 		WithIntegrations(bar.ig()),
 		WithIntegrationFactory(bar.factory),
 	)
@@ -521,7 +528,7 @@ func TestInitRows(t *testing.T) {
 	task, err = NewTask(
 		WithPG(pg),
 		WithSourceConfig(config.Source{Name: "foo"}),
-		WithSourceFactory(func(config.Source) Source { return &testGeth{} }),
+		WithSourceFactory(func(config.Source, glf.Filter) Source { return &testGeth{} }),
 		WithIntegrations(bar.ig(), baz.ig()),
 		WithIntegrationFactory(destFactory(bar, baz)),
 	)
@@ -536,7 +543,7 @@ func TestInitRows(t *testing.T) {
 		WithPG(pg),
 		WithBackfill(true),
 		WithSourceConfig(config.Source{Name: "foo"}),
-		WithSourceFactory(func(config.Source) Source { return &testGeth{} }),
+		WithSourceFactory(func(config.Source, glf.Filter) Source { return &testGeth{} }),
 		WithIntegrations(bar.ig(), baz.ig()),
 		WithIntegrationFactory(destFactory(bar, baz)),
 	)
@@ -598,7 +605,7 @@ func TestDestRanges_Load(t *testing.T) {
 	task1, err1 := NewTask(
 		WithPG(pg),
 		WithSourceConfig(config.Source{Name: "foo"}),
-		WithSourceFactory(func(config.Source) Source { return &testGeth{} }),
+		WithSourceFactory(func(config.Source, glf.Filter) Source { return &testGeth{} }),
 		WithIntegrations(dest.ig()),
 		WithIntegrationFactory(dest.factory),
 	)
@@ -606,7 +613,7 @@ func TestDestRanges_Load(t *testing.T) {
 		WithPG(pg),
 		WithBackfill(true),
 		WithSourceConfig(config.Source{Name: "foo"}),
-		WithSourceFactory(func(config.Source) Source { return &testGeth{} }),
+		WithSourceFactory(func(config.Source, glf.Filter) Source { return &testGeth{} }),
 		WithIntegrations(dest.ig()),
 		WithIntegrationFactory(dest.factory),
 	)
