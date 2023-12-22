@@ -6,11 +6,11 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/btcsuite/btcd/btcec/v2/ecdsa"
 	"github.com/indexsupply/x/bint"
 	"github.com/indexsupply/x/isxhash"
 	"github.com/indexsupply/x/rlp"
 
+	"github.com/btcsuite/btcd/btcec/v2/ecdsa"
 	"github.com/holiman/uint256"
 )
 
@@ -172,6 +172,10 @@ func (ls *Logs) UnmarshalRLP(b []byte) {
 		l.UnmarshalRLP(it.Bytes())
 	}
 	*ls = (*ls)[:i]
+}
+
+func (ls *Logs) Reset() {
+	*ls = (*ls)[:0]
 }
 
 func (ls *Logs) Copy(other []Log) {
@@ -339,6 +343,7 @@ func (tx *Tx) Reset() {
 	tx.PrecompHash = tx.PrecompHash[:0]
 	tx.rbuf = tx.rbuf[:0]
 	tx.signer = tx.signer[:0]
+	tx.Logs.Reset()
 	tx.cacheMut.Unlock()
 }
 

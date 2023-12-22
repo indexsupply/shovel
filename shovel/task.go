@@ -568,7 +568,7 @@ func (task *Task) loadinsert(localHash []byte, pg wpg.Conn, delta uint64) (int64
 		return 0, err
 	}
 	switch {
-	case task.filter.UseBlocks:
+	case task.filter.UseHeaders, task.filter.UseBlocks:
 		err := validateChain(task.ctx, localHash, task.batch[:delta])
 		if err != nil {
 			return 0, fmt.Errorf("validating new chain: %w", err)

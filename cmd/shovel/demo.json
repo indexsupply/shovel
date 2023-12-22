@@ -11,16 +11,15 @@
 			"table": {
 				"name": "usdc",
 				"columns": [
+					{"name": "tx_hash",     "type": "bytea"},
 					{"name": "log_addr",	"type": "bytea"},
-					{"name": "block_time",	"type": "numeric"},
 					{"name": "f",			"type": "bytea"},
 					{"name": "t",			"type": "bytea"},
-					{"name": "v",			"type": "numeric"},
-					{"name": "extra",       "type": "text"}
+					{"name": "v",			"type": "numeric"}
 				]
 			},
 			"block": [
-				{"name": "block_time", "column": "block_time"},
+				{"name": "tx_hash", "column": "tx_hash"},
 				{
 					"name": "log_addr",
 					"column": "log_addr",
