@@ -53,6 +53,14 @@ https://indexsupply.net/bin/main/darwin/arm64/shovel
 https://indexsupply.net/bin/main/linux/amd64/shovel
 ```
 
+The following resources are automatically deployed on a main commit:
+
+- Binaries https://indexsupply.net/bin/main
+  `darwin/arm64`, `darwin/amd64`, `linux/amd64`, `windows/amd64`
+- Docker https://hub.docker.com/r/indexsupply/shovel
+  `linux/amd64`, `linux/arm64`
+- This web site https://indexsupply.com
+
 <hr>
 
 ## Install
