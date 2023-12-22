@@ -1,10 +1,12 @@
 // eth_getLogs filter
 package glf
 
+import "slices"
+
 type Filter struct {
 	needs       []string
+	UseHeaders  bool
 	UseBlocks   bool
-	UseTxs      bool
 	UseReceipts bool
 	UseLogs     bool
 
@@ -37,6 +39,7 @@ func (f *Filter) Merge(o Filter) {
 	for addr := range uniqAddrs {
 		f.Address = append(f.Address, addr)
 	}
+	slices.Sort(f.Address)
 
 	if len(f.Topics) < len(o.Topics) {
 		n := len(o.Topics) - len(f.Topics)
@@ -54,19 +57,20 @@ func (f *Filter) Merge(o Filter) {
 		for topic := range uniqTopics {
 			f.Topics[i] = append(f.Topics[i], topic)
 		}
+		slices.Sort(f.Topics[i])
 	}
 }
 
 func (f *Filter) Needs(needs []string) {
+	slices.Sort(needs)
 	f.needs = nil
 	for i := range needs {
 		f.needs = append(f.needs, needs[i])
 	}
-
-	f.UseReceipts = any(f.needs, onlyr)
-	f.UseTxs = any(f.needs, onlyt)
-	f.UseBlocks = any(f.needs, onlyb) || f.UseTxs
-	f.UseLogs = any(f.needs, ld) && !f.UseReceipts
+	f.UseHeaders = any(f.needs, unique(header, block, receipt, log))
+	f.UseBlocks = any(f.needs, unique(block, header, receipt, log))
+	f.UseReceipts = any(f.needs, unique(receipt, header, block, log))
+	f.UseLogs = !f.UseReceipts && any(f.needs, log)
 }
 
 func any(a, b []string) bool {
@@ -99,7 +103,24 @@ func unique(ours []string, others ...[]string) []string {
 }
 
 var (
-	rd = []string{
+	header = []string{
+		"block_hash",
+		"block_num",
+		"block_time",
+	}
+	block = []string{
+		"block_hash",
+		"block_num",
+		"tx_hash",
+		"tx_idx",
+		"tx_nonce",
+		"tx_signer",
+		"tx_to",
+		"tx_input",
+		"tx_value",
+		"tx_type",
+	}
+	receipt = []string{
 		"block_hash",
 		"block_num",
 		"tx_hash",
@@ -113,7 +134,7 @@ var (
 		"log_addr",
 		"log_idx",
 	}
-	ld = []string{
+	log = []string{
 		"block_hash",
 		"block_num",
 		"tx_hash",
@@ -121,24 +142,4 @@ var (
 		"log_addr",
 		"log_idx",
 	}
-	bd = []string{
-		"block_hash",
-		"block_num",
-		"block_time",
-	}
-	td = []string{
-		"block_hash",
-		"block_num",
-		"tx_hash",
-		"tx_idx",
-		"tx_nonce",
-		"tx_signer",
-		"tx_to",
-		"tx_input",
-		"tx_value",
-		"tx_type",
-	}
-	onlyr = unique(rd, bd, td, ld)
-	onlyt = unique(td, bd, rd, ld)
-	onlyb = unique(bd, td, rd, ld)
 )

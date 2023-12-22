@@ -15,17 +15,17 @@ func TestMerge(t *testing.T) {
 		{
 			Filter{needs: []string{"foo"}},
 			Filter{needs: []string{"foo", "bar"}},
-			Filter{needs: []string{"foo", "bar"}},
+			Filter{needs: []string{"bar", "foo"}},
 		},
 		{
 			Filter{Address: []string{"foo"}},
 			Filter{Address: []string{"bar"}},
-			Filter{Address: []string{"foo", "bar"}},
+			Filter{Address: []string{"bar", "foo"}},
 		},
 		{
 			Filter{Address: []string{"foo"}},
 			Filter{Address: []string{"foo", "bar"}},
-			Filter{Address: []string{"foo", "bar"}},
+			Filter{Address: []string{"bar", "foo"}},
 		},
 		{
 			Filter{Topics: [][]string{{}, {"foo"}}},
@@ -47,26 +47,24 @@ func TestMerge(t *testing.T) {
 func TestNeeds(t *testing.T) {
 	cases := []struct {
 		fields   []string
+		headers  bool
 		blocks   bool
-		txs      bool
 		receipts bool
 		logs     bool
 	}{
 		{
 			fields:   []string{"tx_status", "tx_input", "log_idx"},
 			blocks:   true,
-			txs:      true,
 			receipts: true,
 		},
 		{
-			fields: []string{"block_time", "log_idx"},
-			blocks: true,
-			logs:   true,
+			fields:  []string{"block_time", "log_idx"},
+			headers: true,
+			logs:    true,
 		},
 		{
 			fields: []string{"tx_input"},
 			blocks: true,
-			txs:    true,
 		},
 		{
 			fields: []string{"log_idx"},
@@ -80,8 +78,8 @@ func TestNeeds(t *testing.T) {
 	for _, tc := range cases {
 		f := Filter{}
 		f.Needs(tc.fields)
+		diff.Test(t, t.Errorf, f.UseHeaders, tc.headers)
 		diff.Test(t, t.Errorf, f.UseBlocks, tc.blocks)
-		diff.Test(t, t.Errorf, f.UseTxs, tc.txs)
 		diff.Test(t, t.Errorf, f.UseReceipts, tc.receipts)
 		diff.Test(t, t.Errorf, f.UseLogs, tc.logs)
 	}

@@ -2,9 +2,7 @@
 package eth
 
 import (
-	"bytes"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"sync"
 
@@ -80,8 +78,8 @@ func (b *Byte) UnmarshalJSON(data []byte) error {
 	return err
 }
 
-func (b *Byte) Write(p []byte) (int, error) {
-	*b = Byte(p[0])
+func (b *Byte) Write(p byte) (int, error) {
+	*b = Byte(p)
 	return 1, nil
 }
 
@@ -120,15 +118,13 @@ func (hb *Bytes) Write(p []byte) (int, error) {
 
 type Block struct {
 	Header
-	Txs      Txs `json:"transactions"`
-	Receipts Receipts
+	Txs Txs `json:"transactions"`
 }
 
 func (b *Block) Reset() {
 	for i := range b.Txs {
 		b.Txs[i].Reset()
 	}
-	b.Receipts = b.Receipts[:0]
 }
 
 func (b *Block) SetNum(n uint64) { b.Header.Number = Uint64(n) }
@@ -144,6 +140,7 @@ func (b Block) String() string {
 }
 
 type Log struct {
+	Idx     Uint64  `json:"logIndex"`
 	Address Bytes   `json:"address"`
 	Topics  []Bytes `json:"topics"`
 	Data    Bytes   `json:"data"`
@@ -188,28 +185,16 @@ func (ls *Logs) Copy(other []Log) {
 }
 
 type Receipt struct {
-	Status  Byte
-	GasUsed Uint64
-	Logs    Logs
+	Status  Byte   `json:"status"`
+	GasUsed Uint64 `json:"gasUsed"`
+	Logs    Logs   `json:"logs"`
 }
 
 func (r *Receipt) UnmarshalRLP(b []byte) {
 	iter := rlp.Iter(b)
-	r.Status.Write(iter.Bytes())
+	r.Status.Write(iter.Bytes()[0])
 	r.GasUsed = Uint64(bint.Uint64(iter.Bytes()))
 	r.Logs.UnmarshalRLP(iter.Bytes())
-}
-
-type Receipts []Receipt
-
-func (rs *Receipts) UnmarshalRLP(b []byte) {
-	var j int
-	for it := rlp.Iter(b); it.HasNext(); j++ {
-		var r *Receipt
-		*rs, r = get(*rs, j)
-		r.UnmarshalRLP(it.Bytes())
-	}
-	*rs = (*rs)[:j]
 }
 
 type Header struct {
@@ -287,48 +272,43 @@ func (ats *AccessTuples) UnmarshalRLP(b []byte) error {
 
 type Txs []Tx
 
-func (txs *Txs) UnmarshalRLP(b []byte) {
+func (txs *Txs) Get(i int) *Tx {
+	var tx *Tx
+	*txs, tx = get(*txs, i)
+	tx.Reset()
+	return tx
+}
+
+func (txs *Txs) SetLen(i int) {
+	*txs = (*txs)[:i]
+}
+
+func (txs *Txs) UnmarshalRLP(bodies, receipts []byte) {
 	var i int
-	for it := rlp.Iter(b); it.HasNext(); i++ {
+	for it := rlp.Iter(bodies); it.HasNext(); i++ {
 		var tx *Tx
 		*txs, tx = get(*txs, i)
 		tx.Reset()
 		tx.UnmarshalRLP(it.Bytes())
+		tx.Idx = Uint64(i)
+	}
+	for i, it := 0, rlp.Iter(receipts); it.HasNext(); i++ {
+		(*txs)[i].Receipt.UnmarshalRLP(it.Bytes())
 	}
 	*txs = (*txs)[:i]
-}
 
-func (txs *Txs) UnmarshalJSON(d []byte) error {
-	switch {
-	case len(d) < 2:
-		return fmt.Errorf("unable to decode txs %s", string(d))
-	case d[0] == '[' && d[1] == ']':
-		return nil
-	case d[1] == '"':
-		var hashes []Bytes
-		if err := json.NewDecoder(bytes.NewReader(d)).Decode(&hashes); err != nil {
-			return err
+	var n uint64
+	for i := range *txs {
+		for j := range (*txs)[i].Logs {
+			(*txs)[i].Logs[j].Idx = Uint64(n)
+			n++
 		}
-		for i := range hashes {
-			var tx *Tx
-			*txs, tx = get(*txs, i)
-			tx.Reset()
-			tx.PrecompHash.Write([]byte(hashes[i]))
-		}
-		return nil
-	case d[1] == '{':
-		var t []Tx
-		if err := json.NewDecoder(bytes.NewReader(d)).Decode(&t); err != nil {
-			return err
-		}
-		*txs = t
-		return nil
-	default:
-		return fmt.Errorf("unkown txs data: %s", string(d))
 	}
 }
 
 type Tx struct {
+	Receipt
+	Idx      Uint64      `json:"transactionIndex"`
 	Type     Byte        `json:"type"`
 	ChainID  uint256.Int `json:"chainID"`
 	Nonce    Uint64      `json:"nonce"`
