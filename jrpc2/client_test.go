@@ -24,9 +24,6 @@ var (
 	block1000001JSON string
 	//go:embed testdata/logs-1000001.json
 	logs1000001JSON string
-
-	//go:embed testdata/block-receipts.json
-	blockReceiptsJSON string
 )
 
 func TestError(t *testing.T) {
