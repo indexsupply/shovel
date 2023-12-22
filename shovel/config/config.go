@@ -204,13 +204,36 @@ type Dashboard struct {
 }
 
 type Source struct {
-	Name        string        `json:"name"`
-	ChainID     uint64        `json:"chain_id"`
-	URL         wos.EnvString `json:"url"`
-	Start       uint64        `json:"start"`
-	Stop        uint64        `json:"stop"`
-	Concurrency int           `json:"concurrency"`
-	BatchSize   int           `json:"batch_size"`
+	Name        string
+	ChainID     uint64
+	URL         string
+	Start       uint64
+	Stop        uint64
+	Concurrency int
+	BatchSize   int
+}
+
+func (s *Source) UnmarshalJSON(d []byte) error {
+	x := struct {
+		Name        wos.EnvString `json:"name"`
+		ChainID     wos.EnvUint64 `json:"chain_id"`
+		URL         wos.EnvString `json:"url"`
+		Start       wos.EnvUint64 `json:"start"`
+		Stop        wos.EnvUint64 `json:"stop"`
+		Concurrency wos.EnvInt    `json:"concurrency"`
+		BatchSize   wos.EnvInt    `json:"batch_size"`
+	}{}
+	if err := json.Unmarshal(d, &x); err != nil {
+		return err
+	}
+	s.Name = string(x.Name)
+	s.ChainID = uint64(x.ChainID)
+	s.URL = string(x.URL)
+	s.Start = uint64(x.Start)
+	s.Stop = uint64(x.Stop)
+	s.Concurrency = int(x.Concurrency)
+	s.BatchSize = int(x.BatchSize)
+	return nil
 }
 
 func Sources(ctx context.Context, pgp *pgxpool.Pool) ([]Source, error) {

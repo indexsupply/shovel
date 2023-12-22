@@ -252,6 +252,21 @@ It is possible to use an environment variable in the config object so that you d
 
 Any value that is prefixed with a `$` will instruct Shovel to read from the environment. So something like `$L1_URL` works too.
 
+Environment interpolation will work on the following fields in eth_sources:
+
+- name
+- chain_id
+- url
+- start
+- stop
+- concurrency
+- batch_size
+
+And will also work on the following fields in integrations[].sources:
+
+- name
+- start
+
 <hr>
 
 ## Table
