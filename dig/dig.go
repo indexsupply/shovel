@@ -730,6 +730,8 @@ func (lwc *logWithCtx) get(name string) any {
 		return lwc.t.Data.Bytes()
 	case "tx_type":
 		return lwc.t.Type
+	case "tx_status":
+		return lwc.t.Receipt.Status
 	case "log_idx":
 		return lwc.l.Idx
 	case "log_addr":
