@@ -76,6 +76,18 @@ func (c *Client) do(req any) (io.ReadCloser, error) {
 	return resp.Body, nil
 }
 
+type Error struct {
+	Code    int    `json:"code"`
+	Message string `json:"message"`
+}
+
+func check(e Error) error {
+	if e.Code != 0 {
+		return fmt.Errorf("rpc error: %d %s", e.Code, e.Message)
+	}
+	return nil
+}
+
 func (c *Client) Latest() (uint64, []byte, error) {
 	resp, err := c.do(request{
 		ID:      "1",
@@ -87,16 +99,12 @@ func (c *Client) Latest() (uint64, []byte, error) {
 		return 0, nil, fmt.Errorf("unable request hash: %w", err)
 	}
 	defer resp.Close()
-	bresp := headerResp{Header: &eth.Header{}}
+	bresp := headerResp{}
 	if err := json.NewDecoder(c.debug(resp)).Decode(&bresp); err != nil {
 		return 0, nil, fmt.Errorf("unable to decode json into response: %w", err)
 	}
-	if bresp.Error.Code != 0 {
-		return 0, nil, fmt.Errorf("rpc error: %s %d %s",
-			"eth_getBlockByNumber-latest",
-			bresp.Error.Code,
-			bresp.Error.Message,
-		)
+	if err := check(bresp.Error); err != nil {
+		return 0, nil, fmt.Errorf("eth_getBlockByNumber/latest: %w", err)
 	}
 	return uint64(bresp.Number), bresp.Hash, nil
 }
@@ -112,16 +120,12 @@ func (c *Client) Hash(n uint64) ([]byte, error) {
 		return nil, fmt.Errorf("unable request hash: %w", err)
 	}
 	defer resp.Close()
-	bresp := headerResp{Header: &eth.Header{}}
+	bresp := headerResp{}
 	if err := json.NewDecoder(resp).Decode(&bresp); err != nil {
 		return nil, fmt.Errorf("unable to decode json into response: %w", err)
 	}
-	if bresp.Error.Code != 0 {
-		return nil, fmt.Errorf("rpc error: %s %d %s",
-			"eth_getBlockByNumber-hash",
-			bresp.Error.Code,
-			bresp.Error.Message,
-		)
+	if err := check(bresp.Error); err != nil {
+		return nil, fmt.Errorf("eth_getBlockByNumber/hash: %w", err)
 	}
 	return bresp.Hash, nil
 }
@@ -153,10 +157,7 @@ func (c *Client) LoadBlocks(f [][]byte, blocks []eth.Block) error {
 
 type blockResp struct {
 	*eth.Block `json:"result"`
-	Error      struct {
-		Code    int    `json:"code"`
-		Message string `json:"message"`
-	} `json:"error"`
+	Error      `json:"error"`
 }
 
 func (c *Client) blocks(blocks []eth.Block) error {
@@ -183,12 +184,8 @@ func (c *Client) blocks(blocks []eth.Block) error {
 		return fmt.Errorf("unable to decode json into response: %w", err)
 	}
 	for i := range resps {
-		if resps[i].Error.Code != 0 {
-			return fmt.Errorf("rpc error: %s %d %s",
-				"eth_getBlockByNumber",
-				resps[i].Error.Code,
-				resps[i].Error.Message,
-			)
+		if err := check(resps[i].Error); err != nil {
+			return fmt.Errorf("eth_getBlockByNumber/blocks: %w", err)
 		}
 	}
 	return nil
@@ -196,10 +193,7 @@ func (c *Client) blocks(blocks []eth.Block) error {
 
 type headerResp struct {
 	*eth.Header `json:"result"`
-	Error       struct {
-		Code    int    `json:"code"`
-		Message string `json:"message"`
-	} `json:"error"`
+	Error       `json:"error"`
 }
 
 func (c *Client) headers(blocks []eth.Block) error {
@@ -226,12 +220,8 @@ func (c *Client) headers(blocks []eth.Block) error {
 		return fmt.Errorf("unable to decode json into response: %w", err)
 	}
 	for i := range resps {
-		if resps[i].Error.Code != 0 {
-			return fmt.Errorf("rpc error: %s %d %s",
-				"eth_getBlockByNumber",
-				resps[i].Error.Code,
-				resps[i].Error.Message,
-			)
+		if err := check(resps[i].Error); err != nil {
+			return fmt.Errorf("eth_getBlockByNumber/headers: %w", err)
 		}
 	}
 	return nil
@@ -248,15 +238,11 @@ type receiptResult struct {
 	Status    eth.Byte   `json:"status"`
 	GasUsed   eth.Uint64 `json:"gasUsed"`
 	Logs      eth.Logs   `json:"logs"`
-	Removed   bool       `json:"removed"`
 }
 
 type receiptResp struct {
 	Result []receiptResult `json:"result"`
-	Error  struct {
-		Code    int    `json:"code"`
-		Message string `json:"message"`
-	} `json:"error"`
+	Error  `json:"error"`
 }
 
 func (c *Client) receipts(blocks []eth.Block) error {
@@ -282,16 +268,10 @@ func (c *Client) receipts(blocks []eth.Block) error {
 		return fmt.Errorf("unable to decode json into response: %w", err)
 	}
 	for i := range resps {
-		if resps[i].Error.Code == 0 {
-			continue
+		if err := check(resps[i].Error); err != nil {
+			return fmt.Errorf("eth_getBlockReceipts: %w", err)
 		}
-		return fmt.Errorf("rpc error: %s %d %s",
-			"eth_getBlockByNumber",
-			resps[i].Error.Code,
-			resps[i].Error.Message,
-		)
 	}
-
 	var blocksByNum = map[uint64]*eth.Block{}
 	for i := range blocks {
 		blocksByNum[blocks[i].Num()] = &blocks[i]
@@ -324,15 +304,11 @@ type logResult struct {
 	BlockNum  eth.Uint64 `json:"blockNumber"`
 	TxHash    eth.Bytes  `json:"transactionHash"`
 	TxIdx     eth.Uint64 `json:"transactionIndex"`
-	Removed   bool       `json:"removed"`
 }
 
 type logResp struct {
 	Result []logResult `json:"result"`
-	Error  struct {
-		Code    int    `json:"code"`
-		Message string `json:"message"`
-	} `json:"error"`
+	Error  `json:"error"`
 }
 
 func (c *Client) logs(blocks []eth.Block) error {
@@ -361,13 +337,10 @@ func (c *Client) logs(blocks []eth.Block) error {
 	if err := json.NewDecoder(c.debug(resp)).Decode(&lresp); err != nil {
 		return fmt.Errorf("unable to decode json into response: %w", err)
 	}
-	if lresp.Error.Code != 0 {
-		return fmt.Errorf("rpc error: %s %d %s",
-			"eth_getLogs",
-			lresp.Error.Code,
-			lresp.Error.Message,
-		)
+	if err := check(lresp.Error); err != nil {
+		return fmt.Errorf("eth_getLogs: %w", err)
 	}
+
 	slices.SortFunc(lresp.Result, func(a, b logResult) int {
 		return cmp.Compare(a.Log.Idx, b.Log.Idx)
 	})
