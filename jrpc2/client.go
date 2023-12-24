@@ -346,14 +346,20 @@ func (c *Client) logs(blocks []eth.Block) error {
 	slices.SortFunc(lresp.Result, func(a, b logResult) int {
 		return cmp.Compare(a.Log.Idx, b.Log.Idx)
 	})
-	var blocksByNum = map[uint64]*eth.Block{}
-	for i := range blocks {
-		blocksByNum[blocks[i].Num()] = &blocks[i]
-	}
-
 	type key struct {
 		b uint64
 		t uint64
+	}
+	var (
+		blocksByNum = map[uint64]*eth.Block{}
+		txsByKey    = map[key]*eth.Tx{}
+	)
+	for i := range blocks {
+		blocksByNum[blocks[i].Num()] = &blocks[i]
+		for j := range blocks[i].Txs {
+			k := key{blocks[i].Num(), uint64(blocks[i].Txs[j].Idx)}
+			txsByKey[k] = &blocks[i].Txs[j]
+		}
 	}
 	var logsByTx = map[key][]logResult{}
 	for i := range lresp.Result {
@@ -371,6 +377,12 @@ func (c *Client) logs(blocks []eth.Block) error {
 		b, ok := blocksByNum[k.b]
 		if !ok {
 			return fmt.Errorf("block not found")
+		}
+		if tx, ok := txsByKey[k]; ok {
+			for i := range logs {
+				tx.Logs = append(tx.Logs, *logs[i].Log)
+			}
+			continue
 		}
 		tx := eth.Tx{}
 		tx.Idx = eth.Uint64(k.t)

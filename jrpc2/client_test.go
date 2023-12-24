@@ -46,8 +46,9 @@ func TestError(t *testing.T) {
 
 	blocks := []eth.Block{eth.Block{Header: eth.Header{Number: 1000001}}}
 	c := New(ts.URL, glf.Filter{UseBlocks: true})
-	want := "getting blocks: rpc error: eth_getBlockByNumber -32012 credits"
-	diff.Test(t, t.Errorf, want, c.LoadBlocks(nil, blocks).Error())
+	want := "getting blocks: eth_getBlockByNumber/blocks: rpc error: -32012 credits"
+	got := c.LoadBlocks(nil, blocks).Error()
+	diff.Test(t, t.Errorf, want, got)
 }
 
 func TestNoLogs(t *testing.T) {
