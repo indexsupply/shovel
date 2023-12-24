@@ -535,7 +535,11 @@ func (task *Task) Converge(notx bool) error {
 			if err := commit(); err != nil {
 				return fmt.Errorf("commit converge tx: %w", err)
 			}
-			slog.InfoContext(task.ctx, "converge", "n", last.Num(), "elapsed", time.Since(start))
+			slog.InfoContext(task.ctx, "converge",
+				"n", last.Num(),
+				"nrows", nrows,
+				"latency", trunc(time.Since(start)),
+			)
 			return nil
 		}
 	}
@@ -870,6 +874,17 @@ func (d jsonDuration) String() string {
 		return td.Truncate(100 * time.Millisecond).String()
 	default:
 		return td.Truncate(time.Second).String()
+	}
+}
+
+func trunc(d time.Duration) time.Duration {
+	switch {
+	case d < 100*time.Millisecond:
+		return d.Truncate(time.Millisecond)
+	case d < time.Second:
+		return d.Truncate(100 * time.Millisecond)
+	default:
+		return d.Truncate(time.Second)
 	}
 }
 

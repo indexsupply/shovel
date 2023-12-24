@@ -156,8 +156,8 @@ func (c *Client) LoadBlocks(f [][]byte, blocks []eth.Block) error {
 }
 
 type blockResp struct {
-	*eth.Block `json:"result"`
 	Error      `json:"error"`
+	*eth.Block `json:"result"`
 }
 
 func (c *Client) blocks(blocks []eth.Block) error {
@@ -192,8 +192,8 @@ func (c *Client) blocks(blocks []eth.Block) error {
 }
 
 type headerResp struct {
-	*eth.Header `json:"result"`
 	Error       `json:"error"`
+	*eth.Header `json:"result"`
 }
 
 func (c *Client) headers(blocks []eth.Block) error {
@@ -241,8 +241,8 @@ type receiptResult struct {
 }
 
 type receiptResp struct {
-	Result []receiptResult `json:"result"`
 	Error  `json:"error"`
+	Result []receiptResult `json:"result"`
 }
 
 func (c *Client) receipts(blocks []eth.Block) error {
@@ -283,7 +283,7 @@ func (c *Client) receipts(blocks []eth.Block) error {
 		}
 		b.Header.Hash = resps[i].Result[0].BlockHash
 		for j := range resps[i].Result {
-			tx := b.Txs.Get(j)
+			tx := eth.Tx{}
 			tx.Idx = resps[i].Result[j].TxIdx
 			tx.PrecompHash.Write(resps[i].Result[j].TxHash)
 			tx.Type.Write(byte(resps[i].Result[j].TxType))
@@ -291,9 +291,11 @@ func (c *Client) receipts(blocks []eth.Block) error {
 			tx.To.Write(resps[i].Result[j].TxTo)
 			tx.Status.Write(byte(resps[i].Result[j].Status))
 			tx.GasUsed = resps[i].Result[j].GasUsed
-			tx.Logs.Copy(resps[i].Result[j].Logs)
+
+			tx.Logs = make([]eth.Log, len(resps[i].Result[j].Logs))
+			copy(tx.Logs, resps[i].Result[j].Logs)
+			b.Txs = append(b.Txs, tx)
 		}
-		b.Txs.SetLen(len(resps[i].Result))
 	}
 	return nil
 }
@@ -307,8 +309,8 @@ type logResult struct {
 }
 
 type logResp struct {
-	Result []logResult `json:"result"`
 	Error  `json:"error"`
+	Result []logResult `json:"result"`
 }
 
 func (c *Client) logs(blocks []eth.Block) error {
@@ -348,16 +350,36 @@ func (c *Client) logs(blocks []eth.Block) error {
 	for i := range blocks {
 		blocksByNum[blocks[i].Num()] = &blocks[i]
 	}
-	for i := 0; i < len(lresp.Result); i++ {
-		b, ok := blocksByNum[uint64(lresp.Result[i].BlockNum)]
+
+	type key struct {
+		b uint64
+		t uint64
+	}
+	var logsByTx = map[key][]logResult{}
+	for i := range lresp.Result {
+		k := key{
+			b: uint64(lresp.Result[i].BlockNum),
+			t: uint64(lresp.Result[i].TxIdx),
+		}
+		if logs, ok := logsByTx[k]; ok {
+			logsByTx[k] = append(logs, lresp.Result[i])
+			continue
+		}
+		logsByTx[k] = []logResult{lresp.Result[i]}
+	}
+	for k, logs := range logsByTx {
+		b, ok := blocksByNum[k.b]
 		if !ok {
 			return fmt.Errorf("block not found")
 		}
-		b.Header.Hash = lresp.Result[i].BlockHash
-		tx := b.Txs.Get(int(lresp.Result[i].TxIdx))
-		tx.Idx = lresp.Result[i].TxIdx
-		tx.PrecompHash.Write(lresp.Result[i].TxHash)
-		tx.Logs = append(tx.Logs, *lresp.Result[i].Log)
+		tx := eth.Tx{}
+		tx.Idx = eth.Uint64(k.t)
+		tx.PrecompHash.Write(logs[0].TxHash)
+		tx.Logs = make([]eth.Log, 0, len(logs))
+		for i := range logs {
+			tx.Logs = append(tx.Logs, *logs[i].Log)
+		}
+		b.Txs = append(b.Txs, tx)
 	}
 	return nil
 }

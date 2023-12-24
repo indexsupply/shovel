@@ -276,17 +276,6 @@ func (ats *AccessTuples) UnmarshalRLP(b []byte) error {
 
 type Txs []Tx
 
-func (txs *Txs) Get(i int) *Tx {
-	var tx *Tx
-	*txs, tx = get(*txs, i)
-	tx.Reset()
-	return tx
-}
-
-func (txs *Txs) SetLen(i int) {
-	*txs = (*txs)[:i]
-}
-
 func (txs *Txs) UnmarshalRLP(bodies, receipts []byte) {
 	var i int
 	for it := rlp.Iter(bodies); it.HasNext(); i++ {
