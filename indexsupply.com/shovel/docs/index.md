@@ -265,8 +265,6 @@ Environment interpolation will work on the following fields in eth_sources:
 - name
 - chain_id
 - url
-- start
-- stop
 - concurrency
 - batch_size
 
@@ -274,6 +272,7 @@ And will also work on the following fields in integrations[].sources:
 
 - name
 - start
+- stop
 
 <hr>
 
