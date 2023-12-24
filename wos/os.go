@@ -40,7 +40,7 @@ func (es *EnvString) UnmarshalJSON(data []byte) error {
 type EnvUint64 uint64
 
 func (eu *EnvUint64) UnmarshalJSON(d []byte) error {
-	if len(d) >= 2 {
+	if len(d) >= 2 && d[0] == '"' && d[len(d)-1] == '"' {
 		d = d[1 : len(d)-1] // remove quotes
 	}
 	s := Getenv(string(d))
@@ -55,7 +55,7 @@ func (eu *EnvUint64) UnmarshalJSON(d []byte) error {
 type EnvInt int
 
 func (ei *EnvInt) UnmarshalJSON(d []byte) error {
-	if len(d) >= 2 {
+	if len(d) >= 2 && d[0] == '"' && d[len(d)-1] == '"' {
 		d = d[1 : len(d)-1] // remove quotes
 	}
 	s := Getenv(string(d))
