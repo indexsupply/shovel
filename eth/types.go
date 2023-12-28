@@ -113,15 +113,13 @@ func (hb *Bytes) Write(p []byte) (int, error) {
 
 type Block struct {
 	Header
-	Txs      Txs `json:"transactions"`
-	Receipts Receipts
+	Txs Txs `json:"transactions"`
 }
 
 func (b *Block) Reset() {
 	for i := range b.Txs {
 		b.Txs[i].Reset()
 	}
-	b.Receipts = b.Receipts[:0]
 }
 
 func (b *Block) SetNum(n uint64) { b.Header.Number = Uint64(n) }
@@ -137,6 +135,7 @@ func (b Block) String() string {
 }
 
 type Log struct {
+	Idx     Uint64  `json:"logIndex"`
 	Address Bytes   `json:"address"`
 	Topics  []Bytes `json:"topics"`
 	Data    Bytes   `json:"data"`
@@ -160,6 +159,10 @@ func (l *Log) UnmarshalRLP(b []byte) {
 
 type Logs []Log
 
+func (ls *Logs) Reset() {
+	*ls = (*ls)[:0]
+}
+
 func (ls *Logs) UnmarshalRLP(b []byte) {
 	var i int
 	for it := rlp.Iter(b); it.HasNext(); i++ {
@@ -181,18 +184,6 @@ func (r *Receipt) UnmarshalRLP(b []byte) {
 	r.Status.Write(iter.Bytes())
 	r.GasUsed = Uint64(bint.Uint64(iter.Bytes()))
 	r.Logs.UnmarshalRLP(iter.Bytes())
-}
-
-type Receipts []Receipt
-
-func (rs *Receipts) UnmarshalRLP(b []byte) {
-	var j int
-	for it := rlp.Iter(b); it.HasNext(); j++ {
-		var r *Receipt
-		*rs, r = get(*rs, j)
-		r.UnmarshalRLP(it.Bytes())
-	}
-	*rs = (*rs)[:j]
 }
 
 type Header struct {
@@ -270,18 +261,32 @@ func (ats *AccessTuples) UnmarshalRLP(b []byte) error {
 
 type Txs []Tx
 
-func (txs *Txs) UnmarshalRLP(b []byte) {
+func (txs *Txs) UnmarshalRLP(bodies, receipts []byte) {
 	var i int
-	for it := rlp.Iter(b); it.HasNext(); i++ {
+	for it := rlp.Iter(bodies); it.HasNext(); i++ {
 		var tx *Tx
 		*txs, tx = get(*txs, i)
 		tx.Reset()
 		tx.UnmarshalRLP(it.Bytes())
+		tx.Idx = Uint64(i)
+	}
+	for i, it := 0, rlp.Iter(receipts); it.HasNext(); i++ {
+		(*txs)[i].Receipt.UnmarshalRLP(it.Bytes())
 	}
 	*txs = (*txs)[:i]
+
+	var n uint64
+	for i := range *txs {
+		for j := range (*txs)[i].Logs {
+			(*txs)[i].Logs[j].Idx = Uint64(n)
+			n++
+		}
+	}
 }
 
 type Tx struct {
+	Receipt
+	Idx      Uint64      `json:"transactionIndex"`
 	Type     hbyte       `json:"type"`
 	ChainID  uint256.Int `json:"chainID"`
 	Nonce    Uint64      `json:"nonce"`
@@ -312,6 +317,7 @@ func (tx *Tx) Reset() {
 	tx.PrecompHash = tx.PrecompHash[:0]
 	tx.rbuf = tx.rbuf[:0]
 	tx.signer = tx.signer[:0]
+	tx.Logs.Reset()
 	tx.cacheMut.Unlock()
 }
 

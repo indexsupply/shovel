@@ -71,10 +71,9 @@ func TestNoLogs(t *testing.T) {
 
 	b := blocks[0]
 	diff.Test(t, t.Errorf, len(b.Txs), 1)
-	diff.Test(t, t.Errorf, len(b.Receipts), 1)
 
-	r := blocks[0].Receipts[0]
-	diff.Test(t, t.Errorf, len(r.Logs), 0)
+	tx := blocks[0].Txs[0]
+	diff.Test(t, t.Errorf, len(tx.Logs), 0)
 }
 
 func TestLatest(t *testing.T) {
@@ -104,12 +103,17 @@ func TestLatest(t *testing.T) {
 	diff.Test(t, t.Errorf, b.Time, eth.Uint64(1693066895))
 	diff.Test(t, t.Errorf, fmt.Sprintf("%.4x", b.LogsBloom), "53f146f2")
 	diff.Test(t, t.Errorf, len(b.Txs), 94)
-	diff.Test(t, t.Errorf, len(b.Receipts), 94)
 
 	tx0 := blocks[0].Txs[0]
 	diff.Test(t, t.Errorf, fmt.Sprintf("%.4x", tx0.Hash()), "16e19967")
 	diff.Test(t, t.Errorf, fmt.Sprintf("%.4x", tx0.To), "fd14567e")
 	diff.Test(t, t.Errorf, fmt.Sprintf("%s", tx0.Value.Dec()), "0")
+	diff.Test(t, t.Errorf, len(tx0.Logs), 1)
+
+	l := blocks[0].Txs[0].Logs[0]
+	diff.Test(t, t.Errorf, fmt.Sprintf("%.4x", l.Address), "fd14567e")
+	diff.Test(t, t.Errorf, fmt.Sprintf("%.4x", l.Topics[0]), "b8b9c39a")
+	diff.Test(t, t.Errorf, fmt.Sprintf("%x", l.Data), "01e14e6ce75f248c88ee1187bcf6c75f8aea18fbd3d927fe2d63947fcd8cb18c641569e8ee18f93c861576fe0c882e5c61a310ae8e400be6629561160d2a901f0619e35040579fa202bc3f84077a72266b2a4e744baa92b433497bc23d6aeda4")
 
 	signer, err := tx0.Signer()
 	diff.Test(t, t.Errorf, nil, err)
@@ -117,12 +121,4 @@ func TestLatest(t *testing.T) {
 
 	tx3 := blocks[0].Txs[3]
 	diff.Test(t, t.Errorf, fmt.Sprintf("%s", tx3.Value.Dec()), "69970000000000014")
-
-	r := blocks[0].Receipts[0]
-	diff.Test(t, t.Errorf, len(r.Logs), 1)
-
-	l := blocks[0].Receipts[0].Logs[0]
-	diff.Test(t, t.Errorf, fmt.Sprintf("%.4x", l.Address), "fd14567e")
-	diff.Test(t, t.Errorf, fmt.Sprintf("%.4x", l.Topics[0]), "b8b9c39a")
-	diff.Test(t, t.Errorf, fmt.Sprintf("%x", l.Data), "01e14e6ce75f248c88ee1187bcf6c75f8aea18fbd3d927fe2d63947fcd8cb18c641569e8ee18f93c861576fe0c882e5c61a310ae8e400be6629561160d2a901f0619e35040579fa202bc3f84077a72266b2a4e744baa92b433497bc23d6aeda4")
 }
