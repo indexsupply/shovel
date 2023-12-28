@@ -84,8 +84,7 @@ func (c *Client) LoadBlocks(filter [][]byte, blocks []eth.Block) error {
 			receiptsRLP = blockRLP.Bytes()
 		)
 		blocks[i].UnmarshalRLP(headerRLP)
-		blocks[i].Txs.UnmarshalRLP(rlp.Bytes(bodiesRLP))
-		blocks[i].Receipts.UnmarshalRLP(receiptsRLP)
+		blocks[i].Txs.UnmarshalRLP(rlp.Bytes(bodiesRLP), receiptsRLP)
 	}
 	return nil
 }

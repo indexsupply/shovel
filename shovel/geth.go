@@ -64,8 +64,7 @@ func (g *Geth) LoadBlocks(filter [][]byte, blks []eth.Block) error {
 			continue
 		}
 		//rlp contains: [transactions,uncles]
-		blks[i].Txs.UnmarshalRLP(rlp.Bytes(bfs[i].Bodies()))
-		blks[i].Receipts.UnmarshalRLP(bfs[i].Receipts())
+		blks[i].Txs.UnmarshalRLP(rlp.Bytes(bfs[i].Bodies()), bfs[i].Receipts())
 	}
 	return validate(blks)
 }

@@ -131,9 +131,6 @@ func (c *Client) LoadBlocks(f [][]byte, blocks []eth.Block) error {
 	if err := c.blocks(blocks); err != nil {
 		return fmt.Errorf("getting blocks: %w", err)
 	}
-	for i := range blocks {
-		blocks[i].Receipts = make(eth.Receipts, len(blocks[i].Txs))
-	}
 	if err := c.logs(blocks); err != nil {
 		return fmt.Errorf("getting logs: %w", err)
 	}
@@ -189,7 +186,6 @@ type logResult struct {
 	BlockNum  eth.Uint64 `json:"blockNumber"`
 	TxHash    eth.Bytes  `json:"transactionHash"`
 	TxIdx     eth.Uint64 `json:"transactionIndex"`
-	LogIdx    eth.Uint64 `json:"logIndex"`
 	Removed   bool       `json:"removed"`
 }
 
@@ -232,7 +228,7 @@ func (c *Client) logs(blocks []eth.Block) error {
 		)
 	}
 	slices.SortFunc(lresp.Result, func(a, b logResult) int {
-		return cmp.Compare(a.LogIdx, b.LogIdx)
+		return cmp.Compare(a.Log.Idx, b.Log.Idx)
 	})
 	for i, b := 0, new(eth.Block); i < len(lresp.Result); i++ {
 		if uint64(lresp.Result[i].BlockNum) != b.Num() {
@@ -242,8 +238,8 @@ func (c *Client) logs(blocks []eth.Block) error {
 				}
 			}
 		}
-		b.Receipts[int(lresp.Result[i].TxIdx)].Logs = append(
-			b.Receipts[int(lresp.Result[i].TxIdx)].Logs,
+		b.Txs[int(lresp.Result[i].TxIdx)].Logs = append(
+			b.Txs[int(lresp.Result[i].TxIdx)].Logs,
 			*lresp.Result[i].Log,
 		)
 	}
