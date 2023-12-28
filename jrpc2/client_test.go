@@ -43,10 +43,13 @@ func TestError(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	blocks := []eth.Block{eth.Block{Header: eth.Header{Number: 1000001}}}
-	c := New(0, ts.URL)
-	want := "getting blocks: rpc error: eth_getBlockByNumber -32012 credits"
-	diff.Test(t, t.Errorf, want, c.LoadBlocks(nil, blocks).Error())
+	var (
+		blocks = []eth.Block{eth.Block{Header: eth.Header{Number: 1000001}}}
+		c      = New(0, ts.URL)
+		want   = "getting blocks: rpc=eth_getBlockByNumber code=-32012 msg=credits"
+		got    = c.LoadBlocks(nil, blocks).Error()
+	)
+	diff.Test(t, t.Errorf, want, got)
 }
 
 func TestNoLogs(t *testing.T) {
