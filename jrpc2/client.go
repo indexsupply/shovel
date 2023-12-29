@@ -112,21 +112,21 @@ func (c *Client) Latest() (uint64, []byte, error) {
 		ID:      "1",
 		Version: "2.0",
 		Method:  "eth_getBlockByNumber",
-		Params:  []any{"latest", true},
+		Params:  []any{"latest", false},
 	})
 	if err != nil {
 		return 0, nil, fmt.Errorf("unable request hash: %w", err)
 	}
 	defer resp.Close()
-	bresp := blockResp{Block: &eth.Block{}}
-	if err := json.NewDecoder(c.debug(resp)).Decode(&bresp); err != nil {
+	hresp := headerResp{}
+	if err := json.NewDecoder(c.debug(resp)).Decode(&hresp); err != nil {
 		return 0, nil, fmt.Errorf("unable to decode json into response: %w", err)
 	}
-	if bresp.Error.Exists() {
+	if hresp.Error.Exists() {
 		const tag = "eth_getBlockByNumber/latest"
-		return 0, nil, fmt.Errorf("rpc=%s %w", tag, bresp.Error)
+		return 0, nil, fmt.Errorf("rpc=%s %w", tag, hresp.Error)
 	}
-	return bresp.Num(), bresp.Hash(), nil
+	return uint64(hresp.Number), hresp.Hash, nil
 }
 
 func (c *Client) Hash(n uint64) ([]byte, error) {
@@ -140,15 +140,15 @@ func (c *Client) Hash(n uint64) ([]byte, error) {
 		return nil, fmt.Errorf("unable request hash: %w", err)
 	}
 	defer resp.Close()
-	bresp := blockResp{Block: &eth.Block{}}
-	if err := json.NewDecoder(resp).Decode(&bresp); err != nil {
+	hresp := headerResp{}
+	if err := json.NewDecoder(resp).Decode(&hresp); err != nil {
 		return nil, fmt.Errorf("unable to decode json into response: %w", err)
 	}
-	if bresp.Error.Exists() {
+	if hresp.Error.Exists() {
 		const tag = "eth_getBlockByNumber/hash"
-		return nil, fmt.Errorf("rpc=%s %w", tag, bresp.Error)
+		return nil, fmt.Errorf("rpc=%s %w", tag, hresp.Error)
 	}
-	return bresp.Hash(), nil
+	return hresp.Hash, nil
 }
 
 func (c *Client) LoadBlocks(_ [][]byte, blocks []eth.Block) error {
@@ -174,7 +174,6 @@ func (c *Client) LoadBlocks(_ [][]byte, blocks []eth.Block) error {
 		if err := c.receipts(blocks); err != nil {
 			return fmt.Errorf("getting receipts: %w", err)
 		}
-
 	case c.filter.UseLogs:
 		if err := c.logs(blocks); err != nil {
 			return fmt.Errorf("getting logs: %w", err)

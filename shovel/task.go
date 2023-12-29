@@ -19,7 +19,6 @@ import (
 	"github.com/indexsupply/x/shovel/glf"
 	"github.com/indexsupply/x/wctx"
 	"github.com/indexsupply/x/wpg"
-	"github.com/kr/pretty"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -158,7 +157,6 @@ func NewTask(opts ...Option) (*Task, error) {
 		}
 		t.parts[i].src = t.srcFactory(t.srcConfig, t.filter)
 	}
-	pretty.Println(t.filter)
 	slog.InfoContext(t.ctx, "new-task", "integrations", len(t.igs))
 	return t, nil
 }
