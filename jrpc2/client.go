@@ -2,20 +2,19 @@
 package jrpc2
 
 import (
-	"cmp"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
-	"slices"
 	"strconv"
 	"strings"
 
-	"golang.org/x/sync/errgroup"
-
 	"github.com/indexsupply/x/eth"
 	"github.com/indexsupply/x/shovel/glf"
+
+	"github.com/goccy/go-json"
+	"github.com/klauspost/compress/gzhttp"
+	"golang.org/x/sync/errgroup"
 )
 
 type key struct {
@@ -33,8 +32,10 @@ func New(url string, filter glf.Filter) *Client {
 	return &Client{
 		d:      strings.Contains(url, "debug"),
 		filter: filter,
-		hc:     &http.Client{},
-		url:    url,
+		hc: &http.Client{
+			Transport: gzhttp.Transport(http.DefaultTransport),
+		},
+		url: url,
 		lookup: lookupCache{
 			b: map[uint64]*eth.Block{},
 			t: map[key]*eth.Tx{},
@@ -384,12 +385,10 @@ func (c *Client) logs(blocks []eth.Block) error {
 	if err := json.NewDecoder(c.debug(resp)).Decode(&lresp); err != nil {
 		return fmt.Errorf("unable to decode json into response: %w", err)
 	}
+
 	if lresp.Error.Exists() {
 		return fmt.Errorf("rpc=%s %w", "eth_getLogs", lresp.Error)
 	}
-	slices.SortFunc(lresp.Result, func(a, b logResult) int {
-		return cmp.Compare(a.Log.Idx, b.Log.Idx)
-	})
 	for i := range lresp.Result {
 		k := key{
 			b: uint64(lresp.Result[i].BlockNum),
