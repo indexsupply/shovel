@@ -278,6 +278,7 @@ func TestConverge_Reorg(t *testing.T) {
 		)
 	)
 	diff.Test(t, t.Errorf, err, nil)
+	task.filter = glf.Filter{UseBlocks: true}
 
 	tg.add(0, hash(0), hash(0))
 	tg.add(1, hash(2), hash(0))
