@@ -16,6 +16,7 @@ import (
 	"github.com/indexsupply/x/bint"
 	"github.com/indexsupply/x/eth"
 	"github.com/indexsupply/x/isxhash"
+	"github.com/indexsupply/x/shovel/glf"
 	"github.com/indexsupply/x/wctx"
 	"github.com/indexsupply/x/wpg"
 
@@ -613,6 +614,23 @@ func (ig *Integration) setCols() {
 
 func (ig Integration) Name() string { return ig.name }
 
+func (ig Integration) Filter() glf.Filter {
+	var (
+		fields []string
+		addrs  []string
+	)
+	for i := range ig.Block {
+		fields = append(fields, ig.Block[i].Name)
+
+		if ig.Block[i].Name == "log_addr" && len(ig.Block[i].Filter.Arg) > 0 {
+			for _, arg := range ig.Block[i].Filter.Arg {
+				addrs = append(addrs, eth.EncodeHex(eth.DecodeHex(arg)))
+			}
+		}
+	}
+	return *glf.New(fields, addrs, [][]string{{eth.EncodeHex(ig.sighash)}})
+}
+
 func (ig Integration) Events(context.Context) [][]byte { return [][]byte{} }
 
 func (ig Integration) Delete(ctx context.Context, pg wpg.Conn, n uint64) error {
@@ -706,6 +724,8 @@ func (lwc *logWithCtx) get(name string) any {
 		return lwc.t.Data.Bytes()
 	case "tx_type":
 		return lwc.t.Type
+	case "tx_status":
+		return lwc.t.Receipt.Status
 	case "log_idx":
 		return lwc.l.Idx
 	case "log_addr":

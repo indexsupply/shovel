@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/indexsupply/x/eth"
+	"github.com/indexsupply/x/shovel/glf"
 	"kr.dev/diff"
 )
 
@@ -45,7 +46,7 @@ func TestError(t *testing.T) {
 
 	var (
 		blocks = []eth.Block{eth.Block{Header: eth.Header{Number: 1000001}}}
-		c      = New(0, ts.URL)
+		c      = New(ts.URL, glf.Filter{UseBlocks: true, UseLogs: true})
 		want   = "getting blocks: rpc=eth_getBlockByNumber code=-32012 msg=credits"
 		got    = c.LoadBlocks(nil, blocks).Error()
 	)
@@ -68,7 +69,7 @@ func TestNoLogs(t *testing.T) {
 	defer ts.Close()
 
 	blocks := []eth.Block{eth.Block{Header: eth.Header{Number: 1000001}}}
-	c := New(0, ts.URL)
+	c := New(ts.URL, glf.Filter{UseBlocks: true, UseLogs: true})
 	err := c.LoadBlocks(nil, blocks)
 	diff.Test(t, t.Errorf, nil, err)
 
@@ -95,7 +96,7 @@ func TestLatest(t *testing.T) {
 	defer ts.Close()
 
 	blocks := []eth.Block{eth.Block{Header: eth.Header{Number: 18000000}}}
-	c := New(0, ts.URL)
+	c := New(ts.URL, glf.Filter{UseBlocks: true, UseLogs: true})
 	err := c.LoadBlocks(nil, blocks)
 	diff.Test(t, t.Errorf, nil, err)
 
@@ -111,7 +112,7 @@ func TestLatest(t *testing.T) {
 	diff.Test(t, t.Errorf, fmt.Sprintf("%.4x", tx0.Hash()), "16e19967")
 	diff.Test(t, t.Errorf, fmt.Sprintf("%.4x", tx0.To), "fd14567e")
 	diff.Test(t, t.Errorf, fmt.Sprintf("%s", tx0.Value.Dec()), "0")
-	diff.Test(t, t.Errorf, len(tx0.Logs), 1)
+	diff.Test(t, t.Fatalf, len(tx0.Logs), 1)
 
 	l := blocks[0].Txs[0].Logs[0]
 	diff.Test(t, t.Errorf, fmt.Sprintf("%.4x", l.Address), "fd14567e")
