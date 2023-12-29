@@ -314,7 +314,7 @@ func (c *Client) receipts(blocks []eth.Block) error {
 		if !ok {
 			return fmt.Errorf("block not found")
 		}
-		b.Header.Hash = resps[i].Result[0].BlockHash
+		b.Header.Hash.Write(resps[i].Result[0].BlockHash)
 		for j := range resps[i].Result {
 			k := key{
 				b: b.Num(),
