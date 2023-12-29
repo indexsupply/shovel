@@ -360,12 +360,15 @@ type logResp struct {
 
 func (c *Client) logs(blocks []eth.Block) error {
 	lf := struct {
-		From   string   `json:"fromBlock"`
-		To     string   `json:"toBlock"`
-		Topics []string `json:"topics"`
+		From    string     `json:"fromBlock"`
+		To      string     `json:"toBlock"`
+		Address []string   `json:"address"`
+		Topics  [][]string `json:"topics"`
 	}{
-		From: "0x" + strconv.FormatUint(blocks[0].Num(), 16),
-		To:   "0x" + strconv.FormatUint(blocks[len(blocks)-1].Num(), 16),
+		From:    eth.EncodeUint64(blocks[0].Num()),
+		To:      eth.EncodeUint64(blocks[len(blocks)-1].Num()),
+		Address: c.filter.Addresses(),
+		Topics:  c.filter.Topics(),
 	}
 	resp, err := c.do(request{
 		ID:      "1",
