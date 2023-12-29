@@ -65,16 +65,21 @@ func (hn *Uint64) UnmarshalJSON(data []byte) error {
 	return err
 }
 
-type hbyte byte
+type Byte byte
 
-func (hb *hbyte) UnmarshalJSON(data []byte) error {
+func (b *Byte) Write(p byte) (int, error) {
+	*b = Byte(p)
+	return 1, nil
+}
+
+func (b *Byte) UnmarshalJSON(data []byte) error {
 	if len(data) < 4 {
 		return fmt.Errorf("must be at leaset 4 bytes")
 	}
 	data = data[1 : len(data)-1] // remove quotes
 	data = data[2:]              // remove 0x
 	n, err := decode(string(data))
-	*hb = hbyte(n)
+	*b = Byte(n)
 	return err
 }
 
@@ -174,14 +179,14 @@ func (ls *Logs) UnmarshalRLP(b []byte) {
 }
 
 type Receipt struct {
-	Status  Bytes
+	Status  Byte
 	GasUsed Uint64
 	Logs    Logs
 }
 
 func (r *Receipt) UnmarshalRLP(b []byte) {
 	iter := rlp.Iter(b)
-	r.Status.Write(iter.Bytes())
+	r.Status.Write(iter.Bytes()[0])
 	r.GasUsed = Uint64(bint.Uint64(iter.Bytes()))
 	r.Logs.UnmarshalRLP(iter.Bytes())
 }
@@ -287,7 +292,7 @@ func (txs *Txs) UnmarshalRLP(bodies, receipts []byte) {
 type Tx struct {
 	Receipt
 	Idx      Uint64      `json:"transactionIndex"`
-	Type     hbyte       `json:"type"`
+	Type     Byte        `json:"type"`
 	ChainID  uint256.Int `json:"chainID"`
 	Nonce    Uint64      `json:"nonce"`
 	GasPrice uint256.Int `json:"gasPrice"`
