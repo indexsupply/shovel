@@ -309,11 +309,6 @@ func (c *Client) receipts(blocks []eth.Block) error {
 			return fmt.Errorf("rpc=%s %w", tag, resps[i].Error)
 		}
 	}
-
-	var blocksByNum = map[uint64]*eth.Block{}
-	for i := range blocks {
-		blocksByNum[blocks[i].Num()] = &blocks[i]
-	}
 	for i := range resps {
 		b, ok := c.lookup.b[uint64(resps[i].Result[0].BlockNum)]
 		if !ok {
