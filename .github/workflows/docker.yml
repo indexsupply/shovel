@@ -31,4 +31,5 @@ jobs:
           context: .
           file: ./cmd/shovel/Dockerfile
           push: true
+          tag_with_sha: true
           tags: indexsupply/shovel:latest
