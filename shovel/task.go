@@ -78,7 +78,7 @@ func WithRange(start, stop uint64) Option {
 
 func WithConcurrency(numParts, batchSize int) Option {
 	return func(t *Task) {
-		t.batch = make([]eth.Block, max(batchSize, 1))
+		t.batchSize = max(batchSize, 1)
 		t.parts = parts(max(numParts, 1), max(batchSize, 1))
 	}
 }
@@ -136,7 +136,7 @@ func NewSource(sc config.Source) Source {
 func NewTask(opts ...Option) (*Task, error) {
 	t := &Task{
 		ctx:        context.Background(),
-		batch:      make([]eth.Block, 1),
+		batchSize:  1,
 		parts:      parts(1, 1),
 		srcFactory: NewSource,
 		igFactory:  NewIntegration,
@@ -183,16 +183,16 @@ type Task struct {
 	igRange     []igRange
 	igUpdateBuf *igUpdateBuf
 
-	filter [][]byte
-	batch  []eth.Block
-	parts  []part
+	filter    [][]byte
+	batchSize int
+	parts     []part
 }
 
 // Depending on WithConcurrency, a Task may be configured with
 // concurrent parts. This allows a task to concurrently download
 // block data from its Source.
 //
-// m and n are used to slice the task's batch: task.batch[m:n]
+// m and n are used to slice a batch of blocks: batch[m:n]
 //
 // Each part has its own source since the Source may have buffers
 // that aren't safe to share across go-routines.
@@ -221,11 +221,11 @@ func parts(numParts, batchSize int) []part {
 	return p
 }
 
-func (p *part) slice(delta uint64, b []eth.Block) []eth.Block {
-	if int(delta) < p.m {
+func (p *part) slice(b []eth.Block) []eth.Block {
+	if len(b) < p.m {
 		return nil
 	}
-	return b[p.m:min(p.n, int(delta))]
+	return b[p.m:min(p.n, len(b))]
 }
 
 func (t *Task) Setup() error {
@@ -402,7 +402,7 @@ var (
 	ErrAhead      = errors.New("ahead")
 )
 
-// Indexes at most len(task.batch) of the delta between min(g, limit) and pg.
+// Indexes at most batchSize of the delta between min(g, limit) and pg.
 // If pg contains an invalid latest block (ie reorg) then [ErrReorg]
 // is returned and the caller may rollback the transaction resulting
 // in no side-effects.
@@ -463,15 +463,15 @@ func (task *Task) Converge(notx bool) error {
 		if localNum == gethNum {
 			return ErrNothingNew
 		}
-		delta := min(gethNum-localNum, uint64(len(task.batch)))
+		delta := min(gethNum-localNum, uint64(task.batchSize))
 		if delta == 0 {
 			return ErrNothingNew
 		}
-		for i := uint64(0); i < delta; i++ {
-			task.batch[i].Reset()
-			task.batch[i].SetNum(localNum + i + 1)
+		batch := make([]eth.Block, delta)
+		for i := range batch {
+			batch[i].SetNum(localNum + uint64(i+1))
 		}
-		switch nrows, err := task.loadinsert(localHash, pg, delta); {
+		switch nrows, err := task.loadinsert(localHash, pg, batch); {
 		case errors.Is(err, ErrReorg):
 			reorgs++
 			slog.ErrorContext(task.ctx, "reorg", "n", localNum, "h", fmt.Sprintf("%.4x", localHash))
@@ -503,7 +503,7 @@ func (task *Task) Converge(notx bool) error {
 			err = errors.Join(rollback(), err)
 			return err
 		default:
-			var last = task.batch[delta-1]
+			var last = batch[delta-1]
 			const uq = `
 				insert into shovel.task_updates (
 					chain_id,
@@ -549,7 +549,7 @@ func (task *Task) Converge(notx bool) error {
 	return errors.Join(ErrReorg, rollback())
 }
 
-// Fills in task.batch with block data (headers, bodies, receipts) from
+// Fills in batch with block data (headers, bodies, receipts) from
 // geth and then calls Index on the task's integrations with the block
 // data.
 //
@@ -559,11 +559,11 @@ func (task *Task) Converge(notx bool) error {
 //
 // The reading of block data and indexing of integrations happens concurrently
 // with the number of go routines controlled by c.
-func (task *Task) loadinsert(localHash []byte, pg wpg.Conn, delta uint64) (int64, error) {
+func (task *Task) loadinsert(localHash []byte, pg wpg.Conn, batch []eth.Block) (int64, error) {
 	var eg1 errgroup.Group
 	for i := range task.parts {
 		i := i
-		b := task.parts[i].slice(delta, task.batch)
+		b := task.parts[i].slice(batch)
 		if len(b) == 0 {
 			continue
 		}
@@ -574,7 +574,7 @@ func (task *Task) loadinsert(localHash []byte, pg wpg.Conn, delta uint64) (int64
 	if err := eg1.Wait(); err != nil {
 		return 0, err
 	}
-	if err := validateChain(task.ctx, localHash, task.batch[:delta]); err != nil {
+	if err := validateChain(task.ctx, localHash, batch); err != nil {
 		return 0, fmt.Errorf("validating new chain: %w", err)
 	}
 	var (
@@ -583,7 +583,7 @@ func (task *Task) loadinsert(localHash []byte, pg wpg.Conn, delta uint64) (int64
 	)
 	for i := range task.parts {
 		i := i
-		b := task.parts[i].slice(delta, task.batch)
+		b := task.parts[i].slice(batch)
 		if len(b) == 0 {
 			continue
 		}

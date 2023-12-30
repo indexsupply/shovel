@@ -121,12 +121,6 @@ type Block struct {
 	Txs Txs `json:"transactions"`
 }
 
-func (b *Block) Reset() {
-	for i := range b.Txs {
-		b.Txs[i].Reset()
-	}
-}
-
 func (b *Block) SetNum(n uint64) { b.Header.Number = Uint64(n) }
 func (b Block) Num() uint64      { return uint64(b.Header.Number) }
 func (b Block) Hash() []byte     { return b.Header.Hash }
@@ -163,10 +157,6 @@ func (l *Log) UnmarshalRLP(b []byte) {
 }
 
 type Logs []Log
-
-func (ls *Logs) Reset() {
-	*ls = (*ls)[:0]
-}
 
 func (ls *Logs) UnmarshalRLP(b []byte) {
 	var i int
@@ -269,16 +259,14 @@ type Txs []Tx
 func (txs *Txs) UnmarshalRLP(bodies, receipts []byte) {
 	var i int
 	for it := rlp.Iter(bodies); it.HasNext(); i++ {
-		var tx *Tx
-		*txs, tx = get(*txs, i)
-		tx.Reset()
+		tx := Tx{}
 		tx.UnmarshalRLP(it.Bytes())
 		tx.Idx = Uint64(i)
+		*txs = append(*txs, tx)
 	}
 	for i, it := 0, rlp.Iter(receipts); it.HasNext(); i++ {
 		(*txs)[i].Receipt.UnmarshalRLP(it.Bytes())
 	}
-	*txs = (*txs)[:i]
 
 	var n uint64
 	for i := range *txs {
@@ -315,15 +303,6 @@ type Tx struct {
 	PrecompHash  Bytes `json:"hash"`
 	cacheMut     sync.Mutex
 	rbuf, signer []byte
-}
-
-func (tx *Tx) Reset() {
-	tx.cacheMut.Lock()
-	tx.PrecompHash = tx.PrecompHash[:0]
-	tx.rbuf = tx.rbuf[:0]
-	tx.signer = tx.signer[:0]
-	tx.Logs.Reset()
-	tx.cacheMut.Unlock()
 }
 
 func (tx *Tx) Hash() []byte {
