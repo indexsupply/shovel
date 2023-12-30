@@ -27,7 +27,12 @@ func (f *Filter) Topics() [][]string  { return f.topics }
 
 func (f *Filter) Merge(o Filter) {
 	f.Needs(unique(f.needs, o.needs))
-	f.addresses = unique(f.addresses, o.addresses)
+	switch {
+	case len(f.addresses) > 0 && len(o.addresses) > 0:
+		f.addresses = unique(f.addresses, o.addresses)
+	default:
+		f.addresses = nil
+	}
 	if len(f.topics) < len(o.topics) {
 		n := len(o.topics) - len(f.topics)
 		f.topics = append(f.topics, make([][]string, n)...)

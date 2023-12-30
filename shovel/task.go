@@ -195,6 +195,13 @@ type part struct {
 	dests []Destination
 }
 
+func (p *part) slice(b []eth.Block) []eth.Block {
+	if len(b) < p.m {
+		return nil
+	}
+	return b[p.m:min(p.n, len(b))]
+}
+
 func parts(numParts, batchSize int) []part {
 	var (
 		p         = make([]part, numParts)
@@ -212,13 +219,6 @@ func parts(numParts, batchSize int) []part {
 		panic(fmt.Sprintf("batchSize error want: %d got: %d", batchSize, p[numParts-1].n))
 	}
 	return p
-}
-
-func (p *part) slice(b []eth.Block) []eth.Block {
-	if len(b) < p.m {
-		return nil
-	}
-	return b[p.m:min(p.n, len(b))]
 }
 
 func (t *Task) Setup() error {

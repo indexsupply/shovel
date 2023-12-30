@@ -158,6 +158,18 @@ func (l *Log) UnmarshalRLP(b []byte) {
 
 type Logs []Log
 
+func (ls *Logs) Add(other *Log) {
+	l := Log{}
+	l.Idx = other.Idx
+	l.Address.Write(other.Address)
+	l.Topics = make([]Bytes, len(other.Topics))
+	for i := range other.Topics {
+		l.Topics[i].Write(other.Topics[i])
+	}
+	l.Data.Write(other.Data)
+	*ls = append(*ls, l)
+}
+
 func (ls *Logs) UnmarshalRLP(b []byte) {
 	var i int
 	for it := rlp.Iter(b); it.HasNext(); i++ {
