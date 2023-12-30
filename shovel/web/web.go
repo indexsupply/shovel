@@ -22,6 +22,7 @@ import (
 	"github.com/indexsupply/x/eth"
 	"github.com/indexsupply/x/shovel"
 	"github.com/indexsupply/x/shovel/config"
+	"github.com/indexsupply/x/shovel/glf"
 	"github.com/indexsupply/x/wstrings"
 
 	"filippo.io/age"
@@ -194,7 +195,7 @@ func (h *Handler) Diag(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	for _, sc := range scs {
-		src := shovel.NewSource(sc)
+		src := shovel.NewSource(sc, glf.Filter{})
 		run(sc.Name, func() string {
 			n, h, err := src.Latest()
 			if err != nil {

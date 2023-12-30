@@ -16,6 +16,7 @@ import (
 	"github.com/indexsupply/x/jrpc2"
 	"github.com/indexsupply/x/rlps"
 	"github.com/indexsupply/x/shovel/config"
+	"github.com/indexsupply/x/shovel/glf"
 	"github.com/indexsupply/x/wctx"
 	"github.com/indexsupply/x/wpg"
 
@@ -39,11 +40,12 @@ type Destination interface {
 	Insert(context.Context, wpg.Conn, []eth.Block) (int64, error)
 	Delete(context.Context, wpg.Conn, uint64) error
 	Events(context.Context) [][]byte
+	Filter() glf.Filter
 }
 
 type Option func(t *Task)
 
-func WithSourceFactory(f func(config.Source) Source) Option {
+func WithSourceFactory(f func(config.Source, glf.Filter) Source) Option {
 	return func(t *Task) {
 		t.srcFactory = f
 	}
@@ -121,12 +123,12 @@ func NewIntegration(ig config.Integration) (Destination, error) {
 	}
 }
 
-func NewSource(sc config.Source) Source {
+func NewSource(sc config.Source, filter glf.Filter) Source {
 	switch {
 	case strings.Contains(string(sc.URL), "rlps"):
 		return rlps.NewClient(sc.ChainID, string(sc.URL))
 	case strings.HasPrefix(string(sc.URL), "http"):
-		return jrpc2.New(sc.ChainID, string(sc.URL))
+		return jrpc2.New(string(sc.URL), filter)
 	default:
 		// TODO add back support for local geth
 		panic(fmt.Sprintf("unsupported src type: %v", sc))
@@ -145,24 +147,15 @@ func NewTask(opts ...Option) (*Task, error) {
 		opt(t)
 	}
 	for i := range t.parts {
-		t.parts[i].src = t.srcFactory(t.srcConfig)
 		for j := range t.igs {
 			dest, err := t.igFactory(t.igs[j])
 			if err != nil {
 				return nil, fmt.Errorf("initializing integration: %w", err)
 			}
 			t.parts[i].dests = append(t.parts[i].dests, dest)
+			t.filter.Merge(dest.Filter())
 		}
-	}
-	for i := range t.parts[0].dests {
-		e := t.parts[0].dests[i].Events(t.ctx)
-		// if one integration has no filter
-		// then the task must consider all data
-		if len(e) == 0 {
-			t.filter = t.filter[:0]
-			break
-		}
-		t.filter = append(t.filter, e...)
+		t.parts[i].src = t.srcFactory(t.srcConfig, t.filter)
 	}
 	slog.InfoContext(t.ctx, "new-task", "integrations", len(t.igs))
 	return t, nil
@@ -175,7 +168,7 @@ type Task struct {
 	backfill    bool
 	start, stop uint64
 
-	srcFactory func(config.Source) Source
+	srcFactory func(config.Source, glf.Filter) Source
 	srcConfig  config.Source
 
 	igFactory   func(config.Integration) (Destination, error)
@@ -183,7 +176,7 @@ type Task struct {
 	igRange     []igRange
 	igUpdateBuf *igUpdateBuf
 
-	filter    [][]byte
+	filter    glf.Filter
 	batchSize int
 	parts     []part
 }
@@ -200,6 +193,13 @@ type part struct {
 	m, n  int
 	src   Source
 	dests []Destination
+}
+
+func (p *part) slice(b []eth.Block) []eth.Block {
+	if len(b) < p.m {
+		return nil
+	}
+	return b[p.m:min(p.n, len(b))]
 }
 
 func parts(numParts, batchSize int) []part {
@@ -219,13 +219,6 @@ func parts(numParts, batchSize int) []part {
 		panic(fmt.Sprintf("batchSize error want: %d got: %d", batchSize, p[numParts-1].n))
 	}
 	return p
-}
-
-func (p *part) slice(b []eth.Block) []eth.Block {
-	if len(b) < p.m {
-		return nil
-	}
-	return b[p.m:min(p.n, len(b))]
 }
 
 func (t *Task) Setup() error {
@@ -568,14 +561,18 @@ func (task *Task) loadinsert(localHash []byte, pg wpg.Conn, batch []eth.Block) (
 			continue
 		}
 		eg1.Go(func() error {
-			return task.parts[i].src.LoadBlocks(task.filter, b)
+			return task.parts[i].src.LoadBlocks(nil, b)
 		})
 	}
 	if err := eg1.Wait(); err != nil {
 		return 0, err
 	}
-	if err := validateChain(task.ctx, localHash, batch); err != nil {
-		return 0, fmt.Errorf("validating new chain: %w", err)
+	switch {
+	case task.filter.UseBlocks, task.filter.UseHeaders:
+		err := validateChain(task.ctx, localHash, batch)
+		if err != nil {
+			return 0, fmt.Errorf("validating new chain: %w", err)
+		}
 	}
 	var (
 		nrows int64
