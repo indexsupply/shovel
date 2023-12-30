@@ -23,14 +23,19 @@ func TestMerge(t *testing.T) {
 			Filter{addresses: []string(nil)},
 		},
 		{
+			Filter{addresses: []string{}},
 			Filter{addresses: []string{"foo"}},
-			Filter{addresses: []string{"bar"}},
-			Filter{addresses: []string{"bar", "foo"}},
+			Filter{addresses: []string{"foo"}},
 		},
 		{
-			Filter{addresses: []string{"foo"}},
-			Filter{addresses: []string{"foo", "bar"}},
-			Filter{addresses: []string{"bar", "foo"}},
+			Filter{needs: []string{""}, addresses: []string{"foo"}},
+			Filter{needs: []string{""}, addresses: []string{"bar"}},
+			Filter{needs: []string{""}, addresses: []string{"bar", "foo"}},
+		},
+		{
+			Filter{needs: []string{""}, addresses: []string{"foo"}},
+			Filter{needs: []string{""}, addresses: []string{"foo", "bar"}},
+			Filter{needs: []string{""}, addresses: []string{"bar", "foo"}},
 		},
 		{
 			Filter{topics: [][]string{{}, {"foo"}}},
