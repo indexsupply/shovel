@@ -1,4 +1,3 @@
-runs-on: large
 name: docker
 on:
   push:
@@ -7,7 +6,7 @@ on:
       - 'r/docker'
 jobs:
   docker:
-    runs-on: ubuntu-latest
+    runs-on: large
     steps:
       -
         name: Checkout
