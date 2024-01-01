@@ -23,7 +23,6 @@ import (
 	"github.com/indexsupply/x/wos"
 	"github.com/indexsupply/x/wpg"
 	"github.com/indexsupply/x/wslog"
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func check(err error) {
@@ -109,7 +108,7 @@ func main() {
 		os.Exit(0)
 	}
 
-	pg, err := pgxpool.New(ctx, pgurl)
+	pg, err := wpg.NewPool(ctx, pgurl)
 	check(err)
 
 	if !skipMigrate {

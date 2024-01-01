@@ -8,6 +8,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type Conn interface {
@@ -15,6 +16,16 @@ type Conn interface {
 	Exec(context.Context, string, ...any) (pgconn.CommandTag, error)
 	QueryRow(context.Context, string, ...any) pgx.Row
 	Query(context.Context, string, ...any) (pgx.Rows, error)
+}
+
+func NewPool(ctx context.Context, url string) (*pgxpool.Pool, error) {
+	conf, err := pgxpool.ParseConfig(url)
+	if err != nil {
+		return nil, err
+	}
+	conf.ConnConfig.RuntimeParams["statement_timeout"] = "5s"
+	conf.ConnConfig.RuntimeParams["idle_in_transaction_session_timeout"] = "10s"
+	return pgxpool.NewWithConfig(context.Background(), conf)
 }
 
 var (

@@ -411,6 +411,15 @@ func (task *Task) Converge(notx bool) error {
 		if err != nil {
 			return fmt.Errorf("task lock %d: %w", task.srcConfig.ChainID, err)
 		}
+		_, err = pg.Exec(task.ctx, fmt.Sprintf(
+			"set application_name = 'shovel.task.%d.%t'",
+			task.srcConfig.ChainID,
+			task.backfill,
+		))
+		if err != nil {
+			return fmt.Errorf("setting application_name: %w", err)
+		}
+
 	}
 	for reorgs := 0; reorgs <= 10; {
 		localNum, localHash := uint64(0), []byte{}
