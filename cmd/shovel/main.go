@@ -16,7 +16,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/indexsupply/x/pgmig"
 	"github.com/indexsupply/x/shovel"
 	"github.com/indexsupply/x/shovel/config"
 	"github.com/indexsupply/x/shovel/web"
@@ -113,8 +112,9 @@ func main() {
 	if !skipMigrate {
 		migdb, err := pgxpool.New(ctx, pgurl)
 		check(err)
-		check(pgmig.Migrate(migdb, shovel.Migrations))
 		dbtx, err := migdb.Begin(ctx)
+		check(err)
+		_, err = dbtx.Exec(ctx, shovel.Schema)
 		check(err)
 		check(config.Migrate(ctx, dbtx, conf))
 		check(dbtx.Commit(ctx))
