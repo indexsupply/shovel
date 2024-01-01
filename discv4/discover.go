@@ -11,8 +11,8 @@ import (
 	"github.com/indexsupply/x/bint"
 	"github.com/indexsupply/x/discv4/kademlia"
 	"github.com/indexsupply/x/enr"
+	"github.com/indexsupply/x/eth"
 	"github.com/indexsupply/x/isxerrors"
-	"github.com/indexsupply/x/isxhash"
 	"github.com/indexsupply/x/rlp"
 	"github.com/indexsupply/x/wsecp256k1"
 
@@ -102,12 +102,12 @@ func (p *process) serve(uaddr *net.UDPAddr, packet []byte) error {
 	if len(packet) <= headerSize {
 		return errors.New("discv4 packet too small")
 	}
-	if !bytes.Equal(packet[:hashSize], isxhash.Keccak(packet[hashSize:])) {
+	if !bytes.Equal(packet[:hashSize], eth.Keccak(packet[hashSize:])) {
 		return errors.New("packet contains invalid hash")
 	}
 	fromPubkey, err := wsecp256k1.Recover(
 		packet[hashSize:hashSize+sigSize],
-		isxhash.Keccak(packet[hashSize+sigSize:]),
+		eth.Keccak(packet[hashSize+sigSize:]),
 	)
 	if err != nil {
 		return errors.New("unable to extract pubkey from packet")
@@ -148,7 +148,7 @@ func (p *process) handleENRRequest(req *enr.Record, packet []byte) error {
 		return err
 	}
 	_, err = p.write(0x06, req.UDPAddr(), rlp.List(rlp.Encode(
-		isxhash.Keccak(packet),
+		eth.Keccak(packet),
 		rec,
 	)))
 	return err
@@ -158,7 +158,7 @@ func (p *process) handleFindNode(req *enr.Record, packet []byte) error {
 	// packet-data = [target, expiration, ...]
 	var (
 		target = rlp.Bytes(packet[headerSize:])
-		recs   = p.ktable.FindClosest(isxhash.Keccak32(target), 16)
+		recs   = p.ktable.FindClosest(eth.Keccak32(target), 16)
 		nodes  [][]byte
 	)
 	for _, rec := range recs {
@@ -304,7 +304,7 @@ func (p *process) write(pt byte, to *net.UDPAddr, data []byte) ([]byte, error) {
 	var ts []byte
 	ts = append(ts, pt)
 	ts = append(ts, data...)
-	sig, err := wsecp256k1.Sign(p.prv, isxhash.Keccak(ts))
+	sig, err := wsecp256k1.Sign(p.prv, eth.Keccak(ts))
 	if err != nil {
 		return nil, err
 	}
@@ -313,7 +313,7 @@ func (p *process) write(pt byte, to *net.UDPAddr, data []byte) ([]byte, error) {
 	th = append(th, sig[:]...)
 	th = append(th, pt)
 	th = append(th, data...)
-	hash = isxhash.Keccak(th)
+	hash = eth.Keccak(th)
 
 	var header []byte
 	header = append(header, hash...)

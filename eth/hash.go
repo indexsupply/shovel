@@ -1,6 +1,4 @@
-// Small wrapper around sha3 package to
-// canonicalize how data is to be hashed
-package isxhash
+package eth
 
 import "golang.org/x/crypto/sha3"
 

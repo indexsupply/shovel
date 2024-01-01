@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"encoding/hex"
 	"testing"
-
-	"github.com/indexsupply/x/isxhash"
 )
 
 func check(t *testing.T, err error) {
@@ -58,7 +56,7 @@ func TestSigHash(t *testing.T) {
 		signer, err := tx.Signer()
 		check(t, err)
 		if !bytes.Equal(signer, h2b(tc.signer)) {
-			t.Errorf("%s %.4x\nwant: %s\ngot:  %x", tc.desc, isxhash.Keccak(h2b(tc.txrlp)), tc.signer, signer)
+			t.Errorf("%s %.4x\nwant: %s\ngot:  %x", tc.desc, Keccak(h2b(tc.txrlp)), tc.signer, signer)
 		}
 	}
 }

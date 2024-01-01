@@ -21,8 +21,8 @@ import (
 	"github.com/indexsupply/x/bint"
 	"github.com/indexsupply/x/ecies"
 	"github.com/indexsupply/x/enr"
+	"github.com/indexsupply/x/eth"
 	"github.com/indexsupply/x/isxerrors"
-	"github.com/indexsupply/x/isxhash"
 	"github.com/indexsupply/x/rlp"
 	"github.com/indexsupply/x/wsecp256k1"
 )
@@ -57,15 +57,15 @@ func Session(l *enr.Record, hs *handshake) (*session, error) {
 		hs.localEphPrvKey,
 		hs.remoteEphPubKey,
 	)
-	sharedSecret := isxhash.Keccak(append(
+	sharedSecret := eth.Keccak(append(
 		ephKey,
-		isxhash.Keccak(append(
+		eth.Keccak(append(
 			hs.recipientNonce[:],
 			hs.initNonce[:]...,
 		))...,
 	))
-	aesSecret := isxhash.Keccak(append(ephKey, sharedSecret...))
-	macSecret := isxhash.Keccak(append(ephKey, aesSecret...))
+	aesSecret := eth.Keccak(append(ephKey, sharedSecret...))
+	macSecret := eth.Keccak(append(ephKey, aesSecret...))
 
 	s.ig, err = newmstate(aesSecret, macSecret)
 	if err != nil {

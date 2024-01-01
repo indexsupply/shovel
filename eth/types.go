@@ -8,7 +8,6 @@ import (
 
 	"github.com/btcsuite/btcd/btcec/v2/ecdsa"
 	"github.com/indexsupply/x/bint"
-	"github.com/indexsupply/x/isxhash"
 	"github.com/indexsupply/x/rlp"
 
 	"github.com/holiman/uint256"
@@ -202,7 +201,7 @@ type Header struct {
 }
 
 func (h *Header) UnmarshalRLP(b []byte) {
-	h.Hash = isxhash.Keccak(b)
+	h.Hash = Keccak(b)
 	for i, it := 0, rlp.Iter(b); it.HasNext(); i++ {
 		d := it.Bytes()
 		switch i {
@@ -321,7 +320,7 @@ func (tx *Tx) Hash() []byte {
 	tx.cacheMut.Lock()
 	defer tx.cacheMut.Unlock()
 	if len(tx.PrecompHash) == 0 {
-		tx.PrecompHash = isxhash.Keccak(tx.rbuf)
+		tx.PrecompHash = Keccak(tx.rbuf)
 	}
 	return tx.PrecompHash
 }
@@ -402,7 +401,7 @@ func (tx *Tx) Signer() ([]byte, error) {
 	}
 	var (
 		cpk  = pubk.SerializeUncompressed()
-		addr = isxhash.Keccak(cpk[1:])
+		addr = Keccak(cpk[1:])
 	)
 	tx.From = append(tx.From[:0], addr[12:]...)
 	return tx.From, nil
@@ -444,7 +443,7 @@ func (t *Tx) SigHash() []byte {
 	case 0x00:
 		switch {
 		case t.eip155():
-			return isxhash.Keccak(rlp.List(
+			return Keccak(rlp.List(
 				rlp.Encode(bint.Encode(nil, uint64(t.Nonce))),
 				rlp.Encode(t.GasPrice.Bytes()),
 				rlp.Encode(bint.Encode(nil, uint64(t.GasLimit))),
@@ -456,7 +455,7 @@ func (t *Tx) SigHash() []byte {
 				rlp.Encode([]byte{0}),
 			))
 		default:
-			return isxhash.Keccak(rlp.List(
+			return Keccak(rlp.List(
 				rlp.Encode(bint.Encode(nil, uint64(t.Nonce))),
 				rlp.Encode(t.GasPrice.Bytes()),
 				rlp.Encode(bint.Encode(nil, uint64(t.GasLimit))),
@@ -466,7 +465,7 @@ func (t *Tx) SigHash() []byte {
 			))
 		}
 	case 0x01:
-		return isxhash.Keccak(append([]byte{0x01}, rlp.List(
+		return Keccak(append([]byte{0x01}, rlp.List(
 			rlp.Encode(t.ChainID.Bytes()),
 			rlp.Encode(bint.Encode(nil, uint64(t.Nonce))),
 			rlp.Encode(t.GasPrice.Bytes()),
@@ -477,7 +476,7 @@ func (t *Tx) SigHash() []byte {
 			t.AccessList.MarshalRLP(),
 		)...))
 	case 0x02:
-		return isxhash.Keccak(append([]byte{0x02}, rlp.List(
+		return Keccak(append([]byte{0x02}, rlp.List(
 			rlp.Encode(t.ChainID.Bytes()),
 			rlp.Encode(bint.Encode(nil, uint64(t.Nonce))),
 			rlp.Encode(t.MaxPriorityFeePerGas.Bytes()),

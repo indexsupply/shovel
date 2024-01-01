@@ -15,7 +15,6 @@ import (
 
 	"github.com/indexsupply/x/bint"
 	"github.com/indexsupply/x/eth"
-	"github.com/indexsupply/x/isxhash"
 	"github.com/indexsupply/x/shovel/glf"
 	"github.com/indexsupply/x/wctx"
 	"github.com/indexsupply/x/wpg"
@@ -509,7 +508,7 @@ func (e Event) ABIType() atype {
 }
 
 func (e Event) SignatureHash() []byte {
-	return isxhash.Keccak([]byte(e.Signature()))
+	return eth.Keccak([]byte(e.Signature()))
 }
 
 func (e Event) Signature() string {

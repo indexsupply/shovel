@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/indexsupply/x/bint"
-	"github.com/indexsupply/x/isxhash"
+	"github.com/indexsupply/x/eth"
 	"github.com/indexsupply/x/rlp"
 	"github.com/indexsupply/x/wsecp256k1"
 
@@ -51,7 +51,7 @@ func (r *Record) String() string {
 }
 
 func (r *Record) ID() [32]byte {
-	return [32]byte(isxhash.Keccak(wsecp256k1.Encode(r.PublicKey)))
+	return [32]byte(eth.Keccak(wsecp256k1.Encode(r.PublicKey)))
 }
 
 func (r Record) UDPAddr() *net.UDPAddr {
@@ -219,7 +219,7 @@ func (r *Record) MarshalRLP(prv *secp256k1.PrivateKey) ([]byte, error) {
 	// signature of the hash. The resulting 64-byte signature is
 	// encoded as the concatenation of the r and s signature values
 	// (the recovery ID v is omitted).
-	sig, err := wsecp256k1.Sign(prv, isxhash.Keccak(rlp.List(rlp.Encode(buf...))))
+	sig, err := wsecp256k1.Sign(prv, eth.Keccak(rlp.List(rlp.Encode(buf...))))
 	if err != nil {
 		return nil, err
 	}

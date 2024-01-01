@@ -6,7 +6,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/indexsupply/x/isxhash"
+	"github.com/indexsupply/x/eth"
 )
 
 func main() {
@@ -22,14 +22,14 @@ func main() {
 			fmt.Println("unable to hex decode stdin")
 			os.Exit(1)
 		}
-		fmt.Printf("%x\n", isxhash.Keccak(b))
+		fmt.Printf("%x\n", eth.Keccak(b))
 	case 2:
 		b, err := hex.DecodeString(os.Args[1])
 		if err != nil {
 			fmt.Println("unable to hex decode argument")
 			os.Exit(1)
 		}
-		fmt.Printf("%x\n", isxhash.Keccak(b))
+		fmt.Printf("%x\n", eth.Keccak(b))
 	default:
 		fmt.Printf("keccak reads from stdin or through first argument")
 	}

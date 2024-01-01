@@ -11,8 +11,8 @@ import (
 	"text/template"
 	"unicode"
 
+	"github.com/indexsupply/x/eth"
 	"github.com/indexsupply/x/isxerrors"
-	"github.com/indexsupply/x/isxhash"
 )
 
 //go:embed template.txt
@@ -270,7 +270,7 @@ func (desc Descriptor) OutputSignature() string {
 }
 
 func keccak(s string) [32]byte {
-	return isxhash.Keccak32([]byte(s))
+	return eth.Keccak32([]byte(s))
 }
 
 func schema(fields []Field) string {
@@ -456,7 +456,7 @@ func Gen(pkgName string, inputFileName string, js []byte) ([]byte, error) {
 		"lower":       lower,
 		"hashLiteral": hashLiteral,
 		"s2b":         func(s string) []byte { return []byte(s) },
-		"keccak":      isxhash.Keccak,
+		"keccak":      eth.Keccak,
 		"schema":      schema,
 		"goType":      goType,
 		"itemFunc":    itemFunc,

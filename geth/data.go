@@ -4,9 +4,9 @@ import (
 	"fmt"
 
 	"github.com/golang/snappy"
+	"github.com/indexsupply/x/eth"
 	"github.com/indexsupply/x/freezer"
 	"github.com/indexsupply/x/geth/schema"
-	"github.com/indexsupply/x/isxhash"
 	"github.com/indexsupply/x/jrpc"
 )
 
@@ -32,7 +32,7 @@ func Hash(n uint64, fc freezer.FileCache, rc *jrpc.Client) ([]byte, error) {
 	case n <= fmax:
 		buf := Buffer{Number: n}
 		err = fread(&buf, fc, "headers")
-		res = isxhash.Keccak(buf.h)
+		res = eth.Keccak(buf.h)
 	default:
 		buf := make([]jrpc.HexBytes, 1)
 		req := [][]byte{schema.Key("hashes", n, nil)}
