@@ -21,8 +21,8 @@ import (
 	"github.com/indexsupply/x/shovel/web"
 	"github.com/indexsupply/x/wctx"
 	"github.com/indexsupply/x/wos"
+	"github.com/indexsupply/x/wpg"
 	"github.com/indexsupply/x/wslog"
-
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -109,20 +109,24 @@ func main() {
 		os.Exit(0)
 	}
 
+	pg, err := pgxpool.New(ctx, pgurl)
+	check(err)
+
 	if !skipMigrate {
-		migdb, err := pgxpool.New(ctx, pgurl)
+		dbtx, err := pg.Begin(ctx)
 		check(err)
-		dbtx, err := migdb.Begin(ctx)
+		_, err = dbtx.Exec(
+			ctx,
+			"select pg_advisory_xact_lock($1)",
+			wpg.LockHash("main.migrate"),
+		)
 		check(err)
 		_, err = dbtx.Exec(ctx, shovel.Schema)
 		check(err)
 		check(config.Migrate(ctx, dbtx, conf))
 		check(dbtx.Commit(ctx))
-		migdb.Close()
 	}
 
-	pg, err := pgxpool.New(ctx, pgurl)
-	check(err)
 	var (
 		pbuf bytes.Buffer
 		mgr  = shovel.NewManager(pg, conf)
