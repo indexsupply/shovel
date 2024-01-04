@@ -81,6 +81,8 @@ func main() {
 		slog.String("v", Commit),
 	})))
 
+	ctx = wctx.WithVersion(ctx, Commit)
+
 	if version {
 		fmt.Printf("v%s %s\n", Version, Commit)
 		os.Exit(0)
@@ -128,7 +130,7 @@ func main() {
 
 	var (
 		pbuf bytes.Buffer
-		mgr  = shovel.NewManager(pg, conf)
+		mgr  = shovel.NewManager(ctx, pg, conf)
 		wh   = web.New(mgr, &conf, pg)
 	)
 	mux := http.NewServeMux()

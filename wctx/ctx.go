@@ -10,6 +10,7 @@ const (
 	igNameKey   key = 2
 	srcNameKey  key = 3
 	backfillKey key = 4
+	versionKey  key = 5
 )
 
 func WithChainID(ctx context.Context, id uint64) context.Context {
@@ -46,4 +47,13 @@ func WithBackfill(ctx context.Context, b bool) context.Context {
 func Backfill(ctx context.Context) bool {
 	b, _ := ctx.Value(backfillKey).(bool)
 	return b
+}
+
+func WithVersion(ctx context.Context, v string) context.Context {
+	return context.WithValue(ctx, versionKey, v)
+}
+
+func Version(ctx context.Context) string {
+	v, _ := ctx.Value(versionKey).(string)
+	return v
 }

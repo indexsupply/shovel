@@ -45,6 +45,12 @@ type Destination interface {
 
 type Option func(t *Task)
 
+func WithContext(ctx context.Context) Option {
+	return func(t *Task) {
+		t.ctx = ctx
+	}
+}
+
 func WithSourceFactory(f func(config.Source, glf.Filter) Source) Option {
 	return func(t *Task) {
 		t.srcFactory = f
@@ -412,9 +418,10 @@ func (task *Task) Converge(notx bool) error {
 			return fmt.Errorf("task lock %d: %w", task.srcConfig.ChainID, err)
 		}
 		_, err = pg.Exec(task.ctx, fmt.Sprintf(
-			"set application_name = 'shovel.task.%d.%t'",
+			"set application_name = 'shovel.task.%d.%t.%s'",
 			task.srcConfig.ChainID,
 			task.backfill,
+			wctx.Version(task.ctx),
 		))
 		if err != nil {
 			return fmt.Errorf("setting application_name: %w", err)
@@ -984,6 +991,7 @@ func IGUpdates(ctx context.Context, pg wpg.Conn) ([]IGUpdate, error) {
 // Loads, Starts, and provides method for Restarting tasks
 // based on config stored in the DB and in the config file.
 type Manager struct {
+	ctx     context.Context
 	running sync.Mutex
 	restart chan struct{}
 	tasks   []*Task
@@ -992,8 +1000,9 @@ type Manager struct {
 	conf    config.Root
 }
 
-func NewManager(pgp *pgxpool.Pool, conf config.Root) *Manager {
+func NewManager(ctx context.Context, pgp *pgxpool.Pool, conf config.Root) *Manager {
 	return &Manager{
+		ctx:     ctx,
 		restart: make(chan struct{}),
 		updates: make(chan uint64),
 		pgp:     pgp,
@@ -1055,7 +1064,7 @@ func (tm *Manager) Run(ec chan error) {
 	defer tm.running.Unlock()
 
 	var err error
-	tm.tasks, err = loadTasks(context.Background(), tm.pgp, tm.conf)
+	tm.tasks, err = loadTasks(tm.ctx, tm.pgp, tm.conf)
 	if err != nil {
 		ec <- fmt.Errorf("loading tasks: %w", err)
 		return
@@ -1093,6 +1102,7 @@ func loadTasks(ctx context.Context, pgp *pgxpool.Pool, c config.Root) ([]*Task, 
 	var tasks []*Task
 	for _, sc := range scs {
 		mt, err := NewTask(
+			WithContext(ctx),
 			WithPG(pgp),
 			WithConcurrency(sc.Concurrency, sc.BatchSize),
 			WithSourceConfig(sc),
@@ -1102,6 +1112,7 @@ func loadTasks(ctx context.Context, pgp *pgxpool.Pool, c config.Root) ([]*Task, 
 			return nil, fmt.Errorf("setting up main task: %w", err)
 		}
 		bt, err := NewTask(
+			WithContext(ctx),
 			WithBackfill(true),
 			WithPG(pgp),
 			WithConcurrency(sc.Concurrency, sc.BatchSize),
