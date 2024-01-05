@@ -654,7 +654,7 @@ Latency is measured in milliseconds.
 
 <hr>
 
-Dashboard
+## Dashboard
 
 Shovel comes with a dashboard that can be used to:
 
