@@ -9,6 +9,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/indexsupply/x/eth"
 	"github.com/indexsupply/x/shovel/glf"
@@ -90,6 +91,17 @@ func (c *Client) do(dest, req any) error {
 	})
 	if err := eg.Wait(); err != nil {
 		return err
+	}
+	if resp.StatusCode/100 != 2 {
+		b, _ := io.ReadAll(resp.Body)
+		text := strings.Map(func(r rune) rune {
+			if unicode.IsPrint(r) {
+				return r
+			}
+			return -1
+		}, string(b))
+		const msg = "rpc http error: %d %.100s"
+		return fmt.Errorf(msg, resp.StatusCode, text)
 	}
 	defer resp.Body.Close()
 	if err := json.NewDecoder(c.debug(resp.Body)).Decode(dest); err != nil {
