@@ -1,7 +1,6 @@
 package web
 
 import (
-	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/subtle"
@@ -15,11 +14,9 @@ import (
 	"net/http"
 	"os"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
-	"github.com/indexsupply/x/eth"
 	"github.com/indexsupply/x/shovel"
 	"github.com/indexsupply/x/shovel/config"
 	"github.com/indexsupply/x/shovel/glf"
@@ -162,9 +159,15 @@ func isLoopback(r *http.Request) bool {
 }
 
 type DiagResult struct {
-	Name    string
-	Message string
-	Latency time.Duration
+	Source string `json:"source"`
+
+	Latest  uint64 `json:"latest"`
+	Latency uint64 `json:"latency"`
+	Error   string `json:"error"`
+
+	PGLatest  uint64 `json:"pg_latest"`
+	PGLatency uint64 `json:"pg_latency"`
+	PGError   string `json:"pg_error"`
 }
 
 func (h *Handler) Diag(w http.ResponseWriter, r *http.Request) {
@@ -172,59 +175,47 @@ func (h *Handler) Diag(w http.ResponseWriter, r *http.Request) {
 		res []DiagResult
 		ctx = r.Context()
 	)
-	run := func(name string, f func() string) {
-		t := time.Now()
-		m := f()
-		res = append(res, DiagResult{
-			Name:    fmt.Sprintf("%-10s", strings.ToLower(name)),
-			Message: fmt.Sprintf("%20s", m),
-			Latency: time.Since(t),
-		})
-	}
-	run("Postgres", func() string {
-		var x uint64
-		err := h.pgp.QueryRow(ctx, "select num from shovel.task_updates limit 1").Scan(&x)
+	checkPG := func(dr *DiagResult) {
+		start := time.Now()
+		const q = `
+			select num
+			from shovel.task_updates
+			where src_name = $1
+			order by num desc
+			limit 1
+		`
+		err := h.pgp.QueryRow(ctx, q, dr.Source).Scan(&dr.PGLatest)
+		dr.PGLatency = uint64(time.Since(start) / time.Millisecond)
 		if err != nil {
-			return err.Error()
+			dr.PGError = err.Error()
 		}
-		return "ok"
-	})
+	}
+	checkSrc := func(src shovel.Source, dr *DiagResult) {
+		start := time.Now()
+		n, _, err := src.Latest()
+		if err != nil {
+			dr.Error = err.Error()
+		}
+		dr.Latest = n
+		dr.Latency = uint64(time.Since(start) / time.Millisecond)
+	}
 	scs, err := h.conf.AllSources(ctx, h.pgp)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	for _, sc := range scs {
-		src := shovel.NewSource(sc, glf.Filter{})
-		run(sc.Name, func() string {
-			n, h, err := src.Latest()
-			if err != nil {
-				return fmt.Sprintf("latest: %s\n", err.Error())
-			}
-			b := []eth.Block{eth.Block{Header: eth.Header{Number: eth.Uint64(n)}}}
-			if err := src.LoadBlocks(nil, b); err != nil {
-				return fmt.Sprintf("loading blocks: %s\n", err.Error())
-			}
-			if !bytes.Equal(b[0].Hash(), h) {
-				return fmt.Sprintf("block mismatch: %.4x != %.4x\n",
-					b[0].Hash(),
-					h,
-				)
-			}
-			return fmt.Sprintf("%d %.4x", n, h)
-		})
+		var (
+			dr  = &DiagResult{Source: sc.Name}
+			src = shovel.NewSource(sc, glf.Filter{})
+		)
+		checkPG(dr)
+		checkSrc(src, dr)
+		res = append(res, *dr)
 	}
-	tmpl, err := h.template("diag")
-	if err != nil {
+	if err := json.NewEncoder(w).Encode(res); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
 	}
-	if err := tmpl.Execute(w, res); err != nil {
-		slog.ErrorContext(r.Context(), "error", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
 }
 
 func (h *Handler) PushUpdates() error {

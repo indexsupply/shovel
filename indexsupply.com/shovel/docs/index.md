@@ -621,7 +621,40 @@ For the backfill task, when the delta is 0 the task exits. For a main task, when
 
 <hr>
 
-## Dashboard
+## Monitoring
+
+Shovel provides an unauthenticated diagnostics JSON endpoint at: `/diag` which returns:
+
+```
+[
+  {
+    "source": "mainnet",
+    "latest": 100,
+    "latency": 135,
+    "error": "",
+    "pg_latest": 100,
+    "pg_latency": 1,
+    "pg_error": ""
+  },
+  {
+    "source": "sepolia",
+    "latest": 100,
+    "latency": 42,
+    "error": "rpc error: unable to connect",
+    "pg_latest": 90,
+    "pg_latency": 3,
+    "pg_error": ""
+  }
+]
+```
+
+This endpoint will iterate through all the [eth sources](#ethereum-sources) and query for the latest block on both the eth source and the `shovel.task_updates` table.
+
+Latency is measured in milliseconds.
+
+<hr>
+
+Dashboard
 
 Shovel comes with a dashboard that can be used to:
 
