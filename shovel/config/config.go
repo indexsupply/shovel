@@ -368,12 +368,12 @@ func (conf Root) AllSources(ctx context.Context, pgp *pgxpool.Pool) ([]Source, e
 		return nil, fmt.Errorf("loading db integrations: %w", err)
 	}
 
-	var uniq = map[uint64]Source{}
+	var uniq = map[string]Source{}
 	for _, src := range indb {
-		uniq[src.ChainID] = src
+		uniq[src.Name] = src
 	}
 	for _, src := range conf.Sources {
-		uniq[src.ChainID] = src
+		uniq[src.Name] = src
 	}
 
 	var res []Source
@@ -381,7 +381,7 @@ func (conf Root) AllSources(ctx context.Context, pgp *pgxpool.Pool) ([]Source, e
 		res = append(res, src)
 	}
 	slices.SortFunc(res, func(a, b Source) int {
-		return cmp.Compare(a.ChainID, b.ChainID)
+		return cmp.Compare(a.Name, b.Name)
 	})
 	return res, nil
 }
