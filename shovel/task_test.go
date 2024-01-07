@@ -636,7 +636,7 @@ func TestDestRanges_Load(t *testing.T) {
 	diff.Test(t, t.Fatalf, len(task2.igRange), 1)
 	err = task2.igRange[0].load(ctx, pg, "bar", "foo")
 	diff.Test(t, t.Fatalf, err, nil)
-	diff.Test(t, t.Errorf, task2.igRange[0].start, uint64(10))
+	diff.Test(t, t.Errorf, task2.igRange[0].start, uint64(11))
 	diff.Test(t, t.Errorf, task2.igRange[0].stop, uint64(42))
 }
 
@@ -648,73 +648,56 @@ func TestDestRanges_Filter(t *testing.T) {
 		return
 	}
 	cases := []struct {
-		desc  string
 		input []eth.Block
 		r     igRange
 		want  []eth.Block
 	}{
 		{
-			desc:  "empty input",
 			input: []eth.Block{},
 			r:     igRange{},
 			want:  []eth.Block{},
 		},
 		{
-			desc:  "empty range",
 			input: br(0, 10),
 			r:     igRange{},
 			want:  br(0, 10),
 		},
 		{
-			desc:  "[0, 10] -> [1,9]",
 			input: br(0, 10),
 			r:     igRange{start: 1, stop: 9},
 			want:  br(1, 9),
 		},
 		{
-			desc:  "[0, 10] -> [0,5]",
 			input: br(0, 10),
 			r:     igRange{start: 0, stop: 5},
 			want:  br(0, 5),
 		},
 		{
-			desc:  "[0, 10] -> [5,10]",
 			input: br(0, 10),
 			r:     igRange{start: 5, stop: 10},
 			want:  br(5, 10),
 		},
 		{
-			desc:  "[0, 10] -> [10, 15]",
 			input: br(0, 10),
 			r:     igRange{start: 10, stop: 15},
-			want:  []eth.Block(nil),
+			want:  br(10, 10),
 		},
 		{
-			desc:  "[0, 10] -> [10, 10]",
 			input: br(0, 10),
 			r:     igRange{start: 10, stop: 10},
-			want:  []eth.Block(nil),
+			want:  br(10, 10),
 		},
 		{
-			desc:  "[10, 10] -> [10, 15]",
 			input: br(10, 10),
 			r:     igRange{start: 10, stop: 10},
-			want:  []eth.Block(nil),
+			want:  br(10, 10),
 		},
 		{
-			desc:  "[0, 10] -> [15, 20]",
 			input: br(0, 10),
 			r:     igRange{start: 15, stop: 10},
 			want:  []eth.Block(nil),
 		},
 		{
-			desc:  "[0, 10] -> [15, 10]",
-			input: br(0, 10),
-			r:     igRange{start: 15, stop: 10},
-			want:  []eth.Block(nil),
-		},
-		{
-			desc:  "[0, 10] -> [5, 0]",
 			input: br(0, 10),
 			r:     igRange{start: 5, stop: 0},
 			want:  []eth.Block(nil),
@@ -901,14 +884,14 @@ func TestLoadTasks_Backfill(t *testing.T) {
 		and backfill
 	`)
 	checkQuery(t, pg, `
-		select num = 2
+		select num = 1
 		from shovel.ig_updates
 		where src_name = 'foo'
 		and name = 'bar'
 		and backfill
 	`)
 	checkQuery(t, pg, `
-		select num = 1
+		select num = 0
 		from shovel.ig_updates
 		where src_name = 'foo'
 		and name = 'baz'

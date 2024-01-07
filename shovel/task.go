@@ -254,7 +254,13 @@ func (t *Task) Setup() error {
 				on conflict (name, src_name, backfill, num)
 				do nothing
 			`
-			if _, err := t.pgp.Exec(t.ctx, q, ig.Name, sc.Name, sc.Start); err != nil {
+			// we subtract one from the starting block because
+			// the igRange code assumes that
+			// the largest number in the table
+			// is the last block that was processed
+			// and so it adds 1 to determine the next
+			// working range.
+			if _, err := t.pgp.Exec(t.ctx, q, ig.Name, sc.Name, sc.Start-1); err != nil {
 				return fmt.Errorf("initial ig record: %w", err)
 			}
 			if err := t.igRange[i].load(t.ctx, t.pgp, ig.Name, sc.Name); err != nil {
@@ -648,15 +654,28 @@ func validateChain(ctx context.Context, parent []byte, blks []eth.Block) error {
 	return nil
 }
 
+// range represents the blocks that the integration should process
+// this range is inclusive on both sides: [start, stop]
 type igRange struct{ start, stop uint64 }
 
+// since work range is inclusive, we aren't done until start > stop
 func (r *igRange) complete() bool {
-	return r.start+1 >= r.stop
+	return r.start > r.stop
 }
 
+// uses the latest backfill block and the earliest non-backfill
+// block to figure out what blocks to process.
+//
+// we inspect the ig_updates table to find the highest backfill
+// block. this represents the last block that we have processed.
+// since the range represents the work that we need to do, we
+// add 1 to the latest block that we processed.
+//
+// the non-backfill task's earliest block number represents
+// the last block that the backfill process needs to process.
 func (r *igRange) load(ctx context.Context, pg wpg.Conn, name, srcName string) error {
 	const startQuery = `
-	   select num
+	   select num + 1
 	   from shovel.ig_updates
 	   where name = $1
 	   and src_name = $2
@@ -684,24 +703,46 @@ func (r *igRange) load(ctx context.Context, pg wpg.Conn, name, srcName string) e
 	return nil
 }
 
+// returns a slice with the blocks that this integration should process
+//
+// assumes that incoming blocks numbers are an increasing sequence
+// of consecutive integers. (no gaps)
 func (r *igRange) filter(blks []eth.Block) []eth.Block {
 	switch {
 	case r.start == 0 && r.stop == 0:
+		// un-configured range so we return what was passed
 		return blks
 	case len(blks) == 0:
 		return blks
 	case r.start > r.stop:
+		// task is complete and there is nothing to do
 		return nil
-	case blks[len(blks)-1].Num() <= r.start || r.stop <= blks[0].Num():
+	case blks[len(blks)-1].Num() < r.start || r.stop < blks[0].Num():
+		// if the last blocks is < our starting point
+		// then we have nothing to do.
+		// if the last blocks is == to our staring point
+		// then we at leaset have the last block to process
+		// and maybe more
+
+		// if the first block is > our stopping point
+		// then there is nothing to do
+		// if the first block is == to our stopping point
+		// then we at leaset have the first block to process
+		// and maybe more
 		return nil
 	default:
-		var n, m = 0, len(blks)
-		for i := range blks {
-			switch blks[i].Num() {
-			case r.start:
+		var n int
+		for i := 0; i < len(blks); i++ {
+			if blks[i].Num() == r.start {
 				n = i
-			case r.stop:
+				break
+			}
+		}
+		var m = len(blks)
+		for i := len(blks) - 1; i >= 0; i-- {
+			if blks[i].Num() == r.stop {
 				m = i + 1
+				break
 			}
 		}
 		return blks[n:m]
