@@ -234,19 +234,6 @@ func (h *Handler) PushUpdates() error {
 				c <- j
 			}
 		}
-		ius, err := shovel.IGUpdates(ctx, h.pgp)
-		if err != nil {
-			return fmt.Errorf("querying ig updates: %w", err)
-		}
-		for _, update := range ius {
-			j, err := json.Marshal(update)
-			if err != nil {
-				return fmt.Errorf("marshaling ig update: %w", err)
-			}
-			for _, c := range h.clients {
-				c <- j
-			}
-		}
 	}
 }
 
@@ -347,7 +334,6 @@ func (h *Handler) AddIntegration(w http.ResponseWriter, r *http.Request) {
 
 type IndexView struct {
 	TaskUpdates  map[string]shovel.TaskUpdate
-	IGUpdates    map[string][]shovel.IGUpdate
 	Sources      []config.Source
 	ShowBackfill bool
 }
@@ -362,29 +348,9 @@ func (h *Handler) Index(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	ius, err := shovel.IGUpdates(ctx, h.pgp)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	view.IGUpdates = make(map[string][]shovel.IGUpdate)
-	for _, iu := range ius {
-		view.IGUpdates[iu.TaskID()] = append(
-			view.IGUpdates[iu.TaskID()],
-			iu,
-		)
-	}
 	view.TaskUpdates = make(map[string]shovel.TaskUpdate)
 	for _, tu := range tus {
 		view.TaskUpdates[tu.DOMID] = tu
-	}
-
-	for _, tu := range view.TaskUpdates {
-		if tu.Backfill {
-			view.ShowBackfill = true
-			break
-		}
 	}
 
 	view.Sources, err = h.conf.AllSources(ctx, h.pgp)

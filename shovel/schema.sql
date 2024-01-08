@@ -46,19 +46,21 @@ if not exists sources_name_idx
 on shovel.sources
 using btree (name);
 
-create unique index
-if not exists task_src_name_num_idx
-on shovel.task_updates
-using btree (src_name, num DESC)
-where (backfill = true);
-
-create unique index
-if not exists task_src_name_num_idx1
-on shovel.task_updates
-using btree (src_name, num DESC)
-where (backfill = false);
-
 -- Changes:
 
 alter table shovel.task_updates
 add column if not exists chain_id int;
+
+alter table shovel.task_updates
+add column if not exists dest_name text;
+
+drop index if exists task_src_name_num_idx;
+drop index if exists task_src_name_num_idx1;
+
+alter table shovel.task_updates
+drop column if exists backfill;
+
+create unique index
+if not exists task_src_name_num_idx
+on shovel.task_updates
+using btree (dest_name, src_name, num DESC);

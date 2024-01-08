@@ -1,22 +1,22 @@
 {
     "pg_url": "postgres:///shovel",
     "eth_sources": [
-        {"name": "mainnet", "chain_id": 1, "url": "https://1.rlps.indexsupply.net"}
+        {"name": "mainnet", "chain_id": 1, "url": "http://eth-1:8545"}
     ],
     "integrations": [
 		{
 			"name": "usdc-transfer",
 			"enabled": true,
-			"sources": [{"name": "mainnet"}, {"name": "base"}],
+			"sources": [{"name": "mainnet", "start": 18000000}],
 			"table": {
 				"name": "usdc",
 				"columns": [
-					{"name": "log_addr",	"type": "bytea"},
-					{"name": "block_time",	"type": "numeric"},
-					{"name": "f",			"type": "bytea"},
-					{"name": "t",			"type": "bytea"},
-					{"name": "v",			"type": "numeric"},
-					{"name": "extra",       "type": "text"}
+					{"name": "log_addr", "type": "bytea"},
+					{"name": "block_time", "type": "numeric"},
+					{"name": "f", "type": "bytea"},
+					{"name": "t", "type": "bytea"},
+					{"name": "v", "type": "numeric"},
+					{"name": "extra", "type": "text"}
 				]
 			},
 			"block": [
@@ -36,11 +36,11 @@
 				"type": "event",
 				"anonymous": false,
 				"inputs": [
-					{"indexed": true,  "name": "from",	"type": "address", "column": "f"},
-					{"indexed": true,  "name": "to",	"type": "address", "column": "t"},
-					{"indexed": false, "name": "value",	"type": "uint256", "column": "v"}
+					{"indexed": true,  "name": "from", "type": "address", "column": "f"},
+					{"indexed": true,  "name": "to", "type": "address", "column": "t"},
+					{"indexed": false, "name": "value", "type": "uint256", "column": "v"}
 				]
 			}
 		}
-    ]
+	]
 }

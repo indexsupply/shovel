@@ -456,40 +456,6 @@ func TestPruneTask(t *testing.T) {
 	checkQuery(t, pg, `select count(*) = 1 from shovel.task_updates`)
 }
 
-func TestPruneIG(t *testing.T) {
-	ctx := context.Background()
-
-	pqxtest.CreateDB(t, Schema)
-	pg, err := pgxpool.New(ctx, pqxtest.DSNForTest(t))
-	diff.Test(t, t.Fatalf, err, nil)
-
-	igUpdateBuf := newIGUpdateBuf(2)
-	igUpdateBuf.update(0, "foo", "bar", true, 1, 0, 0, 0)
-	err = igUpdateBuf.write(ctx, pg)
-	diff.Test(t, t.Fatalf, err, nil)
-	checkQuery(t, pg, `select count(*) = 1 from shovel.ig_updates`)
-
-	for i := 0; i < 10; i++ {
-		igUpdateBuf.update(0, "foo", "bar", true, uint64(i+2), 0, 0, 0)
-		err := igUpdateBuf.write(ctx, pg)
-		diff.Test(t, t.Fatalf, err, nil)
-	}
-	checkQuery(t, pg, `select count(*) = 11 from shovel.ig_updates`)
-	err = PruneIG(ctx, pg)
-	diff.Test(t, t.Fatalf, err, nil)
-	checkQuery(t, pg, `select count(*) = 2 from shovel.ig_updates`)
-
-	igUpdateBuf.update(1, "foo", "baz", true, 1, 0, 0, 0)
-	err = igUpdateBuf.write(ctx, pg)
-	diff.Test(t, t.Fatalf, err, nil)
-	checkQuery(t, pg, `select count(*) = 1 from shovel.ig_updates where src_name = 'baz'`)
-	checkQuery(t, pg, `select count(*) = 3 from shovel.ig_updates`)
-
-	err = PruneIG(ctx, pg)
-	diff.Test(t, t.Fatalf, err, nil)
-	checkQuery(t, pg, `select count(*) = 3 from shovel.ig_updates`)
-}
-
 func destFactory(dests ...*testDestination) func(config.Integration) (Destination, error) {
 	return func(ig config.Integration) (Destination, error) {
 		for i := range dests {
