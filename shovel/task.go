@@ -9,12 +9,14 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/indexsupply/x/dig"
 	"github.com/indexsupply/x/eth"
 	"github.com/indexsupply/x/jrpc2"
 	"github.com/indexsupply/x/rlps"
+	"github.com/indexsupply/x/shovel/cache"
 	"github.com/indexsupply/x/shovel/config"
 	"github.com/indexsupply/x/shovel/glf"
 	"github.com/indexsupply/x/wctx"
@@ -30,7 +32,8 @@ import (
 var Schema string
 
 type Source interface {
-	LoadBlocks([][]byte, []eth.Block) error
+	Get(*glf.Filter, uint64, uint64) ([]eth.Block, error)
+	LoadBlocks(*glf.Filter, []eth.Block) error
 	Latest() (uint64, []byte, error)
 	Hash(uint64) ([]byte, error)
 }
@@ -51,9 +54,21 @@ func WithContext(ctx context.Context) Option {
 	}
 }
 
-func WithSourceFactory(f func(config.Source, glf.Filter) Source) Option {
+func WithCache(c *cache.Cache) Option {
+	return func(t *Task) {
+		t.cache = c
+	}
+}
+
+func WithSourceFactory(f func(config.Source) Source) Option {
 	return func(t *Task) {
 		t.srcFactory = f
+	}
+}
+
+func WithSource(src Source) Option {
+	return func(t *Task) {
+		t.src = src
 	}
 }
 
@@ -115,12 +130,12 @@ func NewDestination(ig config.Integration) (Destination, error) {
 	}
 }
 
-func NewSource(sc config.Source, filter glf.Filter) Source {
+func NewSource(sc config.Source) Source {
 	switch {
 	case strings.Contains(string(sc.URL), "rlps"):
 		return rlps.NewClient(sc.ChainID, string(sc.URL))
 	case strings.HasPrefix(string(sc.URL), "http"):
-		return jrpc2.New(string(sc.URL), filter)
+		return jrpc2.New(string(sc.URL))
 	default:
 		// TODO add back support for local geth
 		panic(fmt.Sprintf("unsupported src type: %v", sc))
@@ -147,15 +162,27 @@ func NewTask(opts ...Option) (*Task, error) {
 	}
 
 	t.filter = t.parts[0].dest.Filter()
-	for i := range t.parts {
-		t.parts[i].src = t.srcFactory(t.srcConfig, t.filter)
-	}
+	t.filterID = t.filter.ID()
+
+	//for i := range t.parts {
+	//	t.parts[i].src = t.srcFactory(t.srcConfig)
+	//}
 	t.lockid = wpg.LockHash(fmt.Sprintf(
 		"shovel-task-%s-%s",
 		t.srcConfig.Name,
 		t.destConfig.Name,
 	))
+	_, err := t.pgp.Exec(t.ctx, fmt.Sprintf(
+		"set application_name = 'shovel-task-%s-%s-%s'",
+		t.srcConfig.Name,
+		t.destConfig.Name,
+		wctx.Version(t.ctx),
+	))
+	if err != nil {
+		return nil, fmt.Errorf("setting application_name: %w", err)
+	}
 	slog.InfoContext(t.ctx, "new-task",
+		"filter", t.filterID,
 		"src", t.srcConfig.Name,
 		"dest", t.destConfig.Name,
 	)
@@ -163,19 +190,22 @@ func NewTask(opts ...Option) (*Task, error) {
 }
 
 type Task struct {
-	ctx context.Context
-	pgp *pgxpool.Pool
+	ctx   context.Context
+	pgp   *pgxpool.Pool
+	cache *cache.Cache
 
 	lockid      int64
 	start, stop uint64
 
-	srcFactory func(config.Source, glf.Filter) Source
+	src        Source
+	srcFactory func(config.Source) Source
 	srcConfig  config.Source
 
 	destFactory func(config.Integration) (Destination, error)
 	destConfig  config.Integration
 
 	filter    glf.Filter
+	filterID  uint64
 	batchSize int
 	parts     []part
 }
@@ -189,9 +219,9 @@ type Task struct {
 // Each part has its own source since the Source may have buffers
 // that aren't safe to share across go-routines.
 type part struct {
-	m, n int
-	src  Source
-	dest Destination
+	m, n, size int
+	src        Source
+	dest       Destination
 }
 
 func (p *part) slice(b []eth.Block) []eth.Block {
@@ -208,6 +238,7 @@ func parts(numParts, batchSize int) []part {
 		remainder = batchSize % numParts
 	)
 	for i := range p {
+		p[i].size = size
 		p[i].m = size * i
 		p[i].n = size + p[i].m
 	}
@@ -222,9 +253,8 @@ func parts(numParts, batchSize int) []part {
 
 func (t *Task) update(
 	pg wpg.Conn,
-	gethNum uint64,
-	gethHash []byte,
-	batch []eth.Block,
+	hash []byte,
+	num uint64,
 	delta uint64,
 	nrows int64,
 	elapsed time.Duration,
@@ -234,26 +264,22 @@ func (t *Task) update(
 			chain_id,
 			src_name,
 			dest_name,
+			hash,
 			num,
 			stop,
-			hash,
-			src_num,
-			src_hash,
 			nblocks,
 			nrows,
 			latency
 		)
-		values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+		values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 	`
 	_, err := pg.Exec(t.ctx, uq,
 		t.srcConfig.ChainID,
 		t.srcConfig.Name,
 		t.destConfig.Name,
-		batch[delta-1].Num(),
+		hash,
+		num,
 		t.stop,
-		batch[delta-1].Hash(),
-		gethNum,
-		gethHash,
 		delta,
 		nrows,
 		elapsed,
@@ -303,18 +329,18 @@ func (t *Task) latest(pg wpg.Conn) (uint64, []byte, error) {
 		switch {
 		case t.start > 0:
 			n := t.start - 1
-			h, err := t.parts[0].src.Hash(n)
+			h, err := t.src.Hash(n)
 			if err != nil {
 				return 0, nil, fmt.Errorf("getting hash for %d: %w", n, err)
 			}
 			slog.InfoContext(t.ctx, "start at config", "num", t.start)
 			return n, h, nil
 		default:
-			n, _, err := t.parts[0].src.Latest()
+			n, _, err := t.src.Latest()
 			if err != nil {
 				return 0, nil, err
 			}
-			h, err := t.parts[0].src.Hash(n - 1)
+			h, err := t.src.Hash(n - 1)
 			if err != nil {
 				return 0, nil, fmt.Errorf("getting hash for %d: %w", n-1, err)
 			}
@@ -341,7 +367,6 @@ var (
 // in no side-effects.
 func (task *Task) Converge(notx bool) error {
 	var (
-		start             = time.Now()
 		pg       wpg.Conn = task.pgp
 		commit            = func() error { return nil }
 		rollback          = func() error { return nil }
@@ -360,16 +385,6 @@ func (task *Task) Converge(notx bool) error {
 		if err != nil {
 			return fmt.Errorf("task lock %d: %w", task.srcConfig.ChainID, err)
 		}
-		_, err = pg.Exec(task.ctx, fmt.Sprintf(
-			"set application_name = 'shovel-task-%s-%s-%s'",
-			task.srcConfig.Name,
-			task.destConfig.Name,
-			wctx.Version(task.ctx),
-		))
-		if err != nil {
-			return fmt.Errorf("setting application_name: %w", err)
-		}
-
 	}
 	for reorgs := 0; reorgs <= 10; {
 		localNum, localHash, err := task.latest(pg)
@@ -379,7 +394,7 @@ func (task *Task) Converge(notx bool) error {
 		if task.stop > 0 && localNum >= task.stop {
 			return ErrDone
 		}
-		gethNum, gethHash, err := task.parts[0].src.Latest()
+		gethNum, gethHash, err := task.src.Latest()
 		if err != nil {
 			return fmt.Errorf("getting latest from eth: %w", err)
 		}
@@ -400,11 +415,29 @@ func (task *Task) Converge(notx bool) error {
 		if delta == 0 {
 			return ErrNothingNew
 		}
-		blocks, err := task.getBlocks(localHash, localNum, delta)
-		if err != nil {
-			return fmt.Errorf("loading blocks: %w", err)
-		}
-		switch nrows, err := task.insert(pg, blocks); {
+
+		/*
+			blocks, err := task.getBlocks(localHash, localNum, delta)
+			switch {
+			case errors.Is(err, ErrReorg):
+				reorgs++
+				slog.ErrorContext(task.ctx, "reorg", "n", localNum, "h", fmt.Sprintf("%.4x", localHash))
+				err = task.delete(pg, localNum)
+				if err != nil {
+					return fmt.Errorf("deleting during reorg: %w", err)
+				}
+				continue
+			case err != nil:
+				return fmt.Errorf("loading blocks: %w", err)
+			}
+
+			nrows, err := task.insert(pg, blocks)
+			if err != nil {
+				return err
+			}
+		*/
+		err = task.loadinsert(pg, localHash, localNum+1, delta)
+		switch {
 		case errors.Is(err, ErrReorg):
 			reorgs++
 			slog.ErrorContext(task.ctx, "reorg", "n", localNum, "h", fmt.Sprintf("%.4x", localHash))
@@ -412,24 +445,63 @@ func (task *Task) Converge(notx bool) error {
 			if err != nil {
 				return fmt.Errorf("deleting during reorg: %w", err)
 			}
+			continue
 		case err != nil:
-			err = errors.Join(rollback(), err)
-			return err
-		default:
-			err = task.update(pg, gethNum, gethHash, blocks, delta, nrows, time.Since(start))
-			if err != nil {
-				return fmt.Errorf("updating task: %w", err)
-			}
-			if err := commit(); err != nil {
-				return fmt.Errorf("commit converge tx: %w", err)
-			}
-			slog.InfoContext(task.ctx, "converge",
-				"n", blocks[len(blocks)-1].Num(),
-			)
-			return nil
+			return fmt.Errorf("loading blocks: %w", err)
 		}
+		if err := commit(); err != nil {
+			return fmt.Errorf("commit converge tx: %w", err)
+		}
+		return nil
 	}
 	return errors.Join(ErrReorg, rollback())
+}
+
+func (t *Task) loadinsert(pg wpg.Conn, localHash []byte, start, limit uint64) error {
+	var (
+		t0       = time.Now()
+		eg       errgroup.Group
+		nrows    int64
+		lastHash []byte
+		lastNum  uint64
+	)
+	for i := range t.parts {
+		i := i
+		m := start + uint64(t.parts[i].m)
+		n := min(uint64(t.parts[i].size), limit)
+		eg.Go(func() error {
+			b, err := t.src.Get(&t.filter, m, n)
+			if err != nil {
+				return fmt.Errorf("loading blocks: %w", err)
+			}
+			n, err := t.parts[i].dest.Insert(t.ctx, pg, b)
+			if err != nil {
+				return fmt.Errorf("inserting blocks: %w", err)
+			}
+			atomic.AddInt64(&nrows, n)
+			last := b[len(b)-1]
+			if last.Num() > lastNum {
+				lastNum = last.Num()
+				lastHash = last.Hash()
+			}
+			return nil
+		})
+	}
+	if err := eg.Wait(); err != nil {
+		return err
+	}
+	err := t.update(pg, lastHash, lastNum, limit, nrows, time.Since(t0))
+	if err != nil {
+		return err
+	}
+	slog.InfoContext(t.ctx, "insert",
+		"src", t.srcConfig.Name,
+		"dst", t.destConfig.Name,
+		"n", lastNum,
+		"nrows", nrows,
+		"elapsed", time.Since(t0),
+	)
+	return nil
 }
 
 func (t *Task) getBlocks(h []byte, n, delta uint64) ([]eth.Block, error) {
@@ -444,7 +516,7 @@ func (t *Task) getBlocks(h []byte, n, delta uint64) ([]eth.Block, error) {
 		if len(b) == 0 {
 			continue
 		}
-		eg.Go(func() error { return t.parts[i].src.LoadBlocks(nil, b) })
+		eg.Go(func() error { return t.src.LoadBlocks(&t.filter, b) })
 	}
 	if err := eg.Wait(); err != nil {
 		return nil, err
@@ -610,6 +682,7 @@ func TaskUpdates(ctx context.Context, pg wpg.Conn) ([]TaskUpdate, error) {
 // based on config stored in the DB and in the config file.
 type Manager struct {
 	ctx     context.Context
+	cache   *cache.Cache
 	running sync.Mutex
 	restart chan struct{}
 	tasks   []*Task
@@ -621,6 +694,7 @@ type Manager struct {
 func NewManager(ctx context.Context, pgp *pgxpool.Pool, conf config.Root) *Manager {
 	return &Manager{
 		ctx:     ctx,
+		cache:   cache.New(100),
 		restart: make(chan struct{}),
 		updates: make(chan uint64),
 		pgp:     pgp,
@@ -682,7 +756,7 @@ func (tm *Manager) Run(ec chan error) {
 	defer tm.running.Unlock()
 
 	var err error
-	tm.tasks, err = loadTasks(tm.ctx, tm.pgp, tm.conf)
+	tm.tasks, err = loadTasks(tm.ctx, tm.cache, tm.pgp, tm.conf)
 	if err != nil {
 		ec <- fmt.Errorf("loading tasks: %w", err)
 		return
@@ -702,14 +776,18 @@ func (tm *Manager) Run(ec chan error) {
 	wg.Wait()
 }
 
-func loadTasks(ctx context.Context, pgp *pgxpool.Pool, c config.Root) ([]*Task, error) {
+func loadTasks(ctx context.Context, cache *cache.Cache, pgp *pgxpool.Pool, c config.Root) ([]*Task, error) {
 	allIntegrations, err := c.AllIntegrations(ctx, pgp)
 	if err != nil {
 		return nil, fmt.Errorf("loading integrations: %w", err)
 	}
-	sourcesByName, err := c.AllSourcesByName(ctx, pgp)
+	scByName, err := c.AllSourcesByName(ctx, pgp)
 	if err != nil {
 		return nil, fmt.Errorf("loading source configs: %w", err)
+	}
+	var sources = map[string]Source{}
+	for _, sc := range scByName {
+		sources[sc.Name] = jrpc2.New(sc.URL)
 	}
 	var tasks []*Task
 	for _, ig := range allIntegrations {
@@ -717,16 +795,21 @@ func loadTasks(ctx context.Context, pgp *pgxpool.Pool, c config.Root) ([]*Task, 
 			continue
 		}
 		for _, scRef := range ig.Sources {
-			sc, ok := sourcesByName[scRef.Name]
+			sc, ok := scByName[scRef.Name]
+			if !ok {
+				return nil, fmt.Errorf("finding source config for %s", scRef.Name)
+			}
+			src, ok := sources[scRef.Name]
 			if !ok {
 				return nil, fmt.Errorf("finding source for %s", scRef.Name)
 			}
 			task, err := NewTask(
 				WithContext(ctx),
+				WithCache(cache),
 				WithPG(pgp),
 				WithRange(scRef.Start, scRef.Stop),
 				WithConcurrency(sc.Concurrency, sc.BatchSize),
-				WithSourceConfig(sc),
+				WithSource(src),
 				WithDestConfig(ig),
 			)
 			if err != nil {

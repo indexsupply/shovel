@@ -19,7 +19,6 @@ import (
 
 	"github.com/indexsupply/x/shovel"
 	"github.com/indexsupply/x/shovel/config"
-	"github.com/indexsupply/x/shovel/glf"
 	"github.com/indexsupply/x/wstrings"
 
 	"filippo.io/age"
@@ -207,7 +206,7 @@ func (h *Handler) Diag(w http.ResponseWriter, r *http.Request) {
 	for _, sc := range scs {
 		var (
 			dr  = &DiagResult{Source: sc.Name}
-			src = shovel.NewSource(sc, glf.Filter{})
+			src = shovel.NewSource(sc)
 		)
 		checkPG(dr)
 		checkSrc(src, dr)

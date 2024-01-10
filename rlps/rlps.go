@@ -18,6 +18,7 @@ import (
 	"github.com/indexsupply/x/geth"
 	"github.com/indexsupply/x/jrpc"
 	"github.com/indexsupply/x/rlp"
+	"github.com/indexsupply/x/shovel/glf"
 )
 
 func NewClient(chainID uint64, url string) *Client {
@@ -38,7 +39,11 @@ func (c *Client) ChainID() uint64 { return c.chainID }
 
 var bufferPool = sync.Pool{New: func() any { return new(bytes.Buffer) }}
 
-func (c *Client) LoadBlocks(filter [][]byte, blocks []eth.Block) error {
+func (c *Client) Get(_ *glf.Filter, _ uint64, _ uint64) ([]eth.Block, error) {
+	return nil, nil
+}
+
+func (c *Client) LoadBlocks(_ *glf.Filter, blocks []eth.Block) error {
 	// Use hash in the request url to avoid having the
 	// rlps cdn serve a reorganized block.
 	h, err := c.Hash(blocks[0].Num())
@@ -53,7 +58,7 @@ func (c *Client) LoadBlocks(filter [][]byte, blocks []eth.Block) error {
 	q.Add("n", strconv.FormatUint(blocks[0].Num(), 10))
 	q.Add("h", hex.EncodeToString(h))
 	q.Add("limit", strconv.Itoa(len(blocks)))
-	q.Add("filter", unparseFilter(filter))
+	//q.Add("filter", unparseFilter(filter))
 	u.RawQuery = q.Encode()
 
 	req, err := http.NewRequest("GET", u.String(), nil)

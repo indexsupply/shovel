@@ -84,6 +84,10 @@ func TestNeeds(t *testing.T) {
 			fields:   []string{"tx_status"},
 			receipts: true,
 		},
+		{
+			fields: []string{"block_num", "block_time", "ig_name", "src_name", "tx_hash", "tx_idx", "tx_type"},
+			blocks: true,
+		},
 	}
 	for _, tc := range cases {
 		f := Filter{}
