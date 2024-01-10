@@ -207,6 +207,7 @@ func (r *Result) GetRow() row {
 	if r.n >= len(r.collection) {
 		r.collection = append(r.collection, make(row, r.ncols))
 	}
+	clear(r.collection[r.n-1])
 	return r.collection[r.n-1]
 }
 
@@ -828,18 +829,9 @@ func (ig Integration) processLog(rows [][]any, lwc *logWithCtx) ([][]any, error)
 func dbtype(t string, d []byte) any {
 	switch {
 	case strings.HasPrefix(t, "uint"):
-		bits, err := strconv.Atoi(strings.TrimPrefix(t, "uint"))
-		if err != nil {
-			return d
-		}
-		switch {
-		case bits > 64:
-			var x uint256.Int
-			x.SetBytes(d)
-			return x.Dec()
-		default:
-			return bint.Decode(d)
-		}
+		var x uint256.Int
+		x.SetBytes(d)
+		return x.Dec()
 	case t == "address":
 		if len(d) == 32 {
 			return d[12:]
