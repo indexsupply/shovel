@@ -96,10 +96,10 @@ func WithRange(start, stop uint64) Option {
 	}
 }
 
-func WithConcurrency(numParts, batchSize int) Option {
+func WithConcurrency(concurrency, batchSize int) Option {
 	return func(t *Task) {
-		t.batchSize = max(batchSize, 1)
-		t.parts = parts(max(numParts, 1), max(batchSize, 1))
+		t.concurrency = concurrency
+		t.batchSize = batchSize
 	}
 }
 
@@ -138,22 +138,24 @@ func NewTask(opts ...Option) (*Task, error) {
 	t := &Task{
 		ctx:         context.Background(),
 		batchSize:   1,
-		parts:       parts(1, 1),
+		concurrency: 1,
 		srcFactory:  NewSource,
 		destFactory: NewDestination,
 	}
 	for _, opt := range opts {
 		opt(t)
 	}
-	for i := range t.parts {
+
+	t.dests = make([]Destination, t.concurrency)
+	for i := 0; i < t.concurrency; i++ {
 		dest, err := t.destFactory(t.destConfig)
 		if err != nil {
 			return nil, fmt.Errorf("initializing destination: %w", err)
 		}
-		t.parts[i].dest = dest
+		t.dests[i] = dest
 	}
 
-	t.filter = t.parts[0].dest.Filter()
+	t.filter = t.dests[0].Filter()
 	t.filterID = t.filter.ID()
 
 	t.lockid = wpg.LockHash(fmt.Sprintf(
@@ -183,59 +185,20 @@ type Task struct {
 	pgp *pgxpool.Pool
 
 	lockid      int64
+	batchSize   int
+	concurrency int
 	start, stop uint64
+
+	filter   glf.Filter
+	filterID uint64
 
 	src        Source
 	srcFactory func(config.Source) Source
 	srcConfig  config.Source
 
+	dests       []Destination
 	destFactory func(config.Integration) (Destination, error)
 	destConfig  config.Integration
-
-	filter    glf.Filter
-	filterID  uint64
-	batchSize int
-	parts     []part
-}
-
-// Depending on WithConcurrency, a Task may be configured with
-// concurrent parts. This allows a task to concurrently download
-// block data from its Source.
-//
-// m and n are used to slice a batch of blocks: batch[m:n]
-//
-// Each part has its own source since the Source may have buffers
-// that aren't safe to share across go-routines.
-type part struct {
-	m, n, size int
-	dest       Destination
-}
-
-func (p *part) slice(b []eth.Block) []eth.Block {
-	if len(b) < p.m {
-		return nil
-	}
-	return b[p.m:min(p.n, len(b))]
-}
-
-func parts(numParts, batchSize int) []part {
-	var (
-		p         = make([]part, numParts)
-		size      = batchSize / numParts
-		remainder = batchSize % numParts
-	)
-	for i := range p {
-		p[i].size = size
-		p[i].m = size * i
-		p[i].n = size + p[i].m
-	}
-	if remainder > 0 {
-		p[numParts-1].n += remainder
-	}
-	if p[numParts-1].n != batchSize {
-		panic(fmt.Sprintf("batchSize error want: %d got: %d", batchSize, p[numParts-1].n))
-	}
-	return p
 }
 
 func (t *Task) update(
@@ -285,10 +248,7 @@ func (t *Task) delete(pg wpg.Conn, n uint64) error {
 	if err != nil {
 		return fmt.Errorf("deleting block from task table: %w", err)
 	}
-	if len(t.parts) == 0 {
-		return fmt.Errorf("unable to delete. missing parts.")
-	}
-	err = t.parts[0].dest.Delete(t.ctx, pg, n)
+	err = t.dests[0].Delete(t.ctx, pg, n)
 	if err != nil {
 		return fmt.Errorf("deleting block: %w", err)
 	}
@@ -428,17 +388,22 @@ func (t *Task) loadinsert(pg wpg.Conn, localHash []byte, start, limit uint64) er
 		nrows    int64
 		lastHash []byte
 		lastNum  uint64
+		part     = t.batchSize / t.concurrency
 	)
-	for i := range t.parts {
+	for i := 0; i < t.concurrency; i++ {
 		i := i
-		m := start + uint64(t.parts[i].m)
-		n := min(uint64(t.parts[i].size), limit)
+		m := start + uint64(i*part)
+		n := min(uint64(part), limit)
+		if n == 0 {
+			continue
+		}
 		eg.Go(func() error {
+			fmt.Printf("%s get %d %d\n", t.destConfig.Name, m, n)
 			b, err := t.src.Get(&t.filter, m, n)
 			if err != nil {
 				return fmt.Errorf("loading blocks: %w", err)
 			}
-			n, err := t.parts[i].dest.Insert(t.ctx, pg, b)
+			n, err := t.dests[i].Insert(t.ctx, pg, b)
 			if err != nil {
 				return fmt.Errorf("inserting blocks: %w", err)
 			}

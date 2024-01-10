@@ -25,9 +25,7 @@ func New(url string) *Client {
 		hc: &http.Client{
 			Transport: gzhttp.Transport(http.DefaultTransport),
 		},
-		url:    url,
-		bcache: make(blockCache, 400),
-		hcache: make(blockCache, 400),
+		url: url,
 	}
 }
 
@@ -36,9 +34,8 @@ type Client struct {
 	hc  *http.Client
 	url string
 
-	cacheMut sync.Mutex
-	bcache   blockCache
-	hcache   blockCache
+	bcache cache
+	hcache cache
 }
 
 func (c *Client) debug(r io.Reader) io.Reader {
@@ -148,8 +145,7 @@ func (c *Client) Hash(n uint64) ([]byte, error) {
 }
 
 type key struct {
-	b uint64
-	t uint64
+	a, b uint64
 }
 
 type (
@@ -164,12 +160,12 @@ func (c *Client) Get(filter *glf.Filter, start, limit uint64) ([]eth.Block, erro
 	)
 	switch {
 	case filter.UseBlocks:
-		blocks, err = c.blocks(start, limit)
+		blocks, err = c.bcache.get(start, limit, c.blocks)
 		if err != nil {
 			return nil, fmt.Errorf("getting blocks: %w", err)
 		}
 	case filter.UseHeaders:
-		blocks, err = c.headers(start, limit)
+		blocks, err = c.hcache.get(start, limit, c.headers)
 		if err != nil {
 			return nil, fmt.Errorf("getting blocks: %w", err)
 		}
@@ -188,10 +184,7 @@ func (c *Client) Get(filter *glf.Filter, start, limit uint64) ([]eth.Block, erro
 		bm[blocks[i].Num()] = &blocks[i]
 		for j := range blocks[i].Txs {
 			t := &blocks[i].Txs[j]
-			k := key{
-				b: blocks[i].Num(),
-				t: uint64(t.Idx),
-			}
+			k := key{blocks[i].Num(), uint64(t.Idx)}
 			tm[k] = t
 		}
 	}
@@ -214,38 +207,54 @@ type blockResp struct {
 	*eth.Block `json:"result"`
 }
 
-type blockCache []eth.Block
-
-func (bc *blockCache) push(req []eth.Block) {
-	*bc = append((*bc)[len(req):], req...)
+type segment struct {
+	sync.Mutex
+	done bool
+	d    []eth.Block
 }
 
-func (bc *blockCache) get(start, limit uint64) ([]eth.Block, bool) {
-	var m, n int = -1, -1
-	for i := range *bc {
-		switch (*bc)[i].Num() {
-		case start:
-			m = i
-		case start - 1 + limit:
-			n = i + 1
-			break
-		}
+type cache struct {
+	sync.Mutex
+	segments map[key]*segment
+}
+
+type getter func(start, limit uint64) ([]eth.Block, error)
+
+func (c *cache) prune() {
+	var keys []key
+	for i := range c.segments {
 	}
-	if m < 0 || n < 0 {
-		return nil, false
+}
+
+func (c *cache) get(start, limit uint64, f getter) ([]eth.Block, error) {
+	c.Lock()
+	if c.segments == nil {
+		c.segments = make(map[key]*segment)
 	}
-	if n-m != int(limit) {
-		panic(fmt.Sprintf("start=%d limit=%d m=%d n=%d\n", start, limit, m, n))
+	seg, ok := c.segments[key{start, limit}]
+	if !ok {
+		seg = &segment{}
+		c.segments[key{start, limit}] = seg
 	}
-	return (*bc)[m:n], true
+	c.Unlock()
+
+	seg.Lock()
+	defer seg.Unlock()
+	if seg.done {
+		return seg.d, nil
+	}
+
+	blocks, err := f(start, limit)
+	if err != nil {
+		return nil, fmt.Errorf("cache get: %w", err)
+	}
+
+	seg.d = blocks
+	seg.done = true
+	return seg.d, nil
 }
 
 func (c *Client) blocks(start, limit uint64) ([]eth.Block, error) {
-	c.cacheMut.Lock()
-	defer c.cacheMut.Unlock()
-	if b, ok := c.bcache.get(start, limit); ok {
-		return b, nil
-	}
 	var (
 		reqs   = make([]request, limit)
 		resps  = make([]blockResp, limit)
@@ -270,7 +279,6 @@ func (c *Client) blocks(start, limit uint64) ([]eth.Block, error) {
 			return nil, fmt.Errorf("rpc=%s %w", tag, resps[i].Error)
 		}
 	}
-	c.bcache.push(blocks)
 	return blocks, nil
 }
 
@@ -280,11 +288,6 @@ type headerResp struct {
 }
 
 func (c *Client) headers(start, limit uint64) ([]eth.Block, error) {
-	c.cacheMut.Lock()
-	defer c.cacheMut.Unlock()
-	if b, ok := c.hcache.get(start, limit); ok {
-		return b, nil
-	}
 	var (
 		reqs   = make([]request, limit)
 		resps  = make([]headerResp, limit)
@@ -309,7 +312,6 @@ func (c *Client) headers(start, limit uint64) ([]eth.Block, error) {
 			return nil, fmt.Errorf("rpc=%s %w", tag, resps[i].Error)
 		}
 	}
-	c.hcache.push(blocks)
 	return blocks, nil
 }
 
@@ -361,10 +363,7 @@ func (c *Client) receipts(bm blockmap, tm txmap, blocks []eth.Block) error {
 		}
 		b.Header.Hash.Write(resps[i].Result[0].BlockHash)
 		for j := range resps[i].Result {
-			k := key{
-				b: b.Num(),
-				t: uint64(resps[i].Result[j].TxIdx),
-			}
+			k := key{b.Num(), uint64(resps[i].Result[j].TxIdx)}
 			if tx, ok := tm[k]; ok {
 				tx.Status.Write(byte(resps[i].Result[j].Status))
 				tx.GasUsed = resps[i].Result[j].GasUsed
@@ -432,10 +431,7 @@ func (c *Client) logs(filter *glf.Filter, bm blockmap, tm txmap, blocks []eth.Bl
 	}
 	var logsByTx = map[key][]logResult{}
 	for i := range lresp.Result {
-		k := key{
-			b: uint64(lresp.Result[i].BlockNum),
-			t: uint64(lresp.Result[i].TxIdx),
-		}
+		k := key{uint64(lresp.Result[i].BlockNum), uint64(lresp.Result[i].TxIdx)}
 		if logs, ok := logsByTx[k]; ok {
 			logsByTx[k] = append(logs, lresp.Result[i])
 			continue
@@ -454,7 +450,7 @@ func (c *Client) logs(filter *glf.Filter, bm blockmap, tm txmap, blocks []eth.Bl
 			continue
 		}
 		tx := eth.Tx{}
-		tx.Idx = eth.Uint64(k.t)
+		tx.Idx = eth.Uint64(k.b)
 		tx.PrecompHash.Write(logs[0].TxHash)
 		tx.Logs = make([]eth.Log, 0, len(logs))
 		for i := range logs {
