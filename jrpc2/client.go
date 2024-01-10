@@ -164,12 +164,12 @@ func (c *Client) Get(filter *glf.Filter, start, limit uint64) ([]eth.Block, erro
 	)
 	switch {
 	case filter.UseBlocks:
-		blocks, err = c.blocks2(start, limit)
+		blocks, err = c.blocks(start, limit)
 		if err != nil {
 			return nil, fmt.Errorf("getting blocks: %w", err)
 		}
 	case filter.UseHeaders:
-		blocks, err = c.headers2(start, limit)
+		blocks, err = c.headers(start, limit)
 		if err != nil {
 			return nil, fmt.Errorf("getting blocks: %w", err)
 		}
@@ -209,44 +209,6 @@ func (c *Client) Get(filter *glf.Filter, start, limit uint64) ([]eth.Block, erro
 	return blocks, nil
 }
 
-func (c *Client) LoadBlocks(filter *glf.Filter, blocks []eth.Block) error {
-	switch {
-	case filter.UseBlocks:
-		if err := c.blocks(blocks); err != nil {
-			return fmt.Errorf("getting blocks: %w", err)
-		}
-	case filter.UseHeaders:
-		if err := c.headers(blocks); err != nil {
-			return fmt.Errorf("getting headers: %w", err)
-		}
-	}
-
-	bm, tm := make(blockmap), make(txmap)
-	for i := range blocks {
-		bm[blocks[i].Num()] = &blocks[i]
-		for j := range blocks[i].Txs {
-			t := &blocks[i].Txs[j]
-			k := key{
-				b: blocks[i].Num(),
-				t: uint64(t.Idx),
-			}
-			tm[k] = t
-		}
-	}
-
-	switch {
-	case filter.UseReceipts:
-		if err := c.receipts(bm, tm, blocks); err != nil {
-			return fmt.Errorf("getting receipts: %w", err)
-		}
-	case filter.UseLogs:
-		if err := c.logs(filter, bm, tm, blocks); err != nil {
-			return fmt.Errorf("getting logs: %w", err)
-		}
-	}
-	return nil
-}
-
 type blockResp struct {
 	Error      `json:"error"`
 	*eth.Block `json:"result"`
@@ -258,7 +220,7 @@ func (bc *blockCache) push(req []eth.Block) {
 	*bc = append((*bc)[len(req):], req...)
 }
 
-func (bc *blockCache) get2(start, limit uint64) ([]eth.Block, bool) {
+func (bc *blockCache) get(start, limit uint64) ([]eth.Block, bool) {
 	var m, n int = -1, -1
 	for i := range *bc {
 		switch (*bc)[i].Num() {
@@ -278,13 +240,12 @@ func (bc *blockCache) get2(start, limit uint64) ([]eth.Block, bool) {
 	return (*bc)[m:n], true
 }
 
-func (c *Client) blocks2(start, limit uint64) ([]eth.Block, error) {
+func (c *Client) blocks(start, limit uint64) ([]eth.Block, error) {
 	c.cacheMut.Lock()
 	defer c.cacheMut.Unlock()
-	if b, ok := c.bcache.get2(start, limit); ok {
+	if b, ok := c.bcache.get(start, limit); ok {
 		return b, nil
 	}
-	fmt.Println("blocks2")
 	var (
 		reqs   = make([]request, limit)
 		resps  = make([]blockResp, limit)
@@ -318,11 +279,10 @@ type headerResp struct {
 	*eth.Header `json:"result"`
 }
 
-func (c *Client) headers2(start, limit uint64) ([]eth.Block, error) {
-	fmt.Printf("headers2 %d %d\n", start, limit)
+func (c *Client) headers(start, limit uint64) ([]eth.Block, error) {
 	c.cacheMut.Lock()
 	defer c.cacheMut.Unlock()
-	if b, ok := c.hcache.get2(start, limit); ok {
+	if b, ok := c.hcache.get(start, limit); ok {
 		return b, nil
 	}
 	var (

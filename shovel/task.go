@@ -16,7 +16,6 @@ import (
 	"github.com/indexsupply/x/eth"
 	"github.com/indexsupply/x/jrpc2"
 	"github.com/indexsupply/x/rlps"
-	"github.com/indexsupply/x/shovel/cache"
 	"github.com/indexsupply/x/shovel/config"
 	"github.com/indexsupply/x/shovel/glf"
 	"github.com/indexsupply/x/wctx"
@@ -33,7 +32,6 @@ var Schema string
 
 type Source interface {
 	Get(*glf.Filter, uint64, uint64) ([]eth.Block, error)
-	LoadBlocks(*glf.Filter, []eth.Block) error
 	Latest() (uint64, []byte, error)
 	Hash(uint64) ([]byte, error)
 }
@@ -51,12 +49,6 @@ type Option func(t *Task)
 func WithContext(ctx context.Context) Option {
 	return func(t *Task) {
 		t.ctx = ctx
-	}
-}
-
-func WithCache(c *cache.Cache) Option {
-	return func(t *Task) {
-		t.cache = c
 	}
 }
 
@@ -164,9 +156,6 @@ func NewTask(opts ...Option) (*Task, error) {
 	t.filter = t.parts[0].dest.Filter()
 	t.filterID = t.filter.ID()
 
-	//for i := range t.parts {
-	//	t.parts[i].src = t.srcFactory(t.srcConfig)
-	//}
 	t.lockid = wpg.LockHash(fmt.Sprintf(
 		"shovel-task-%s-%s",
 		t.srcConfig.Name,
@@ -190,9 +179,8 @@ func NewTask(opts ...Option) (*Task, error) {
 }
 
 type Task struct {
-	ctx   context.Context
-	pgp   *pgxpool.Pool
-	cache *cache.Cache
+	ctx context.Context
+	pgp *pgxpool.Pool
 
 	lockid      int64
 	start, stop uint64
@@ -220,7 +208,6 @@ type Task struct {
 // that aren't safe to share across go-routines.
 type part struct {
 	m, n, size int
-	src        Source
 	dest       Destination
 }
 
@@ -614,7 +601,6 @@ func TaskUpdates(ctx context.Context, pg wpg.Conn) ([]TaskUpdate, error) {
 // based on config stored in the DB and in the config file.
 type Manager struct {
 	ctx     context.Context
-	cache   *cache.Cache
 	running sync.Mutex
 	restart chan struct{}
 	tasks   []*Task
@@ -626,7 +612,6 @@ type Manager struct {
 func NewManager(ctx context.Context, pgp *pgxpool.Pool, conf config.Root) *Manager {
 	return &Manager{
 		ctx:     ctx,
-		cache:   cache.New(100),
 		restart: make(chan struct{}),
 		updates: make(chan uint64),
 		pgp:     pgp,
@@ -688,7 +673,7 @@ func (tm *Manager) Run(ec chan error) {
 	defer tm.running.Unlock()
 
 	var err error
-	tm.tasks, err = loadTasks(tm.ctx, tm.cache, tm.pgp, tm.conf)
+	tm.tasks, err = loadTasks(tm.ctx, tm.pgp, tm.conf)
 	if err != nil {
 		ec <- fmt.Errorf("loading tasks: %w", err)
 		return
@@ -708,7 +693,7 @@ func (tm *Manager) Run(ec chan error) {
 	wg.Wait()
 }
 
-func loadTasks(ctx context.Context, cache *cache.Cache, pgp *pgxpool.Pool, c config.Root) ([]*Task, error) {
+func loadTasks(ctx context.Context, pgp *pgxpool.Pool, c config.Root) ([]*Task, error) {
 	allIntegrations, err := c.AllIntegrations(ctx, pgp)
 	if err != nil {
 		return nil, fmt.Errorf("loading integrations: %w", err)
@@ -731,13 +716,14 @@ func loadTasks(ctx context.Context, cache *cache.Cache, pgp *pgxpool.Pool, c con
 			if !ok {
 				return nil, fmt.Errorf("finding source config for %s", scRef.Name)
 			}
+			ctx = wctx.WithChainID(ctx, sc.ChainID)
+			ctx = wctx.WithSrcName(ctx, sc.Name)
 			src, ok := sources[scRef.Name]
 			if !ok {
 				return nil, fmt.Errorf("finding source for %s", scRef.Name)
 			}
 			task, err := NewTask(
 				WithContext(ctx),
-				WithCache(cache),
 				WithPG(pgp),
 				WithRange(scRef.Start, scRef.Stop),
 				WithConcurrency(sc.Concurrency, sc.BatchSize),
