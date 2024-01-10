@@ -415,44 +415,21 @@ func (task *Task) Converge(notx bool) error {
 		if delta == 0 {
 			return ErrNothingNew
 		}
-
-		/*
-			blocks, err := task.getBlocks(localHash, localNum, delta)
-			switch {
-			case errors.Is(err, ErrReorg):
-				reorgs++
-				slog.ErrorContext(task.ctx, "reorg", "n", localNum, "h", fmt.Sprintf("%.4x", localHash))
-				err = task.delete(pg, localNum)
-				if err != nil {
-					return fmt.Errorf("deleting during reorg: %w", err)
-				}
-				continue
-			case err != nil:
-				return fmt.Errorf("loading blocks: %w", err)
-			}
-
-			nrows, err := task.insert(pg, blocks)
-			if err != nil {
-				return err
-			}
-		*/
-		err = task.loadinsert(pg, localHash, localNum+1, delta)
-		switch {
+		switch err := task.loadinsert(pg, localHash, localNum+1, delta); {
 		case errors.Is(err, ErrReorg):
 			reorgs++
-			slog.ErrorContext(task.ctx, "reorg", "n", localNum, "h", fmt.Sprintf("%.4x", localHash))
-			err = task.delete(pg, localNum)
-			if err != nil {
+			slog.ErrorContext(task.ctx, "reorg",
+				"n", localNum,
+				"h", fmt.Sprintf("%.4x", localHash),
+			)
+			if err := task.delete(pg, localNum); err != nil {
 				return fmt.Errorf("deleting during reorg: %w", err)
 			}
 			continue
 		case err != nil:
 			return fmt.Errorf("loading blocks: %w", err)
 		}
-		if err := commit(); err != nil {
-			return fmt.Errorf("commit converge tx: %w", err)
-		}
-		return nil
+		return commit()
 	}
 	return errors.Join(ErrReorg, rollback())
 }
@@ -502,51 +479,6 @@ func (t *Task) loadinsert(pg wpg.Conn, localHash []byte, start, limit uint64) er
 		"elapsed", time.Since(t0),
 	)
 	return nil
-}
-
-func (t *Task) getBlocks(h []byte, n, delta uint64) ([]eth.Block, error) {
-	blocks := make([]eth.Block, delta)
-	for i := range blocks {
-		blocks[i].SetNum(n + uint64(i+1))
-	}
-	var eg errgroup.Group
-	for i := range t.parts {
-		i := i
-		b := t.parts[i].slice(blocks)
-		if len(b) == 0 {
-			continue
-		}
-		eg.Go(func() error { return t.src.LoadBlocks(&t.filter, b) })
-	}
-	if err := eg.Wait(); err != nil {
-		return nil, err
-	}
-	switch {
-	case t.filter.UseBlocks, t.filter.UseHeaders:
-		return blocks, validateChain(t.ctx, h, blocks)
-	default:
-		return blocks, nil
-	}
-}
-
-func (t *Task) insert(pg wpg.Conn, blocks []eth.Block) (int64, error) {
-	var (
-		nrows int64
-		eg    errgroup.Group
-	)
-	for i := range t.parts {
-		i := i
-		b := t.parts[i].slice(blocks)
-		if len(b) == 0 {
-			continue
-		}
-		eg.Go(func() error {
-			count, err := t.parts[i].dest.Insert(t.ctx, pg, b)
-			nrows += count
-			return err
-		})
-	}
-	return nrows, eg.Wait()
 }
 
 func validateChain(ctx context.Context, parent []byte, blks []eth.Block) error {
