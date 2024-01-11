@@ -72,13 +72,13 @@ func WithSourceConfig(sc config.Source) Option {
 	}
 }
 
-func WithDestFactory(f func(config.Integration) (Destination, error)) Option {
+func WithIntegrationFactory(f func(config.Integration) (Destination, error)) Option {
 	return func(t *Task) {
 		t.destFactory = f
 	}
 }
 
-func WithDestConfig(ig config.Integration) Option {
+func WithIntegration(ig config.Integration) Option {
 	return func(t *Task) {
 		t.destConfig = ig
 	}
@@ -98,8 +98,12 @@ func WithRange(start, stop uint64) Option {
 
 func WithConcurrency(concurrency, batchSize int) Option {
 	return func(t *Task) {
-		t.concurrency = concurrency
-		t.batchSize = batchSize
+		if concurrency > 0 {
+			t.concurrency = concurrency
+		}
+		if batchSize > 0 {
+			t.batchSize = batchSize
+		}
 	}
 }
 
@@ -145,7 +149,6 @@ func NewTask(opts ...Option) (*Task, error) {
 	for _, opt := range opts {
 		opt(t)
 	}
-
 	t.dests = make([]Destination, t.concurrency)
 	for i := 0; i < t.concurrency; i++ {
 		dest, err := t.destFactory(t.destConfig)
@@ -154,9 +157,7 @@ func NewTask(opts ...Option) (*Task, error) {
 		}
 		t.dests[i] = dest
 	}
-
 	t.filter = t.dests[0].Filter()
-
 	t.lockid = wpg.LockHash(fmt.Sprintf(
 		"shovel-task-%s-%s",
 		t.srcConfig.Name,
@@ -210,7 +211,7 @@ func (t *Task) update(
 		insert into shovel.task_updates (
 			chain_id,
 			src_name,
-			dest_name,
+			ig_name,
 			hash,
 			num,
 			stop,
@@ -234,11 +235,11 @@ func (t *Task) update(
 	return err
 }
 
-func (t *Task) delete(pg wpg.Conn, n uint64) error {
+func (t *Task) Delete(pg wpg.Conn, n uint64) error {
 	const q = `
 		delete from shovel.task_updates
 		where src_name = $1
-		and dest_name = $2
+		and ig_name = $2
 		and num >= $3
 	`
 	_, err := pg.Exec(t.ctx, q, t.srcConfig.Name, t.destConfig.Name, n)
@@ -257,7 +258,7 @@ func (t *Task) latest(pg wpg.Conn) (uint64, []byte, error) {
 		select num, hash
 		from shovel.task_updates
 		where src_name = $1
-		and dest_name = $2
+		and ig_name = $2
 		order by num desc
 		limit 1
 	`
@@ -366,7 +367,7 @@ func (task *Task) Converge(notx bool) error {
 				"n", localNum,
 				"h", fmt.Sprintf("%.4x", localHash),
 			)
-			if err := task.delete(pg, localNum); err != nil {
+			if err := task.Delete(pg, localNum); err != nil {
 				return fmt.Errorf("deleting during reorg: %w", err)
 			}
 			continue
@@ -378,36 +379,53 @@ func (task *Task) Converge(notx bool) error {
 	return errors.Join(ErrReorg, rollback())
 }
 
+type hashcheck struct {
+	num    uint64
+	hash   []byte
+	parent []byte
+}
+
 func (t *Task) loadinsert(pg wpg.Conn, localHash []byte, start, limit uint64) error {
 	var (
-		t0       = time.Now()
-		eg       errgroup.Group
-		nrows    int64
-		lastHash []byte
-		lastNum  uint64
-		part     = t.batchSize / t.concurrency
+		t0    = time.Now()
+		eg    errgroup.Group
+		nrows int64
+		part  = t.batchSize / t.concurrency
+
+		first, last = hashcheck{}, hashcheck{}
 	)
 	for i := 0; i < t.concurrency; i++ {
 		i := i
 		m := start + uint64(i*part)
 		n := min(uint64(part), limit)
-		if n == 0 {
+		if m > start+limit || n == 0 {
 			continue
 		}
 		eg.Go(func() error {
-			b, err := t.src.Get(&t.filter, m, n)
+			blocks, err := t.src.Get(&t.filter, m, n)
 			if err != nil {
 				return fmt.Errorf("loading blocks: %w", err)
 			}
-			n, err := t.dests[i].Insert(t.ctx, pg, b)
+			n, err := t.dests[i].Insert(t.ctx, pg, blocks)
 			if err != nil {
 				return fmt.Errorf("inserting blocks: %w", err)
 			}
 			atomic.AddInt64(&nrows, n)
-			last := b[len(b)-1]
-			if last.Num() > lastNum {
-				lastNum = last.Num()
-				lastHash = last.Hash()
+
+			if b := blocks[0]; first.num == 0 || first.num > b.Num() {
+				first.num = b.Num()
+				first.hash = b.Hash()
+				first.parent = b.Header.Parent
+			}
+			if b := blocks[len(blocks)-1]; last.num < b.Num() {
+				last.num = b.Num()
+				last.hash = b.Hash()
+				last.parent = b.Header.Parent
+			}
+			if len(first.parent) == 32 {
+				if err := validateChain(t.ctx, blocks); err != nil {
+					return err
+				}
 			}
 			return nil
 		})
@@ -415,27 +433,25 @@ func (t *Task) loadinsert(pg wpg.Conn, localHash []byte, start, limit uint64) er
 	if err := eg.Wait(); err != nil {
 		return err
 	}
-	err := t.update(pg, lastHash, lastNum, limit, nrows, time.Since(t0))
+	fmt.Printf("%.4x %.4x %d\n", localHash, first.parent, len(first.parent))
+	if len(first.parent) == 32 && !bytes.Equal(localHash, first.parent) {
+		return ErrReorg
+	}
+	err := t.update(pg, last.hash, last.num, limit, nrows, time.Since(t0))
 	if err != nil {
 		return err
 	}
 	slog.InfoContext(t.ctx, "insert",
 		"src", t.srcConfig.Name,
 		"dst", t.destConfig.Name,
-		"n", lastNum,
+		"n", last.num,
 		"nrows", nrows,
 		"elapsed", time.Since(t0),
 	)
 	return nil
 }
 
-func validateChain(ctx context.Context, parent []byte, blks []eth.Block) error {
-	if len(blks[0].Header.Parent) != 32 {
-		return fmt.Errorf("corrupt parent: %x", blks[0].Header.Parent)
-	}
-	if !bytes.Equal(parent, blks[0].Header.Parent) {
-		return ErrReorg
-	}
+func validateChain(ctx context.Context, blks []eth.Block) error {
 	if len(blks) <= 1 {
 		return nil
 	}
@@ -458,14 +474,14 @@ func validateChain(ctx context.Context, parent []byte, blks []eth.Block) error {
 func PruneTask(ctx context.Context, pg wpg.Conn, n int) error {
 	const q = `
 		delete from shovel.task_updates
-		where (src_name, dest_name, num) not in (
-			select src_name, dest_name, num
+		where (src_name, ig_name, num) not in (
+			select src_name, ig_name, num
 			from (
 				select
 					src_name,
-					dest_name,
+					ig_name,
 					num,
-					row_number() over(partition by src_name, dest_name order by num desc) as rn
+					row_number() over(partition by src_name, ig_name order by num desc) as rn
 				from shovel.task_updates
 			) as s
 			where rn <= $1
@@ -514,7 +530,7 @@ func (d jsonDuration) String() string {
 type TaskUpdate struct {
 	DOMID    string       `db:"-"`
 	SrcName  string       `db:"src_name"`
-	DestName string       `db:"dest_name"`
+	DestName string       `db:"ig_name"`
 	Num      uint64       `db:"num"`
 	Stop     uint64       `db:"stop"`
 	Hash     eth.Bytes    `db:"hash"`
@@ -528,12 +544,12 @@ type TaskUpdate struct {
 func TaskUpdates(ctx context.Context, pg wpg.Conn) ([]TaskUpdate, error) {
 	rows, _ := pg.Query(ctx, `
         with f as (
-            select src_name, dest_name, max(num) num
+            select src_name, ig_name, max(num) num
             from shovel.task_updates group by 1, 2
         )
         select
 			f.src_name,
-			f.dest_name,
+			f.ig_name,
 			f.num,
 			coalesce(stop, 0) stop,
 			hash,
@@ -545,7 +561,7 @@ func TaskUpdates(ctx context.Context, pg wpg.Conn) ([]TaskUpdate, error) {
         from f
         left join shovel.task_updates
 		on shovel.task_updates.src_name = f.src_name
-		and shovel.task_updates.dest_name= f.dest_name
+		and shovel.task_updates.ig_name= f.ig_name
 		and shovel.task_updates.num = f.num;
     `)
 	tus, err := pgx.CollectRows(rows, pgx.RowToStructByName[TaskUpdate])
@@ -599,7 +615,7 @@ func (tm *Manager) runTask(t *Task) {
 				time.Sleep(time.Second)
 			case err != nil:
 				time.Sleep(time.Second)
-				slog.ErrorContext(t.ctx, "converge", "error", err, "dest_name", t.destConfig.Name)
+				slog.ErrorContext(t.ctx, "converge", "error", err, "ig_name", t.destConfig.Name)
 			default:
 				go func() {
 					// try out best to deliver update
@@ -689,7 +705,7 @@ func loadTasks(ctx context.Context, pgp *pgxpool.Pool, c config.Root) ([]*Task, 
 				WithRange(scRef.Start, scRef.Stop),
 				WithConcurrency(sc.Concurrency, sc.BatchSize),
 				WithSource(src),
-				WithDestConfig(ig),
+				WithIntegration(ig),
 			)
 			if err != nil {
 				return nil, fmt.Errorf("setting up main task: %w", err)

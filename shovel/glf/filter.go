@@ -51,7 +51,7 @@ func (f *Filter) Needs(needs []string) {
 	f.UseHeaders = any(f.needs, distinct(header, block, receipt, log))
 	f.UseBlocks = any(f.needs, distinct(block, header, receipt, log))
 	f.UseReceipts = any(f.needs, distinct(receipt, header, block, log))
-	f.UseLogs = !f.UseReceipts && any(f.needs, log)
+	f.UseLogs = !f.UseReceipts && any(f.needs, distinct(log, block, header))
 }
 
 func any(a, b []string) bool {

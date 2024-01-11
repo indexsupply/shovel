@@ -52,7 +52,7 @@ alter table shovel.task_updates
 add column if not exists chain_id int;
 
 alter table shovel.task_updates
-add column if not exists dest_name text;
+add column if not exists ig_name text;
 
 drop index if exists task_src_name_num_idx;
 drop index if exists task_src_name_num_idx1;
@@ -63,4 +63,4 @@ drop column if exists backfill;
 create unique index
 if not exists task_src_name_num_idx
 on shovel.task_updates
-using btree (dest_name, src_name, num DESC);
+using btree (ig_name, src_name, num DESC);

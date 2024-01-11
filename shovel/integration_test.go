@@ -6,9 +6,8 @@ import (
 	"os"
 	"testing"
 
-	"github.com/indexsupply/x/geth/gethtest"
+	"github.com/indexsupply/x/jrpc2"
 	"github.com/indexsupply/x/shovel/config"
-	"github.com/indexsupply/x/shovel/glf"
 	"github.com/indexsupply/x/wpg"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"kr.dev/diff"
@@ -27,28 +26,17 @@ func check(t testing.TB, err error) {
 // client will be used. The RPC endpoint needs to support
 // the debug_dbAncient and debug_dbGet methods.
 func process(tb testing.TB, pg *pgxpool.Pool, conf config.Root, n uint64) *Task {
-	gethTest := gethtest.New(tb, "http://hera:8545")
-	geth := NewGeth(gethTest.FileCache, gethTest.Client)
-
-	cur, err := geth.Hash(n)
-	check(tb, err)
-	gethTest.SetLatest(n, cur)
-
 	check(tb, config.ValidateFix(&conf))
 	check(tb, config.Migrate(context.Background(), pg, conf))
 
 	task, err := NewTask(
 		WithPG(pg),
-		WithSourceConfig(config.Source{Name: "testhelper"}),
-		WithSourceFactory(func(config.Source, glf.Filter) Source { return geth }),
-		WithIntegrations(conf.Integrations...),
+		WithSource(jrpc2.New("https://ethereum.publicnode.com")),
+		WithIntegration(conf.Integrations[0]),
 		WithRange(n, n+1),
 	)
-	task.filter = glf.Filter{UseBlocks: true, UseLogs: true}
 	check(tb, err)
-	check(tb, task.Setup())
 	check(tb, task.Converge(true))
-	gethTest.Done()
 	return task
 }
 

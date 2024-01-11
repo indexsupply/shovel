@@ -16,7 +16,7 @@
 	"block": [
 		{"name": "chain_id", "column": "chain_id"},
 		{"name": "block_num", "column": "block_num"},
-		{"name": "log_addr", "column": "contract"},
+		{"name": "log_addr", "column": "contract", "filter_op": "contains", "filter_arg": ["0x57f1887a8bf19b14fc0df6fd9b2acc9af147ea85"]},
 		{"name": "tx_hash", "column": "tx_hash", "filter_op": "contains", "filter_arg": ["713df81a2ab53db1d01531106fc5de43012a401ddc3e0586d522e5c55a162d42"]}
 	],
 	"event": {

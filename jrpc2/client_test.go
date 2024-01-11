@@ -45,12 +45,11 @@ func TestError(t *testing.T) {
 	defer ts.Close()
 
 	var (
-		blocks = []eth.Block{eth.Block{Header: eth.Header{Number: 1000001}}}
-		c      = New(ts.URL, glf.Filter{UseBlocks: true, UseLogs: true})
-		want   = "getting blocks: rpc=eth_getBlockByNumber code=-32012 msg=credits"
-		got    = c.LoadBlocks(nil, blocks).Error()
+		c      = New(ts.URL)
+		want   = "getting blocks: cache get: rpc=eth_getBlockByNumber code=-32012 msg=credits"
+		_, got = c.Get(&glf.Filter{UseBlocks: true}, 1000001, 1)
 	)
-	diff.Test(t, t.Errorf, want, got)
+	diff.Test(t, t.Errorf, want, got.Error())
 }
 
 func TestNoLogs(t *testing.T) {
@@ -68,9 +67,8 @@ func TestNoLogs(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	blocks := []eth.Block{eth.Block{Header: eth.Header{Number: 1000001}}}
-	c := New(ts.URL, glf.Filter{UseBlocks: true, UseLogs: true})
-	err := c.LoadBlocks(nil, blocks)
+	c := New(ts.URL)
+	blocks, err := c.Get(&glf.Filter{UseBlocks: true, UseLogs: true}, 1000001, 1)
 	diff.Test(t, t.Errorf, nil, err)
 
 	b := blocks[0]
@@ -95,9 +93,8 @@ func TestLatest(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	blocks := []eth.Block{eth.Block{Header: eth.Header{Number: 18000000}}}
-	c := New(ts.URL, glf.Filter{UseBlocks: true, UseLogs: true})
-	err := c.LoadBlocks(nil, blocks)
+	c := New(ts.URL)
+	blocks, err := c.Get(&glf.Filter{UseBlocks: true, UseLogs: true}, 18000000, 1)
 	diff.Test(t, t.Errorf, nil, err)
 
 	b := blocks[0]
