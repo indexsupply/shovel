@@ -1,30 +1,46 @@
 {
-	"pg_url": "postgres:///shovel",
-	"eth_sources": [
-		{"name": "mainnet", "chain_id": 1, "url": "http://eth-1:8545", "batch_size": 10, "concurrency": 2}
-	],
-	"integrations": [
+    "pg_url": "postgres:///shovel",
+    "eth_sources": [
+        {"name": "mainnet", "chain_id": 1, "url": "https://1.rlps.indexsupply.net"}
+    ],
+    "integrations": [
 		{
-			"name": "a",
+			"name": "usdc-transfer",
 			"enabled": true,
-			"sources": [{"name": "mainnet", "start": 18000000}],
+			"sources": [{"name": "mainnet"}, {"name": "base"}],
 			"table": {
-				"name": "a",
-				"columns": [{"name": "block_time", "type": "numeric"}]
+				"name": "usdc",
+				"columns": [
+					{"name": "log_addr",	"type": "bytea"},
+					{"name": "block_time",	"type": "numeric"},
+					{"name": "f",			"type": "bytea"},
+					{"name": "t",			"type": "bytea"},
+					{"name": "v",			"type": "numeric"},
+					{"name": "extra",       "type": "text"}
+				]
 			},
-			"block": [{"name": "block_time", "column": "block_time"}],
-			"event": {}
-		},
-		{
-			"name": "b",
-			"enabled": true,
-			"sources": [{"name": "mainnet", "start": 18000000}],
-			"table": {
-				"name": "b",
-				"columns": [{"name": "block_time", "type": "numeric"}]
-			},
-			"block": [{"name": "block_time", "column": "block_time"}],
-			"event": {}
+			"block": [
+				{"name": "block_time", "column": "block_time"},
+				{
+					"name": "log_addr",
+					"column": "log_addr",
+					"filter_op": "contains",
+					"filter_arg": [
+						"a0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+						"833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+					]
+				}
+			],
+			"event": {
+				"name": "Transfer",
+				"type": "event",
+				"anonymous": false,
+				"inputs": [
+					{"indexed": true,  "name": "from",	"type": "address", "column": "f"},
+					{"indexed": true,  "name": "to",	"type": "address", "column": "t"},
+					{"indexed": false, "name": "value",	"type": "uint256", "column": "v"}
+				]
+			}
 		}
-	]
+    ]
 }
