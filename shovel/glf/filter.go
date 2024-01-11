@@ -2,9 +2,7 @@
 package glf
 
 import (
-	"hash/fnv"
 	"slices"
-	"strings"
 )
 
 type Filter struct {
@@ -24,36 +22,6 @@ func New(needs, addresses []string, topics [][]string) *Filter {
 	f.addresses = append([]string(nil), addresses...)
 	f.topics = append([][]string(nil), topics...)
 	return f
-}
-
-func (f *Filter) ID() uint64 {
-	var b strings.Builder
-	if f.UseHeaders {
-		b.WriteString("headers,")
-	}
-	if f.UseBlocks {
-		b.WriteString("blocks,")
-	}
-	if f.UseReceipts {
-		b.WriteString("receipts,")
-	}
-	if f.UseLogs {
-		b.WriteString("logs,")
-	}
-	for i := range f.addresses {
-		b.WriteString(f.addresses[i])
-	}
-	for i := range f.topics {
-		for j := range f.topics[i] {
-			b.WriteString(f.topics[i][j] + ",")
-		}
-	}
-
-	h := fnv.New64a()
-	if _, err := h.Write([]byte(b.String())); err != nil {
-		panic(err)
-	}
-	return h.Sum64()
 }
 
 func (f *Filter) Addresses() []string { return f.addresses }

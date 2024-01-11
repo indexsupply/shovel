@@ -156,7 +156,6 @@ func NewTask(opts ...Option) (*Task, error) {
 	}
 
 	t.filter = t.dests[0].Filter()
-	t.filterID = t.filter.ID()
 
 	t.lockid = wpg.LockHash(fmt.Sprintf(
 		"shovel-task-%s-%s",
@@ -173,7 +172,6 @@ func NewTask(opts ...Option) (*Task, error) {
 		return nil, fmt.Errorf("setting application_name: %w", err)
 	}
 	slog.InfoContext(t.ctx, "new-task",
-		"filter", t.filterID,
 		"src", t.srcConfig.Name,
 		"dest", t.destConfig.Name,
 	)
@@ -189,8 +187,7 @@ type Task struct {
 	concurrency int
 	start, stop uint64
 
-	filter   glf.Filter
-	filterID uint64
+	filter glf.Filter
 
 	src        Source
 	srcFactory func(config.Source) Source
