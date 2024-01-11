@@ -1,9 +1,7 @@
 // eth_getLogs filter
 package glf
 
-import (
-	"slices"
-)
+import "slices"
 
 type Filter struct {
 	needs       []string
