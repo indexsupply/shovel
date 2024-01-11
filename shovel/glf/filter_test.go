@@ -6,54 +6,6 @@ import (
 	"kr.dev/diff"
 )
 
-func TestMerge(t *testing.T) {
-	cases := []struct {
-		a, b Filter
-		want Filter
-	}{
-		{},
-		{
-			Filter{needs: []string{"foo"}},
-			Filter{needs: []string{"foo", "bar"}},
-			Filter{needs: []string{"bar", "foo"}},
-		},
-		{
-			Filter{addresses: []string{"foo"}},
-			Filter{addresses: []string{}},
-			Filter{addresses: []string(nil)},
-		},
-		{
-			Filter{addresses: []string{}},
-			Filter{addresses: []string{"foo"}},
-			Filter{addresses: []string{"foo"}},
-		},
-		{
-			Filter{needs: []string{""}, addresses: []string{"foo"}},
-			Filter{needs: []string{""}, addresses: []string{"bar"}},
-			Filter{needs: []string{""}, addresses: []string{"bar", "foo"}},
-		},
-		{
-			Filter{needs: []string{""}, addresses: []string{"foo"}},
-			Filter{needs: []string{""}, addresses: []string{"foo", "bar"}},
-			Filter{needs: []string{""}, addresses: []string{"bar", "foo"}},
-		},
-		{
-			Filter{topics: [][]string{{}, {"foo"}}},
-			Filter{topics: [][]string{{"bar"}, {}}},
-			Filter{topics: [][]string{{"bar"}, {"foo"}}},
-		},
-		{
-			Filter{topics: [][]string{{}, {"foo"}}},
-			Filter{topics: [][]string{{"bar"}, {"foo"}}},
-			Filter{topics: [][]string{{"bar"}, {"foo"}}},
-		},
-	}
-	for _, tc := range cases {
-		tc.a.Merge(tc.b)
-		diff.Test(t, t.Errorf, tc.a, tc.want)
-	}
-}
-
 func TestNeeds(t *testing.T) {
 	cases := []struct {
 		fields   []string
