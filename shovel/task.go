@@ -398,7 +398,6 @@ func (t *Task) loadinsert(pg wpg.Conn, localHash []byte, start, limit uint64) er
 			continue
 		}
 		eg.Go(func() error {
-			fmt.Printf("%s get %d %d\n", t.destConfig.Name, m, n)
 			b, err := t.src.Get(&t.filter, m, n)
 			if err != nil {
 				return fmt.Errorf("loading blocks: %w", err)

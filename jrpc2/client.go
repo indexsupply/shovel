@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -221,8 +222,19 @@ type cache struct {
 type getter func(start, limit uint64) ([]eth.Block, error)
 
 func (c *cache) prune() {
+	const size = 5
+	if len(c.segments) < size {
+		return
+	}
 	var keys []key
-	for i := range c.segments {
+	for k := range c.segments {
+		keys = append(keys, k)
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		return keys[i].a > keys[i].b
+	})
+	for i := range keys[size:] {
+		delete(c.segments, keys[size+i])
 	}
 }
 
@@ -231,6 +243,7 @@ func (c *cache) get(start, limit uint64, f getter) ([]eth.Block, error) {
 	if c.segments == nil {
 		c.segments = make(map[key]*segment)
 	}
+	c.prune()
 	seg, ok := c.segments[key{start, limit}]
 	if !ok {
 		seg = &segment{}
@@ -439,7 +452,7 @@ func (c *Client) logs(filter *glf.Filter, bm blockmap, tm txmap, blocks []eth.Bl
 		logsByTx[k] = []logResult{lresp.Result[i]}
 	}
 	for k, logs := range logsByTx {
-		b, ok := bm[k.b]
+		b, ok := bm[k.a]
 		if !ok {
 			return fmt.Errorf("block not found")
 		}
