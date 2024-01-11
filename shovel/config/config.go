@@ -340,28 +340,6 @@ func (ig Integration) Source(name string) (Source, error) {
 	return Source{}, fmt.Errorf("missing source config for: %s", name)
 }
 
-func (conf Root) IntegrationsBySource(ctx context.Context, pg wpg.Conn) (map[string][]Integration, error) {
-	indb, err := Integrations(ctx, pg)
-	if err != nil {
-		return nil, fmt.Errorf("loading db integrations: %w", err)
-	}
-
-	var uniq = map[string]Integration{}
-	for _, ig := range indb {
-		uniq[ig.Name] = ig
-	}
-	for _, ig := range conf.Integrations {
-		uniq[ig.Name] = ig
-	}
-	res := make(map[string][]Integration)
-	for _, ig := range uniq {
-		for _, src := range ig.Sources {
-			res[src.Name] = append(res[src.Name], ig)
-		}
-	}
-	return res, nil
-}
-
 func (conf Root) AllIntegrations(ctx context.Context, pg wpg.Conn) ([]Integration, error) {
 	indb, err := Integrations(ctx, pg)
 	if err != nil {
