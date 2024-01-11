@@ -433,7 +433,6 @@ func (t *Task) loadinsert(pg wpg.Conn, localHash []byte, start, limit uint64) er
 	if err := eg.Wait(); err != nil {
 		return err
 	}
-	fmt.Printf("%.4x %.4x %d\n", localHash, first.parent, len(first.parent))
 	if len(first.parent) == 32 && !bytes.Equal(localHash, first.parent) {
 		return ErrReorg
 	}
