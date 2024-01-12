@@ -481,8 +481,6 @@ Current filter operations include: `contains` and `!contains`
 
 ## Log Messages
 
-**msg=prune-ig** This indicates that Shovel has pruned the integration updates table (`shovel.ig_updates`). Each time a batch of blocks is indexed, and for each running integration, Shovel will update this table with the latest block number. Only the earliest and the latest block number is required for internal book keeping so Shovel will periodically delete all but two records.
-
 **msg=prune-task** This indicates indicates that Shovel has pruned the task updates table (`shovel.task_updates`). Each time that a task (backfill or main) indexes a batch of blocks, the latest block number is saved in the table. This is used for unwinding blocks during a reorg. On the last couple hundred of blocks are required and so Shovel will delete all but the last couple hundred records.
 
 **p=16009** This is the local process id on the system. This can be useful when debugging process management (ie systemd) or deploys and restarts.
@@ -505,63 +503,37 @@ Date:   Mon Nov 13 20:54:17 2023 -0800
 
 ## Database Schema
 
-There are 2 parts to Shovel's database schema. The first are the tables that are created in the `public` schema as a result of the table definitions in each integration's config. The second are tables located in the `shovel` schema that are related to Shovel's internal operations.
+There are 2 parts to Shovel's database schema. The first are tables created in the `public` schema as a result of the table definitions in each integration's config. The second are tables located in the `shovel` schema that are related to Shovel's internal operations.
 
-As Shovel indexes batches of blocks, each set of database operations are done within a Postgres transaction. This means that the internal tables and public integration tables are atomically updated. Therefore the database remains consistent in the event of a crash. For example, if there is a task_update record for block X then you can be sure that the integration tables contain data for block X --and vice versa.
+As Shovel indexes batches of blocks, each set of database operations are done within a Postgres transaction. This means that the internal tables and public integration tables are atomically updated. Therefore the database remains consistent in the event of a crash. For example, if there is a `shovel.task_update` record for block X then you can be sure that the integration tables contain data for block X --and vice versa.
 
-There are 2 primary internal tables in the `shovel` schema.
+The primary, internal table that Shovel uses to synchronize its work is the `shovel.task_updates` table:
 
-**1. shovel.task_updates**
+### Task Updates Table
 
 ```
 shovel=# \d shovel.task_updates
                       Table "shovel.task_updates"
   Column   |           Type           | Collation | Nullable | Default
 -----------+--------------------------+-----------+----------+---------
- src_name  | text                     |           |          |
- backfill  | boolean                  |           |          | false
  num       | numeric                  |           |          |
  hash      | bytea                    |           |          |
+ ig_name   | text                     |           |          |
+ src_name  | text                     |           |          |
  src_hash  | bytea                    |           |          |
  src_num   | numeric                  |           |          |
  nblocks   | numeric                  |           |          |
  nrows     | numeric                  |           |          |
  latency   | interval                 |           |          |
  insert_at | timestamp with time zone |           |          | now()
- stop      | numeric                  |           |          |
 Indexes:
-    "task_src_name_num_idx" UNIQUE, btree (src_name, num DESC) WHERE backfill = true
-    "task_src_name_num_idx1" UNIQUE, btree (src_name, num DESC) WHERE backfill = false
+    "task_src_name_num_idx" UNIQUE, btree (ig_name, src_name, num DESC)
 ```
-For each Ethereum source, Shovel will create a main task, and if an integration's source config specifies a `start` block, Shovel will also create a backfill task.
 
 Each time Shovel indexes a batch of blocks, it will update the `shovel.task_updates` table with the last indexed `num` and `hash`. The `src_num` and `src_hash` are the latest num and hash as reported by the task's Ethereum source.
 
-`stop` indicates where the task will stop. For a main task this value is null and for a backfill task it is the latest block stop request amongst the task's integrations.
 
-**2. shovel.ig_updates**
-
-```
-shovel=# \d shovel.ig_updates
-              Table "shovel.ig_updates"
-  Column  |   Type   | Collation | Nullable | Default
-----------+----------+-----------+----------+---------
- name     | text     |           | not null |
- src_name | text     |           | not null |
- backfill | boolean  |           |          | false
- num      | numeric  |           | not null |
- latency  | interval |           |          |
- nrows    | numeric  |           |          |
- stop     | numeric  |           |          |
-Indexes:
-    "ig_name_src_name_backfill_num_idx" UNIQUE, btree (name, src_name, backfill, num DESC)
-```
-
-Each task (backfill or main) contains a set of integrations. The progress of each integration is tracked in the `shovel.ig_updates` table. For each batch of blocks that are indexed, the latest `num` is written to this table.
-
-A backfill task's progress can be measured by the difference of: `max(num) where backfill = true` and `min(num) where backfill=false`.
-
-**Public Schema Table Requirements**
+### Public Schema Table Requirements
 
 Each table created by Shovel has a minimum set of required columns
 
@@ -577,7 +549,7 @@ Indexes:
     "u_minimal" UNIQUE, btree (ig_name, src_name, block_num, tx_idx)
 ```
 
-`src_name`, `ig_name`, and `block_num` are used in the case of a reorg. When a reorg is detected, Shovel will delete rows from its `shovel.task_updates` and `shovel.ig_updates` tables and for each pruned block Shovel will also delete rows from the integration tables using the aforementioned columns.
+`src_name`, `ig_name`, and `block_num` are used in the case of a reorg. When a reorg is detected, Shovel will delete rows from `shovel.task_updates` and for each pruned block Shovel will also delete rows from the integration tables using the aforementioned columns.
 
 ### Printing the Schema
 
@@ -603,21 +575,12 @@ create unique index if not exists u_x on x (
 
 ## Tasks
 
-Shovel's main thing is a task. tasks are derived from Shovel's configuration. Shovel will parse the config (both in the file and in the database) and build a set of tasks to run.
+Shovel's main thing is a task. Tasks are derived from Shovel's configuration. Shovel will parse the config (both in the file and in the database) to build a set of tasks to run.
 
 - A task has a single Ethereum source.
-- A task has one or many integrations.
-- A task can either be a `main` task or a `backfill` task
-- A main task runs forever
-- A backfill task runs until it catches up with the main task
-
-Therefore, on startup, Shovel parses the config, and creates a set of tasks, one for each source / backfill combination and, depending on the integration's source config, adds one or more integrations to each task.
-
-The tasks then are initialized, where they setup their book keeping records in the database, and then each task begins Converging.
-
-Convergence is the process where the task figures out the Ethereum Source's latest block, and it figures out the task's latest block in the database, and then proceeds to download and index the delta.
-
-For the backfill task, when the delta is 0 the task exits. For a main task, when the delta is 0, it sleeps for a second before attempting to converge again.
+- A task has a single Postgres destination
+- An integration can produce multiple tasks. One per source.
+- A task starts at the configured start block in the integration's source field or, if the start field is omitted,  at the latest block height when the task is first run.
 
 <hr>
 
