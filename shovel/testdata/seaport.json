@@ -13,6 +13,7 @@
 			{"name": "recipient", "type": "bytea"},
 			{"name": "block_num", "type": "numeric"},
 			{"name": "tx_hash", "type": "bytea"},
+			{"name": "log_addr", "type": "bytea"},
 			{"name": "log_idx", "type": "numeric"},
 			{"name": "abi_idx", "type": "numeric"}
 		]
@@ -21,6 +22,7 @@
 		{"name": "chain_id", "column": "chain_id"},
 		{"name": "block_num", "column": "block_num"},
 		{"name": "tx_hash", "column": "tx_hash", "filter_op": "contains", "filter_arg": ["713df81a2ab53db1d01531106fc5de43012a401ddc3e0586d522e5c55a162d42"]},
+		{"name": "log_addr", "column": "log_addr", "filter_op": "contains", "filter_arg": ["0x00000000000000adc04c56bf30ac9d3c0aaf14dc"]},
 		{"name": "log_idx", "column": "log_idx"},
 		{"name": "abi_idx", "column": "abi_idx"}
 	],

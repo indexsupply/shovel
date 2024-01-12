@@ -26,32 +26,12 @@ func (f *Filter) Addresses() []string { return f.addresses }
 func (f *Filter) Topics() [][]string  { return f.topics }
 func (f *Filter) Empty() bool         { return len(f.needs) == 0 }
 
-func (f *Filter) Merge(o Filter) {
-	switch {
-	case f.Empty() && len(o.addresses) > 0:
-		f.addresses = make([]string, len(o.addresses))
-		copy(f.addresses, o.addresses)
-	case len(f.addresses) > 0 && len(o.addresses) > 0:
-		f.addresses = unique(f.addresses, o.addresses)
-	default:
-		f.addresses = nil
-	}
-	f.Needs(unique(f.needs, o.needs))
-	if len(f.topics) < len(o.topics) {
-		n := len(o.topics) - len(f.topics)
-		f.topics = append(f.topics, make([][]string, n)...)
-	}
-	for i := range o.topics {
-		f.topics[i] = unique(f.topics[i], o.topics[i])
-	}
-}
-
 func (f *Filter) Needs(needs []string) {
 	f.needs = unique(needs)
 	f.UseHeaders = any(f.needs, distinct(header, block, receipt, log))
 	f.UseBlocks = any(f.needs, distinct(block, header, receipt, log))
 	f.UseReceipts = any(f.needs, distinct(receipt, header, block, log))
-	f.UseLogs = !f.UseReceipts && any(f.needs, log)
+	f.UseLogs = !f.UseReceipts && any(f.needs, distinct(log, block, header))
 }
 
 func any(a, b []string) bool {

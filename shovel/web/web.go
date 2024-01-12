@@ -17,9 +17,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/indexsupply/x/jrpc2"
 	"github.com/indexsupply/x/shovel"
 	"github.com/indexsupply/x/shovel/config"
-	"github.com/indexsupply/x/shovel/glf"
 	"github.com/indexsupply/x/wstrings"
 
 	"filippo.io/age"
@@ -207,7 +207,7 @@ func (h *Handler) Diag(w http.ResponseWriter, r *http.Request) {
 	for _, sc := range scs {
 		var (
 			dr  = &DiagResult{Source: sc.Name}
-			src = shovel.NewSource(sc, glf.Filter{})
+			src = jrpc2.New(sc.URL)
 		)
 		checkPG(dr)
 		checkSrc(src, dr)
@@ -229,19 +229,6 @@ func (h *Handler) PushUpdates() error {
 			j, err := json.Marshal(update)
 			if err != nil {
 				return fmt.Errorf("marshaling task update: %w", err)
-			}
-			for _, c := range h.clients {
-				c <- j
-			}
-		}
-		ius, err := shovel.IGUpdates(ctx, h.pgp)
-		if err != nil {
-			return fmt.Errorf("querying ig updates: %w", err)
-		}
-		for _, update := range ius {
-			j, err := json.Marshal(update)
-			if err != nil {
-				return fmt.Errorf("marshaling ig update: %w", err)
 			}
 			for _, c := range h.clients {
 				c <- j
@@ -347,7 +334,6 @@ func (h *Handler) AddIntegration(w http.ResponseWriter, r *http.Request) {
 
 type IndexView struct {
 	TaskUpdates  map[string]shovel.TaskUpdate
-	IGUpdates    map[string][]shovel.IGUpdate
 	Sources      []config.Source
 	ShowBackfill bool
 }
@@ -362,29 +348,9 @@ func (h *Handler) Index(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	ius, err := shovel.IGUpdates(ctx, h.pgp)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	view.IGUpdates = make(map[string][]shovel.IGUpdate)
-	for _, iu := range ius {
-		view.IGUpdates[iu.TaskID()] = append(
-			view.IGUpdates[iu.TaskID()],
-			iu,
-		)
-	}
 	view.TaskUpdates = make(map[string]shovel.TaskUpdate)
 	for _, tu := range tus {
 		view.TaskUpdates[tu.DOMID] = tu
-	}
-
-	for _, tu := range view.TaskUpdates {
-		if tu.Backfill {
-			view.ShowBackfill = true
-			break
-		}
 	}
 
 	view.Sources, err = h.conf.AllSources(ctx, h.pgp)

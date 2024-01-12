@@ -6,11 +6,10 @@ import "context"
 type key int
 
 const (
-	chainIDKey  key = 1
-	igNameKey   key = 2
-	srcNameKey  key = 3
-	backfillKey key = 4
-	versionKey  key = 5
+	chainIDKey key = 1
+	igNameKey  key = 2
+	srcNameKey key = 3
+	versionKey key = 4
 )
 
 func WithChainID(ctx context.Context, id uint64) context.Context {
@@ -38,15 +37,6 @@ func WithSrcName(ctx context.Context, name string) context.Context {
 func SrcName(ctx context.Context) string {
 	name, _ := ctx.Value(srcNameKey).(string)
 	return name
-}
-
-func WithBackfill(ctx context.Context, b bool) context.Context {
-	return context.WithValue(ctx, backfillKey, b)
-}
-
-func Backfill(ctx context.Context) bool {
-	b, _ := ctx.Value(backfillKey).(bool)
-	return b
 }
 
 func WithVersion(ctx context.Context, v string) context.Context {

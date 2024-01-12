@@ -340,12 +340,11 @@ func (ig Integration) Source(name string) (Source, error) {
 	return Source{}, fmt.Errorf("missing source config for: %s", name)
 }
 
-func (conf Root) IntegrationsBySource(ctx context.Context, pg wpg.Conn) (map[string][]Integration, error) {
+func (conf Root) AllIntegrations(ctx context.Context, pg wpg.Conn) ([]Integration, error) {
 	indb, err := Integrations(ctx, pg)
 	if err != nil {
 		return nil, fmt.Errorf("loading db integrations: %w", err)
 	}
-
 	var uniq = map[string]Integration{}
 	for _, ig := range indb {
 		uniq[ig.Name] = ig
@@ -353,11 +352,10 @@ func (conf Root) IntegrationsBySource(ctx context.Context, pg wpg.Conn) (map[str
 	for _, ig := range conf.Integrations {
 		uniq[ig.Name] = ig
 	}
-	res := make(map[string][]Integration)
+
+	var res []Integration
 	for _, ig := range uniq {
-		for _, src := range ig.Sources {
-			res[src.Name] = append(res[src.Name], ig)
-		}
+		res = append(res, ig)
 	}
 	return res, nil
 }
@@ -383,5 +381,17 @@ func (conf Root) AllSources(ctx context.Context, pgp *pgxpool.Pool) ([]Source, e
 	slices.SortFunc(res, func(a, b Source) int {
 		return cmp.Compare(a.Name, b.Name)
 	})
+	return res, nil
+}
+
+func (conf Root) AllSourcesByName(ctx context.Context, pgp *pgxpool.Pool) (map[string]Source, error) {
+	sources, err := conf.AllSources(ctx, pgp)
+	if err != nil {
+		return nil, fmt.Errorf("loading all sources: %w", err)
+	}
+	res := make(map[string]Source)
+	for _, sc := range sources {
+		res[sc.Name] = sc
+	}
 	return res, nil
 }

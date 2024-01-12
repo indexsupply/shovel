@@ -3,6 +3,7 @@ package rlps
 import (
 	"bytes"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -18,6 +19,7 @@ import (
 	"github.com/indexsupply/x/geth"
 	"github.com/indexsupply/x/jrpc"
 	"github.com/indexsupply/x/rlp"
+	"github.com/indexsupply/x/shovel/glf"
 )
 
 func NewClient(chainID uint64, url string) *Client {
@@ -37,6 +39,10 @@ type Client struct {
 func (c *Client) ChainID() uint64 { return c.chainID }
 
 var bufferPool = sync.Pool{New: func() any { return new(bytes.Buffer) }}
+
+func (c *Client) Get(_ *glf.Filter, _ uint64, _ uint64) ([]eth.Block, error) {
+	return nil, errors.New("todo")
+}
 
 func (c *Client) LoadBlocks(filter [][]byte, blocks []eth.Block) error {
 	// Use hash in the request url to avoid having the

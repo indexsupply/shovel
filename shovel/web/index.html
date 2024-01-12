@@ -149,16 +149,6 @@
 						<div class="Progress">-</div>
 					</div>
 					<div class="destinations" style="display:none;">
-						{{ range $iu := (index $.IGUpdates $tu.DOMID) -}}
-						<div class="destination" id="{{ $iu.DOMID }}">
-							<div class="Name">{{ $iu.Name }}</div>
-							<div class="NRows">{{ $iu.NRows }}</div>
-							<div class="Latency">{{ $iu.Latency }}</div>
-							<div class="Hash"></div>
-							<div class="Num"></div>
-							<div class="Progress"></div>
-						</div>
-						{{ end -}}
 					</div>
 				</div>
 				{{ end -}}
@@ -180,16 +170,6 @@
 						<div class="Progress">-</div>
 					</div>
 					<div class="destinations" style="display:none;">
-						{{ range $iu := (index $.IGUpdates $tu.DOMID) -}}
-						<div class="destination" id="{{ $iu.DOMID }}">
-							<div class="Name">{{ $iu.Name }}</div>
-							<div class="NRows">{{ $iu.NRows }}</div>
-							<div class="Latency">{{ $iu.Latency }}</div>
-							<div class="Hash"></div>
-							<div class="Num addComma">{{ $iu.Num }}</div>
-							<div class="Progress"></div>
-						</div>
-						{{ end -}}
 					</div>
 				</div>
 				{{ end -}}

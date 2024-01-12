@@ -2,13 +2,14 @@
 package jrpc2
 
 import (
-	"bytes"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"unicode"
 
 	"github.com/indexsupply/x/eth"
@@ -19,38 +20,23 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-type key struct {
-	b uint64
-	t uint64
-}
-
-type lookupCache struct {
-	b map[uint64]*eth.Block
-	t map[key]*eth.Tx
-}
-
-func New(url string, filter glf.Filter) *Client {
+func New(url string) *Client {
 	return &Client{
-		d:      strings.Contains(url, "debug"),
-		filter: filter,
+		d: strings.Contains(url, "debug"),
 		hc: &http.Client{
 			Transport: gzhttp.Transport(http.DefaultTransport),
 		},
 		url: url,
-		lookup: lookupCache{
-			b: map[uint64]*eth.Block{},
-			t: map[key]*eth.Tx{},
-		},
 	}
 }
 
 type Client struct {
-	d      bool
-	filter glf.Filter
-	hc     *http.Client
-	url    string
-	lookup lookupCache
-	buf    bytes.Buffer
+	d   bool
+	hc  *http.Client
+	url string
+
+	bcache cache
+	hcache cache
 }
 
 func (c *Client) debug(r io.Reader) io.Reader {
@@ -159,34 +145,62 @@ func (c *Client) Hash(n uint64) ([]byte, error) {
 	return hresp.Hash, nil
 }
 
-func (c *Client) LoadBlocks(_ [][]byte, blocks []eth.Block) error {
-	clear(c.lookup.b)
-	clear(c.lookup.t)
+type key struct {
+	a, b uint64
+}
+
+type (
+	blockmap map[uint64]*eth.Block
+	txmap    map[key]*eth.Tx
+)
+
+func (c *Client) Get(filter *glf.Filter, start, limit uint64) ([]eth.Block, error) {
+	var (
+		blocks []eth.Block
+		err    error
+	)
+	switch {
+	case filter.UseBlocks:
+		blocks, err = c.bcache.get(start, limit, c.blocks)
+		if err != nil {
+			return nil, fmt.Errorf("getting blocks: %w", err)
+		}
+	case filter.UseHeaders:
+		blocks, err = c.hcache.get(start, limit, c.headers)
+		if err != nil {
+			return nil, fmt.Errorf("getting blocks: %w", err)
+		}
+	default:
+		for i := uint64(0); i < limit; i++ {
+			blocks = append(blocks, eth.Block{
+				Header: eth.Header{
+					Number: eth.Uint64(start + i),
+				},
+			})
+		}
+	}
+
+	bm, tm := make(blockmap), make(txmap)
 	for i := range blocks {
-		c.lookup.b[blocks[i].Num()] = &blocks[i]
+		bm[blocks[i].Num()] = &blocks[i]
+		for j := range blocks[i].Txs {
+			t := &blocks[i].Txs[j]
+			k := key{blocks[i].Num(), uint64(t.Idx)}
+			tm[k] = t
+		}
 	}
 
 	switch {
-	case c.filter.UseBlocks:
-		if err := c.blocks(blocks); err != nil {
-			return fmt.Errorf("getting blocks: %w", err)
+	case filter.UseReceipts:
+		if err := c.receipts(bm, tm, blocks); err != nil {
+			return nil, fmt.Errorf("getting receipts: %w", err)
 		}
-	case c.filter.UseHeaders:
-		if err := c.headers(blocks); err != nil {
-			return fmt.Errorf("getting headers: %w", err)
-		}
-	}
-	switch {
-	case c.filter.UseReceipts:
-		if err := c.receipts(blocks); err != nil {
-			return fmt.Errorf("getting receipts: %w", err)
-		}
-	case c.filter.UseLogs:
-		if err := c.logs(blocks); err != nil {
-			return fmt.Errorf("getting logs: %w", err)
+	case filter.UseLogs:
+		if err := c.logs(filter, bm, tm, blocks); err != nil {
+			return nil, fmt.Errorf("getting logs: %w", err)
 		}
 	}
-	return nil
+	return blocks, nil
 }
 
 type blockResp struct {
@@ -194,42 +208,91 @@ type blockResp struct {
 	*eth.Block `json:"result"`
 }
 
-func (c *Client) blocks(blocks []eth.Block) error {
+type segment struct {
+	sync.Mutex
+	done bool
+	d    []eth.Block
+}
+
+type cache struct {
+	sync.Mutex
+	segments map[key]*segment
+}
+
+type getter func(start, limit uint64) ([]eth.Block, error)
+
+func (c *cache) prune() {
+	const size = 5
+	if len(c.segments) < size {
+		return
+	}
+	var keys []key
+	for k := range c.segments {
+		keys = append(keys, k)
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		return keys[i].a > keys[i].b
+	})
+	for i := range keys[size:] {
+		delete(c.segments, keys[size+i])
+	}
+}
+
+func (c *cache) get(start, limit uint64, f getter) ([]eth.Block, error) {
+	c.Lock()
+	if c.segments == nil {
+		c.segments = make(map[key]*segment)
+	}
+	c.prune()
+	seg, ok := c.segments[key{start, limit}]
+	if !ok {
+		seg = &segment{}
+		c.segments[key{start, limit}] = seg
+	}
+	c.Unlock()
+
+	seg.Lock()
+	defer seg.Unlock()
+	if seg.done {
+		return seg.d, nil
+	}
+
+	blocks, err := f(start, limit)
+	if err != nil {
+		return nil, fmt.Errorf("cache get: %w", err)
+	}
+
+	seg.d = blocks
+	seg.done = true
+	return seg.d, nil
+}
+
+func (c *Client) blocks(start, limit uint64) ([]eth.Block, error) {
 	var (
-		reqs  = make([]request, len(blocks))
-		resps = make([]blockResp, len(blocks))
+		reqs   = make([]request, limit)
+		resps  = make([]blockResp, limit)
+		blocks = make([]eth.Block, limit)
 	)
-	for i := range blocks {
-		n := "0x" + strconv.FormatUint(blocks[i].Num(), 16)
+	for i := uint64(0); i < limit; i++ {
 		reqs[i] = request{
 			ID:      "1",
 			Version: "2.0",
 			Method:  "eth_getBlockByNumber",
-			Params:  []any{n, true},
+			Params:  []any{eth.EncodeUint64(start + i), true},
 		}
 		resps[i].Block = &blocks[i]
 	}
 	err := c.do(&resps, reqs)
 	if err != nil {
-		return fmt.Errorf("requesting blocks: %w", err)
+		return nil, fmt.Errorf("requesting blocks: %w", err)
 	}
 	for i := range resps {
 		if resps[i].Error.Exists() {
 			const tag = "eth_getBlockByNumber"
-			return fmt.Errorf("rpc=%s %w", tag, resps[i].Error)
+			return nil, fmt.Errorf("rpc=%s %w", tag, resps[i].Error)
 		}
 	}
-	for i := range blocks {
-		for j := range blocks[i].Txs {
-			t := &blocks[i].Txs[j]
-			k := key{
-				b: blocks[i].Num(),
-				t: uint64(t.Idx),
-			}
-			c.lookup.t[k] = t
-		}
-	}
-	return nil
+	return blocks, nil
 }
 
 type headerResp struct {
@@ -237,31 +300,32 @@ type headerResp struct {
 	*eth.Header `json:"result"`
 }
 
-func (c *Client) headers(blocks []eth.Block) error {
+func (c *Client) headers(start, limit uint64) ([]eth.Block, error) {
 	var (
-		reqs  = make([]request, len(blocks))
-		resps = make([]headerResp, len(blocks))
+		reqs   = make([]request, limit)
+		resps  = make([]headerResp, limit)
+		blocks = make([]eth.Block, limit)
 	)
-	for i := range blocks {
+	for i := uint64(0); i < limit; i++ {
 		reqs[i] = request{
 			ID:      "1",
 			Version: "2.0",
 			Method:  "eth_getBlockByNumber",
-			Params:  []any{eth.EncodeUint64(blocks[i].Num()), false},
+			Params:  []any{eth.EncodeUint64(start + i), false},
 		}
 		resps[i].Header = &blocks[i].Header
 	}
 	err := c.do(&resps, reqs)
 	if err != nil {
-		return fmt.Errorf("requesting headers: %w", err)
+		return nil, fmt.Errorf("requesting headers: %w", err)
 	}
 	for i := range resps {
 		if resps[i].Error.Exists() {
 			const tag = "eth_getBlockByNumber/headers"
-			return fmt.Errorf("rpc=%s %w", tag, resps[i].Error)
+			return nil, fmt.Errorf("rpc=%s %w", tag, resps[i].Error)
 		}
 	}
-	return nil
+	return blocks, nil
 }
 
 type receiptResult struct {
@@ -282,7 +346,7 @@ type receiptResp struct {
 	Result []receiptResult `json:"result"`
 }
 
-func (c *Client) receipts(blocks []eth.Block) error {
+func (c *Client) receipts(bm blockmap, tm txmap, blocks []eth.Block) error {
 	var (
 		reqs  = make([]request, len(blocks))
 		resps = make([]receiptResp, len(blocks))
@@ -306,17 +370,14 @@ func (c *Client) receipts(blocks []eth.Block) error {
 		}
 	}
 	for i := range resps {
-		b, ok := c.lookup.b[uint64(resps[i].Result[0].BlockNum)]
+		b, ok := bm[uint64(resps[i].Result[0].BlockNum)]
 		if !ok {
 			return fmt.Errorf("block not found")
 		}
 		b.Header.Hash.Write(resps[i].Result[0].BlockHash)
 		for j := range resps[i].Result {
-			k := key{
-				b: b.Num(),
-				t: uint64(resps[i].Result[j].TxIdx),
-			}
-			if tx, ok := c.lookup.t[k]; ok {
+			k := key{b.Num(), uint64(resps[i].Result[j].TxIdx)}
+			if tx, ok := tm[k]; ok {
 				tx.Status.Write(byte(resps[i].Result[j].Status))
 				tx.GasUsed = resps[i].Result[j].GasUsed
 				tx.Logs = make([]eth.Log, len(resps[i].Result[j].Logs))
@@ -354,7 +415,7 @@ type logResp struct {
 	Result []logResult `json:"result"`
 }
 
-func (c *Client) logs(blocks []eth.Block) error {
+func (c *Client) logs(filter *glf.Filter, bm blockmap, tm txmap, blocks []eth.Block) error {
 	var (
 		lf = struct {
 			From    string     `json:"fromBlock"`
@@ -364,8 +425,8 @@ func (c *Client) logs(blocks []eth.Block) error {
 		}{
 			From:    eth.EncodeUint64(blocks[0].Num()),
 			To:      eth.EncodeUint64(blocks[len(blocks)-1].Num()),
-			Address: c.filter.Addresses(),
-			Topics:  c.filter.Topics(),
+			Address: filter.Addresses(),
+			Topics:  filter.Topics(),
 		}
 		lresp = logResp{}
 	)
@@ -383,10 +444,7 @@ func (c *Client) logs(blocks []eth.Block) error {
 	}
 	var logsByTx = map[key][]logResult{}
 	for i := range lresp.Result {
-		k := key{
-			b: uint64(lresp.Result[i].BlockNum),
-			t: uint64(lresp.Result[i].TxIdx),
-		}
+		k := key{uint64(lresp.Result[i].BlockNum), uint64(lresp.Result[i].TxIdx)}
 		if logs, ok := logsByTx[k]; ok {
 			logsByTx[k] = append(logs, lresp.Result[i])
 			continue
@@ -394,18 +452,18 @@ func (c *Client) logs(blocks []eth.Block) error {
 		logsByTx[k] = []logResult{lresp.Result[i]}
 	}
 	for k, logs := range logsByTx {
-		b, ok := c.lookup.b[k.b]
+		b, ok := bm[k.a]
 		if !ok {
 			return fmt.Errorf("block not found")
 		}
-		if tx, ok := c.lookup.t[k]; ok {
+		if tx, ok := tm[k]; ok {
 			for i := range logs {
 				tx.Logs = append(tx.Logs, *logs[i].Log)
 			}
 			continue
 		}
 		tx := eth.Tx{}
-		tx.Idx = eth.Uint64(k.t)
+		tx.Idx = eth.Uint64(k.b)
 		tx.PrecompHash.Write(logs[0].TxHash)
 		tx.Logs = make([]eth.Log, 0, len(logs))
 		for i := range logs {

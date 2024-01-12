@@ -46,19 +46,62 @@ if not exists sources_name_idx
 on shovel.sources
 using btree (name);
 
-create unique index
-if not exists task_src_name_num_idx
-on shovel.task_updates
-using btree (src_name, num DESC)
-where (backfill = true);
-
-create unique index
-if not exists task_src_name_num_idx1
-on shovel.task_updates
-using btree (src_name, num DESC)
-where (backfill = false);
-
 -- Changes:
 
 alter table shovel.task_updates
 add column if not exists chain_id int;
+
+alter table shovel.task_updates
+add column if not exists ig_name text;
+
+drop index if exists shovel.task_src_name_num_idx;
+drop index if exists shovel.task_src_name_num_idx1;
+
+do $$
+begin
+if exists (
+	select 1
+	from information_schema.columns
+	where table_schema = 'shovel'
+	and table_name = 'task_updates'
+	and column_name = 'backfill'
+) then
+with tasks as (
+    select distinct on (src_name)
+    src_name, num, hash, chain_id
+    from shovel.task_updates
+    where backfill = false
+    order by src_name, num desc
+), igs as (
+	select
+		distinct on (i.src_name, i.name)
+		t.chain_id,
+		i.src_name,
+		i.name,
+		i.num,
+		t.hash
+	from shovel.ig_updates i
+	left outer join tasks t
+	on t.src_name = i.src_name
+	and t.num = i.num
+	where i.backfill = false
+	order by i.src_name, i.name, i.num desc
+) insert into shovel.task_updates (
+	chain_id,
+	src_name,
+	ig_name,
+	num,
+	hash
+) select chain_id, src_name, name, num, hash from igs;
+delete from shovel.task_updates where ig_name is null;
+end if;
+end
+$$;
+
+alter table shovel.task_updates
+drop column if exists backfill;
+
+create unique index
+if not exists task_src_name_num_idx
+on shovel.task_updates
+using btree (ig_name, src_name, num DESC);

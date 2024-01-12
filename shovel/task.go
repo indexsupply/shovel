@@ -7,14 +7,13 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/indexsupply/x/dig"
 	"github.com/indexsupply/x/eth"
 	"github.com/indexsupply/x/jrpc2"
-	"github.com/indexsupply/x/rlps"
 	"github.com/indexsupply/x/shovel/config"
 	"github.com/indexsupply/x/shovel/glf"
 	"github.com/indexsupply/x/wctx"
@@ -30,7 +29,7 @@ import (
 var Schema string
 
 type Source interface {
-	LoadBlocks([][]byte, []eth.Block) error
+	Get(*glf.Filter, uint64, uint64) ([]eth.Block, error)
 	Latest() (uint64, []byte, error)
 	Hash(uint64) ([]byte, error)
 }
@@ -51,24 +50,33 @@ func WithContext(ctx context.Context) Option {
 	}
 }
 
-func WithSourceFactory(f func(config.Source, glf.Filter) Source) Option {
+func WithSrcName(name string) Option {
 	return func(t *Task) {
-		t.srcFactory = f
+		t.srcName = name
 	}
 }
 
-func WithSourceConfig(sc config.Source) Option {
+func WithChainID(chainID uint64) Option {
 	return func(t *Task) {
-		t.srcConfig = sc
-		t.ctx = wctx.WithChainID(t.ctx, sc.ChainID)
-		t.ctx = wctx.WithSrcName(t.ctx, sc.Name)
+		t.srcChainID = chainID
 	}
 }
 
-func WithBackfill(b bool) Option {
+func WithSource(src Source) Option {
 	return func(t *Task) {
-		t.backfill = b
-		t.ctx = wctx.WithBackfill(t.ctx, b)
+		t.src = src
+	}
+}
+
+func WithIntegrationFactory(f func(config.Integration) (Destination, error)) Option {
+	return func(t *Task) {
+		t.destFactory = f
+	}
+}
+
+func WithIntegration(ig config.Integration) Option {
+	return func(t *Task) {
+		t.destConfig = ig
 	}
 }
 
@@ -84,35 +92,20 @@ func WithRange(start, stop uint64) Option {
 	}
 }
 
-func WithConcurrency(numParts, batchSize int) Option {
+func WithConcurrency(concurrency, batchSize int) Option {
 	return func(t *Task) {
-		t.batchSize = max(batchSize, 1)
-		t.parts = parts(max(numParts, 1), max(batchSize, 1))
-	}
-}
-
-func WithIntegrationFactory(f func(config.Integration) (Destination, error)) Option {
-	return func(t *Task) {
-		t.igFactory = f
-	}
-}
-
-func WithIntegrations(igs ...config.Integration) Option {
-	return func(t *Task) {
-		for i := range igs {
-			if !igs[i].Enabled {
-				continue
-			}
-			t.igs = append(t.igs, igs[i])
+		if concurrency > 0 {
+			t.concurrency = concurrency
 		}
-		t.igUpdateBuf = newIGUpdateBuf(len(t.igs))
-		t.igRange = make([]igRange, len(t.igs))
+		if batchSize > 0 {
+			t.batchSize = batchSize
+		}
 	}
 }
 
 var compiled = map[string]Destination{}
 
-func NewIntegration(ig config.Integration) (Destination, error) {
+func NewDestination(ig config.Integration) (Destination, error) {
 	switch {
 	case len(ig.Compiled.Name) > 0:
 		dest, ok := compiled[ig.Name]
@@ -129,266 +122,164 @@ func NewIntegration(ig config.Integration) (Destination, error) {
 	}
 }
 
-func NewSource(sc config.Source, filter glf.Filter) Source {
-	switch {
-	case strings.Contains(string(sc.URL), "rlps"):
-		return rlps.NewClient(sc.ChainID, string(sc.URL))
-	case strings.HasPrefix(string(sc.URL), "http"):
-		return jrpc2.New(string(sc.URL), filter)
-	default:
-		// TODO add back support for local geth
-		panic(fmt.Sprintf("unsupported src type: %v", sc))
-	}
-}
-
 func NewTask(opts ...Option) (*Task, error) {
 	t := &Task{
-		ctx:        context.Background(),
-		batchSize:  1,
-		parts:      parts(1, 1),
-		srcFactory: NewSource,
-		igFactory:  NewIntegration,
+		ctx:         context.Background(),
+		batchSize:   1,
+		concurrency: 1,
+		destFactory: NewDestination,
 	}
 	for _, opt := range opts {
 		opt(t)
 	}
-	for i := range t.parts {
-		for j := range t.igs {
-			dest, err := t.igFactory(t.igs[j])
-			if err != nil {
-				return nil, fmt.Errorf("initializing integration: %w", err)
-			}
-			t.parts[i].dests = append(t.parts[i].dests, dest)
-			t.filter.Merge(dest.Filter())
+	t.dests = make([]Destination, t.concurrency)
+	for i := 0; i < t.concurrency; i++ {
+		dest, err := t.destFactory(t.destConfig)
+		if err != nil {
+			return nil, fmt.Errorf("initializing destination: %w", err)
 		}
-		t.parts[i].src = t.srcFactory(t.srcConfig, t.filter)
+		t.dests[i] = dest
 	}
+	t.filter = t.dests[0].Filter()
 	t.lockid = wpg.LockHash(fmt.Sprintf(
-		"shovel.task.%d-%t",
-		t.srcConfig.ChainID,
-		t.backfill,
+		"shovel-task-%s-%s",
+		t.srcName,
+		t.destConfig.Name,
 	))
-	slog.InfoContext(t.ctx, "new-task", "integrations", len(t.igs))
+	_, err := t.pgp.Exec(t.ctx, fmt.Sprintf(
+		"set application_name = 'shovel-task-%s-%s-%s'",
+		t.srcName,
+		t.destConfig.Name,
+		wctx.Version(t.ctx),
+	))
+	if err != nil {
+		return nil, fmt.Errorf("setting application_name: %w", err)
+	}
+	slog.InfoContext(t.ctx, "new-task",
+		"src", t.srcName,
+		"dest", t.destConfig.Name,
+	)
 	return t, nil
 }
 
 type Task struct {
-	ctx    context.Context
-	pgp    *pgxpool.Pool
-	lockid int64
+	ctx context.Context
+	pgp *pgxpool.Pool
 
-	backfill    bool
+	lockid      int64
+	batchSize   int
+	concurrency int
 	start, stop uint64
 
-	srcFactory func(config.Source, glf.Filter) Source
-	srcConfig  config.Source
+	filter glf.Filter
 
-	igFactory   func(config.Integration) (Destination, error)
-	igs         []config.Integration
-	igRange     []igRange
-	igUpdateBuf *igUpdateBuf
+	src        Source
+	srcName    string
+	srcChainID uint64
 
-	filter    glf.Filter
-	batchSize int
-	parts     []part
+	dests       []Destination
+	destFactory func(config.Integration) (Destination, error)
+	destConfig  config.Integration
 }
 
-// Depending on WithConcurrency, a Task may be configured with
-// concurrent parts. This allows a task to concurrently download
-// block data from its Source.
-//
-// m and n are used to slice a batch of blocks: batch[m:n]
-//
-// Each part has its own source since the Source may have buffers
-// that aren't safe to share across go-routines.
-type part struct {
-	m, n  int
-	src   Source
-	dests []Destination
-}
-
-func (p *part) slice(b []eth.Block) []eth.Block {
-	if len(b) < p.m {
-		return nil
-	}
-	return b[p.m:min(p.n, len(b))]
-}
-
-func parts(numParts, batchSize int) []part {
-	var (
-		p         = make([]part, numParts)
-		size      = batchSize / numParts
-		remainder = batchSize % numParts
+func (t *Task) update(
+	pg wpg.Conn,
+	hash []byte,
+	num uint64,
+	delta uint64,
+	nrows int64,
+	elapsed time.Duration,
+) error {
+	const uq = `
+		insert into shovel.task_updates (
+			chain_id,
+			src_name,
+			ig_name,
+			hash,
+			num,
+			stop,
+			nblocks,
+			nrows,
+			latency
+		)
+		values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+	`
+	_, err := pg.Exec(t.ctx, uq,
+		t.srcChainID,
+		t.srcName,
+		t.destConfig.Name,
+		hash,
+		num,
+		t.stop,
+		delta,
+		nrows,
+		elapsed,
 	)
-	for i := range p {
-		p[i].m = size * i
-		p[i].n = size + p[i].m
-	}
-	if remainder > 0 {
-		p[numParts-1].n += remainder
-	}
-	if p[numParts-1].n != batchSize {
-		panic(fmt.Sprintf("batchSize error want: %d got: %d", batchSize, p[numParts-1].n))
-	}
-	return p
+	return err
 }
 
-func (t *Task) Setup() error {
-	switch {
-	case t.backfill:
-		if len(t.igs) == 0 {
-			slog.InfoContext(t.ctx, "empty task")
-			return nil
-		}
-		for i, ig := range t.igs {
-			sc, err := ig.Source(t.srcConfig.Name)
-			if err != nil {
-				return fmt.Errorf("missing source for %s/%s: %w", ig.Name, t.srcConfig.Name, err)
-			}
-			if sc.Start == 0 { // no backfill request
-				continue
-			}
-			const q = `
-				insert into shovel.ig_updates(name, src_name, backfill, num)
-				values ($1, $2, true, $3)
-				on conflict (name, src_name, backfill, num)
-				do nothing
-			`
-			// we subtract one from the starting block because
-			// the igRange code assumes that
-			// the largest number in the table
-			// is the last block that was processed
-			// and so it adds 1 to determine the next
-			// working range.
-			if _, err := t.pgp.Exec(t.ctx, q, ig.Name, sc.Name, sc.Start-1); err != nil {
-				return fmt.Errorf("initial ig record: %w", err)
-			}
-			if err := t.igRange[i].load(t.ctx, t.pgp, ig.Name, sc.Name); err != nil {
-				return fmt.Errorf("loading dest range for %s/%s: %w", ig.Name, sc.Name, err)
-			}
-			if t.igRange[i].complete() {
-				slog.InfoContext(t.ctx, "complete", "src", sc.Name, "ig", ig.Name)
-				continue
-			}
-			if t.igRange[i].start < t.start || t.start == 0 {
-				t.start = t.igRange[i].start
-			}
-			if t.igRange[i].stop > sc.Stop && sc.Stop > 0 {
-				t.igRange[i].stop = sc.Stop
-			}
-			if t.igRange[i].stop > t.stop {
-				t.stop = t.igRange[i].stop
-			}
-		}
-		h, err := t.parts[0].src.Hash(t.start)
-		if err != nil {
-			return fmt.Errorf("getting hash for %d: %w", t.start, err)
-		}
-		const dq = `delete from shovel.task_updates where src_name = $1 and backfill`
-		if _, err := t.pgp.Exec(t.ctx, dq, t.srcConfig.Name); err != nil {
-			return fmt.Errorf("resetting backfill task %s: %q", t.srcConfig.Name, err)
-		}
-		const iq = `
-			insert into shovel.task_updates(chain_id, src_name, backfill, num, hash)
-			values ($1, $2, $3, $4, $5)
-		`
-		_, err = t.pgp.Exec(t.ctx, iq, t.srcConfig.ChainID, t.srcConfig.Name, t.backfill, t.start, h)
-		if err != nil {
-			return fmt.Errorf("inserting into task table: %w", err)
-		}
-		return nil
-	case t.start > 0:
-		h, err := t.parts[0].src.Hash(t.start - 1)
-		if err != nil {
-			return err
-		}
-		if err := t.initRows(t.start-1, h); err != nil {
-			return fmt.Errorf("init rows for user start: %w", err)
-		}
-		return nil
-	default:
-		gethNum, _, err := t.parts[0].src.Latest()
-		if err != nil {
-			return err
-		}
-		h, err := t.parts[0].src.Hash(gethNum - 1)
-		if err != nil {
-			return fmt.Errorf("getting hash for %d: %w", gethNum-1, err)
-		}
-		if err := t.initRows(gethNum-1, h); err != nil {
-			return fmt.Errorf("init rows for latest: %w", err)
-		}
-		return nil
+func (t *Task) Delete(pg wpg.Conn, n uint64) error {
+	const q = `
+		delete from shovel.task_updates
+		where src_name = $1
+		and ig_name = $2
+		and num >= $3
+	`
+	_, err := pg.Exec(t.ctx, q, t.srcName, t.destConfig.Name, n)
+	if err != nil {
+		return fmt.Errorf("deleting block from task table: %w", err)
 	}
+	err = t.dests[0].Delete(t.ctx, pg, n)
+	if err != nil {
+		return fmt.Errorf("deleting block: %w", err)
+	}
+	return nil
 }
 
-// inserts an shovel.task_updates unless one with {src_name,backfill} already exists
-// inserts a shovel.ig_updates for each t.dests[i] unless one with
-// {name,src_name,backfill} already exists.
-//
-// There is no db transaction because this function can be called many
-// times with varying degrees of success without overall problems.
-func (t *Task) initRows(n uint64, h []byte) error {
-	var exists bool
-	const eq = `
-		select true
+func (t *Task) latest(pg wpg.Conn) (uint64, []byte, error) {
+	const q = `
+		select num, hash
 		from shovel.task_updates
 		where src_name = $1
-		and backfill = $2
+		and ig_name = $2
+		order by num desc
 		limit 1
 	`
-	err := t.pgp.QueryRow(t.ctx, eq, t.srcConfig.Name, t.backfill).Scan(&exists)
+	localNum, localHash := uint64(0), []byte{}
+	err := pg.QueryRow(
+		t.ctx,
+		q,
+		t.srcName,
+		t.destConfig.Name,
+	).Scan(&localNum, &localHash)
 	switch {
 	case errors.Is(err, pgx.ErrNoRows):
-		const iq = `
-			insert into shovel.task_updates(chain_id, src_name, backfill, num, hash)
-			values ($1, $2, $3, $4, $5)
-		`
-		_, err := t.pgp.Exec(t.ctx, iq, t.srcConfig.ChainID, t.srcConfig.Name, t.backfill, n, h)
-		if err != nil {
-			return fmt.Errorf("inserting into task table: %w", err)
+		switch {
+		case t.start > 0:
+			n := t.start - 1
+			h, err := t.src.Hash(n)
+			if err != nil {
+				return 0, nil, fmt.Errorf("getting hash for %d: %w", n, err)
+			}
+			slog.InfoContext(t.ctx, "start at config", "num", t.start)
+			return n, h, nil
+		default:
+			n, _, err := t.src.Latest()
+			if err != nil {
+				return 0, nil, err
+			}
+			h, err := t.src.Hash(n - 1)
+			if err != nil {
+				return 0, nil, fmt.Errorf("getting hash for %d: %w", n-1, err)
+			}
+			slog.InfoContext(t.ctx, "start at latest", "num", n)
+			return n - 1, h, nil
 		}
 	case err != nil:
-		return fmt.Errorf("querying for existing task: %w", err)
+		return 0, nil, fmt.Errorf("querying for latest: %w", err)
+	default:
+		return localNum, localHash, nil
 	}
-	for _, ig := range t.igs {
-		const eq = `
-			select true
-			from shovel.ig_updates
-			where name = $1
-			and src_name = $2
-			and backfill = $3
-			limit 1
-		`
-		err := t.pgp.QueryRow(t.ctx, eq, ig.Name, t.srcConfig.Name, t.backfill).Scan(&exists)
-		switch {
-		case errors.Is(err, pgx.ErrNoRows):
-			const iq = `
-				insert into shovel.ig_updates(name, src_name, backfill, num)
-				values ($1, $2, $3, $4)
-			`
-			_, err := t.pgp.Exec(t.ctx, iq, ig.Name, t.srcConfig.Name, t.backfill, n)
-			if err != nil {
-				return fmt.Errorf("inserting into ig table: %w", err)
-			}
-		case err != nil:
-			return fmt.Errorf("querying for existing ig: %w", err)
-		}
-	}
-	return nil
-}
-
-func (task *Task) Delete(pg wpg.Conn, n uint64) error {
-	if len(task.parts) == 0 {
-		return fmt.Errorf("unable to delete. missing parts.")
-	}
-	for i := range task.parts[0].dests {
-		err := task.parts[0].dests[i].Delete(task.ctx, pg, n)
-		if err != nil {
-			return fmt.Errorf("deleting block: %w", err)
-		}
-	}
-	return nil
 }
 
 var (
@@ -404,7 +295,6 @@ var (
 // in no side-effects.
 func (task *Task) Converge(notx bool) error {
 	var (
-		start             = time.Now()
 		pg       wpg.Conn = task.pgp
 		commit            = func() error { return nil }
 		rollback          = func() error { return nil }
@@ -421,41 +311,22 @@ func (task *Task) Converge(notx bool) error {
 		const lockq = `select pg_advisory_xact_lock($1)`
 		_, err = pg.Exec(task.ctx, lockq, task.lockid)
 		if err != nil {
-			return fmt.Errorf("task lock %d: %w", task.srcConfig.ChainID, err)
+			return fmt.Errorf("task lock %d: %w", task.srcChainID, err)
 		}
-		_, err = pg.Exec(task.ctx, fmt.Sprintf(
-			"set application_name = 'shovel.task.%d.%t.%s'",
-			task.srcConfig.ChainID,
-			task.backfill,
-			wctx.Version(task.ctx),
-		))
-		if err != nil {
-			return fmt.Errorf("setting application_name: %w", err)
-		}
-
 	}
 	for reorgs := 0; reorgs <= 10; {
-		localNum, localHash := uint64(0), []byte{}
-		const q = `
-			select num, hash
-			from shovel.task_updates
-			where src_name = $1
-			and backfill = $2
-			order by num desc
-			limit 1
-		`
-		err := pg.QueryRow(task.ctx, q, task.srcConfig.Name, task.backfill).Scan(&localNum, &localHash)
-		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		localNum, localHash, err := task.latest(pg)
+		if err != nil {
 			return fmt.Errorf("getting latest from task: %w", err)
 		}
-		if task.backfill && localNum >= task.stop { //don't sync past task.stop
+		if task.stop > 0 && localNum >= task.stop {
 			return ErrDone
 		}
-		gethNum, gethHash, err := task.parts[0].src.Latest()
+		gethNum, gethHash, err := task.src.Latest()
 		if err != nil {
 			return fmt.Errorf("getting latest from eth: %w", err)
 		}
-		if task.backfill && gethNum > task.stop {
+		if task.stop > 0 && gethNum > task.stop {
 			gethNum = task.stop
 		}
 		if localNum > gethNum {
@@ -472,169 +343,98 @@ func (task *Task) Converge(notx bool) error {
 		if delta == 0 {
 			return ErrNothingNew
 		}
-		batch := make([]eth.Block, delta)
-		for i := range batch {
-			batch[i].SetNum(localNum + uint64(i+1))
-		}
-		switch nrows, err := task.loadinsert(localHash, pg, batch); {
+		switch err := task.loadinsert(pg, localHash, localNum+1, delta); {
 		case errors.Is(err, ErrReorg):
 			reorgs++
-			slog.ErrorContext(task.ctx, "reorg", "n", localNum, "h", fmt.Sprintf("%.4x", localHash))
-			const rq1 = `
-				delete from shovel.task_updates
-				where src_name = $1
-				and backfill = $2
-				and num >= $3
-			`
-			_, err := pg.Exec(task.ctx, rq1, task.srcConfig.Name, task.backfill, localNum)
-			if err != nil {
-				return fmt.Errorf("deleting block from task table: %w", err)
-			}
-			const rq2 = `
-				delete from shovel.ig_updates
-				where src_name = $1
-				and backfill = $2
-				and num >= $3
-			`
-			_, err = pg.Exec(task.ctx, rq2, task.srcConfig.Name, task.backfill, localNum)
-			if err != nil {
-				return fmt.Errorf("deleting block from task table: %w", err)
-			}
-			err = task.Delete(pg, localNum)
-			if err != nil {
+			slog.ErrorContext(task.ctx, "reorg",
+				"n", localNum,
+				"h", fmt.Sprintf("%.4x", localHash),
+			)
+			if err := task.Delete(pg, localNum); err != nil {
 				return fmt.Errorf("deleting during reorg: %w", err)
 			}
+			continue
 		case err != nil:
-			err = errors.Join(rollback(), err)
-			return err
-		default:
-			var last = batch[delta-1]
-			const uq = `
-				insert into shovel.task_updates (
-					chain_id,
-					src_name,
-					backfill,
-					num,
-					stop,
-					hash,
-					src_num,
-					src_hash,
-					nblocks,
-					nrows,
-					latency
-				)
-				values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-			`
-			_, err := pg.Exec(task.ctx, uq,
-				task.srcConfig.ChainID,
-				task.srcConfig.Name,
-				task.backfill,
-				last.Num(),
-				task.stop,
-				last.Hash(),
-				gethNum,
-				gethHash,
-				delta,
-				nrows,
-				time.Since(start),
-			)
-			if err != nil {
-				return fmt.Errorf("updating task table: %w", err)
-			}
-			if err := task.igUpdateBuf.write(task.ctx, pg); err != nil {
-				return fmt.Errorf("updating integrations: %w", err)
-			}
-			if err := commit(); err != nil {
-				return fmt.Errorf("commit converge tx: %w", err)
-			}
-			slog.InfoContext(task.ctx, "converge", "n", last.Num())
-			return nil
+			return fmt.Errorf("loading blocks: %w", err)
 		}
+		return commit()
 	}
 	return errors.Join(ErrReorg, rollback())
 }
 
-// Fills in batch with block data (headers, bodies, receipts) from
-// geth and then calls Index on the task's integrations with the block
-// data.
-//
-// Once the block data has been read, it is checked against the parent
-// hash to ensure consistency in the local chain. If the newly read data
-// doesn't match [ErrReorg] is returned.
-//
-// The reading of block data and indexing of integrations happens concurrently
-// with the number of go routines controlled by c.
-func (task *Task) loadinsert(localHash []byte, pg wpg.Conn, batch []eth.Block) (int64, error) {
-	var eg1 errgroup.Group
-	for i := range task.parts {
-		i := i
-		b := task.parts[i].slice(batch)
-		if len(b) == 0 {
-			continue
-		}
-		eg1.Go(func() error {
-			return task.parts[i].src.LoadBlocks(nil, b)
-		})
-	}
-	if err := eg1.Wait(); err != nil {
-		return 0, err
-	}
-	switch {
-	case task.filter.UseBlocks, task.filter.UseHeaders:
-		err := validateChain(task.ctx, localHash, batch)
-		if err != nil {
-			return 0, fmt.Errorf("validating new chain: %w", err)
-		}
-	}
-	var (
-		nrows int64
-		eg2   errgroup.Group
-	)
-	for i := range task.parts {
-		i := i
-		b := task.parts[i].slice(batch)
-		if len(b) == 0 {
-			continue
-		}
-		eg2.Go(func() error {
-			var eg3 errgroup.Group
-			for j := range task.parts[i].dests {
-				j := j
-				eg3.Go(func() error {
-					var (
-						start = time.Now()
-						bdst  = task.igRange[j].filter(b)
-					)
-					if len(bdst) == 0 {
-						return nil
-					}
-					count, err := task.parts[i].dests[j].Insert(task.ctx, pg, bdst)
-					task.igUpdateBuf.update(j,
-						task.parts[i].dests[j].Name(),
-						task.srcConfig.Name,
-						task.backfill,
-						bdst[len(bdst)-1].Num(),
-						task.stop,
-						time.Since(start),
-						count,
-					)
-					nrows += count
-					return err
-				})
-			}
-			return eg3.Wait()
-		})
-	}
-	return nrows, eg2.Wait()
+type hashcheck struct {
+	num    uint64
+	hash   []byte
+	parent []byte
 }
 
-func validateChain(ctx context.Context, parent []byte, blks []eth.Block) error {
-	if len(blks[0].Header.Parent) != 32 {
-		return fmt.Errorf("corrupt parent: %x", blks[0].Header.Parent)
+func (t *Task) loadinsert(pg wpg.Conn, localHash []byte, start, limit uint64) error {
+	var (
+		t0    = time.Now()
+		eg    errgroup.Group
+		nrows int64
+		part  = t.batchSize / t.concurrency
+
+		first, last = hashcheck{}, hashcheck{}
+	)
+	for i := 0; i < t.concurrency; i++ {
+		i := i
+		m := start + uint64(i*part)
+		n := min(uint64(part), limit-uint64(i*part))
+		if m > start+limit || n == 0 {
+			continue
+		}
+		eg.Go(func() error {
+			blocks, err := t.src.Get(&t.filter, m, n)
+			if err != nil {
+				return fmt.Errorf("loading blocks: %w", err)
+			}
+			n, err := t.dests[i].Insert(t.ctx, pg, blocks)
+			if err != nil {
+				return fmt.Errorf("inserting blocks: %w", err)
+			}
+			atomic.AddInt64(&nrows, n)
+
+			if b := blocks[0]; first.num == 0 || first.num > b.Num() {
+				first.num = b.Num()
+				first.hash = b.Hash()
+				first.parent = b.Header.Parent
+			}
+			if b := blocks[len(blocks)-1]; last.num < b.Num() {
+				last.num = b.Num()
+				last.hash = b.Hash()
+				last.parent = b.Header.Parent
+			}
+			if len(first.parent) == 32 {
+				if err := validateChain(t.ctx, blocks); err != nil {
+					return err
+				}
+			}
+			return nil
+		})
 	}
-	if !bytes.Equal(parent, blks[0].Header.Parent) {
+	if err := eg.Wait(); err != nil {
+		return err
+	}
+	if len(first.parent) == 32 && !bytes.Equal(localHash, first.parent) {
 		return ErrReorg
 	}
+	err := t.update(pg, last.hash, last.num, limit, nrows, time.Since(t0))
+	if err != nil {
+		return err
+	}
+	slog.InfoContext(t.ctx, "insert",
+		"src", t.srcName,
+		"dst", t.destConfig.Name,
+		"n", last.num,
+		"h", fmt.Sprintf("%.4x", last.hash),
+		"nrows", nrows,
+		"elapsed", time.Since(t0),
+	)
+	return nil
+}
+
+func validateChain(ctx context.Context, blks []eth.Block) error {
 	if len(blks) <= 1 {
 		return nil
 	}
@@ -654,206 +454,17 @@ func validateChain(ctx context.Context, parent []byte, blks []eth.Block) error {
 	return nil
 }
 
-// range represents the blocks that the integration should process
-// this range is inclusive on both sides: [start, stop]
-type igRange struct{ start, stop uint64 }
-
-// since work range is inclusive, we aren't done until start > stop
-func (r *igRange) complete() bool {
-	return r.start > r.stop
-}
-
-// uses the latest backfill block and the earliest non-backfill
-// block to figure out what blocks to process.
-//
-// we inspect the ig_updates table to find the highest backfill
-// block. this represents the last block that we have processed.
-// since the range represents the work that we need to do, we
-// add 1 to the latest block that we processed.
-//
-// the non-backfill task's earliest block number represents
-// the last block that the backfill process needs to process.
-func (r *igRange) load(ctx context.Context, pg wpg.Conn, name, srcName string) error {
-	const startQuery = `
-	   select num + 1
-	   from shovel.ig_updates
-	   where name = $1
-	   and src_name = $2
-	   and backfill = true
-	   order by num desc
-	   limit 1
-	`
-	err := pg.QueryRow(ctx, startQuery, name, srcName).Scan(&r.start)
-	if err != nil {
-		return fmt.Errorf("start for %s/%s: %w", name, srcName, err)
-	}
-	const stopQuery = `
-	   select num
-	   from shovel.ig_updates
-	   where name = $1
-	   and src_name = $2
-	   and backfill = false
-	   order by num asc
-	   limit 1
-	`
-	err = pg.QueryRow(ctx, stopQuery, name, srcName).Scan(&r.stop)
-	if err != nil {
-		return fmt.Errorf("stop for %s/%s: %w", name, srcName, err)
-	}
-	return nil
-}
-
-// returns a slice with the blocks that this integration should process
-//
-// assumes that incoming blocks numbers are an increasing sequence
-// of consecutive integers. (no gaps)
-func (r *igRange) filter(blks []eth.Block) []eth.Block {
-	switch {
-	case r.start == 0 && r.stop == 0:
-		// un-configured range so we return what was passed
-		return blks
-	case len(blks) == 0:
-		return blks
-	case r.start > r.stop:
-		// task is complete and there is nothing to do
-		return nil
-	case blks[len(blks)-1].Num() < r.start || r.stop < blks[0].Num():
-		// if the last blocks is < our starting point
-		// then we have nothing to do.
-		// if the last blocks is == to our staring point
-		// then we at leaset have the last block to process
-		// and maybe more
-
-		// if the first block is > our stopping point
-		// then there is nothing to do
-		// if the first block is == to our stopping point
-		// then we at leaset have the first block to process
-		// and maybe more
-		return nil
-	default:
-		var n int
-		for i := 0; i < len(blks); i++ {
-			if blks[i].Num() == r.start {
-				n = i
-				break
-			}
-		}
-		var m = len(blks)
-		for i := len(blks) - 1; i >= 0; i-- {
-			if blks[i].Num() == r.stop {
-				m = i + 1
-				break
-			}
-		}
-		return blks[n:m]
-	}
-}
-
-type igUpdate struct {
-	changed  bool
-	Name     string        `db:"name"`
-	SrcName  string        `db:"src_name"`
-	Backfill bool          `db:"backfill"`
-	Num      uint64        `db:"num"`
-	Stop     uint64        `db:"stop"`
-	Latency  time.Duration `db:"latency"`
-	NRows    int64         `db:"nrows"`
-}
-
-func newIGUpdateBuf(n int) *igUpdateBuf {
-	b := &igUpdateBuf{}
-	b.updates = make([]igUpdate, n)
-	b.table = pgx.Identifier{"shovel", "ig_updates"}
-	b.cols = []string{"name", "src_name", "backfill", "num", "stop", "latency", "nrows"}
-	return b
-}
-
-type igUpdateBuf struct {
-	sync.Mutex
-
-	i       int
-	updates []igUpdate
-	out     [7]any
-	table   pgx.Identifier
-	cols    []string
-}
-
-func (b *igUpdateBuf) update(
-	j int,
-	name string,
-	srcName string,
-	backfill bool,
-	num uint64,
-	stop uint64,
-	lat time.Duration,
-	nrows int64,
-) {
-	b.Lock()
-	defer b.Unlock()
-
-	if num <= b.updates[j].Num {
-		return
-	}
-	b.updates[j].changed = true
-	b.updates[j].Name = name
-	b.updates[j].SrcName = srcName
-	b.updates[j].Backfill = backfill
-	b.updates[j].Num = num
-	b.updates[j].Stop = stop
-	b.updates[j].Latency = lat
-	b.updates[j].NRows = nrows
-}
-
-func (b *igUpdateBuf) Next() bool {
-	for i := b.i; i < len(b.updates); i++ {
-		if b.updates[i].changed {
-			b.i = i
-			return true
-		}
-	}
-	return false
-}
-
-func (b *igUpdateBuf) Err() error {
-	return nil
-}
-
-func (b *igUpdateBuf) Values() ([]any, error) {
-	if b.i >= len(b.updates) {
-		return nil, fmt.Errorf("no ig_update at idx %d len=%d", b.i, len(b.updates))
-	}
-	b.out[0] = b.updates[b.i].Name
-	b.out[1] = b.updates[b.i].SrcName
-	b.out[2] = b.updates[b.i].Backfill
-	b.out[3] = b.updates[b.i].Num
-	b.out[4] = b.updates[b.i].Stop
-	b.out[5] = b.updates[b.i].Latency
-	b.out[6] = b.updates[b.i].NRows
-	b.updates[b.i].changed = false
-	b.i++
-	return b.out[:], nil
-}
-
-func (b *igUpdateBuf) write(ctx context.Context, pg wpg.Conn) error {
-	b.Lock()
-	defer b.Unlock()
-
-	_, err := pg.CopyFrom(ctx, b.table, b.cols, b)
-	b.i = 0 // reset
-	return err
-}
-
 func PruneTask(ctx context.Context, pg wpg.Conn, n int) error {
 	const q = `
 		delete from shovel.task_updates
-		where (src_name, backfill, num) not in (
-			select src_name, backfill, num
+		where (src_name, ig_name, num) not in (
+			select src_name, ig_name, num
 			from (
 				select
 					src_name,
-					backfill,
+					ig_name,
 					num,
-					row_number() over(partition by src_name, backfill order by num desc) as rn
+					row_number() over(partition by src_name, ig_name order by num desc) as rn
 				from shovel.task_updates
 			) as s
 			where rn <= $1
@@ -864,27 +475,6 @@ func PruneTask(ctx context.Context, pg wpg.Conn, n int) error {
 		return fmt.Errorf("deleting shovel.task_updates: %w", err)
 	}
 	slog.InfoContext(ctx, "prune-task", "n", cmd.RowsAffected())
-	return nil
-}
-
-func PruneIG(ctx context.Context, pg wpg.Conn) error {
-	const q = `
-		delete from shovel.ig_updates
-		where (name, src_name, backfill, num) not in (
-			select name, src_name, backfill, max(num)
-			from shovel.ig_updates
-			group by name, src_name, backfill
-			union
-			select name, src_name, backfill, min(num)
-			from shovel.ig_updates
-			group by name, src_name, backfill
-		)
-	`
-	cmd, err := pg.Exec(ctx, q)
-	if err != nil {
-		return fmt.Errorf("deleting shovel.ig_updates: %w", err)
-	}
-	slog.InfoContext(ctx, "prune-ig", "n", cmd.RowsAffected())
 	return nil
 }
 
@@ -923,7 +513,7 @@ func (d jsonDuration) String() string {
 type TaskUpdate struct {
 	DOMID    string       `db:"-"`
 	SrcName  string       `db:"src_name"`
-	Backfill bool         `db:"backfill"`
+	DestName string       `db:"ig_name"`
 	Num      uint64       `db:"num"`
 	Stop     uint64       `db:"stop"`
 	Hash     eth.Bytes    `db:"hash"`
@@ -937,12 +527,12 @@ type TaskUpdate struct {
 func TaskUpdates(ctx context.Context, pg wpg.Conn) ([]TaskUpdate, error) {
 	rows, _ := pg.Query(ctx, `
         with f as (
-            select src_name, backfill, max(num) num
+            select src_name, ig_name, max(num) num
             from shovel.task_updates group by 1, 2
         )
         select
 			f.src_name,
-			f.backfill,
+			f.ig_name,
 			f.num,
 			coalesce(stop, 0) stop,
 			hash,
@@ -954,7 +544,7 @@ func TaskUpdates(ctx context.Context, pg wpg.Conn) ([]TaskUpdate, error) {
         from f
         left join shovel.task_updates
 		on shovel.task_updates.src_name = f.src_name
-		and shovel.task_updates.backfill = f.backfill
+		and shovel.task_updates.ig_name= f.ig_name
 		and shovel.task_updates.num = f.num;
     `)
 	tus, err := pgx.CollectRows(rows, pgx.RowToStructByName[TaskUpdate])
@@ -962,71 +552,9 @@ func TaskUpdates(ctx context.Context, pg wpg.Conn) ([]TaskUpdate, error) {
 		return nil, fmt.Errorf("querying for task updates: %w", err)
 	}
 	for i := range tus {
-		switch {
-		case tus[i].Backfill:
-			tus[i].DOMID = fmt.Sprintf("%s-backfill", tus[i].SrcName)
-		default:
-			tus[i].DOMID = fmt.Sprintf("%s-main", tus[i].SrcName)
-		}
+		tus[i].DOMID = fmt.Sprintf("%s-%s", tus[i].SrcName, tus[i].DestName)
 	}
 	return tus, nil
-}
-
-type IGUpdate struct {
-	DOMID    string       `db:"-"`
-	Name     string       `db:"name"`
-	SrcName  string       `db:"src_name"`
-	Backfill bool         `db:"backfill"`
-	Num      uint64       `db:"num"`
-	Stop     uint64       `db:"stop"`
-	NRows    uint64       `db:"nrows"`
-	Latency  jsonDuration `db:"latency"`
-}
-
-func (iu IGUpdate) TaskID() string {
-	switch {
-	case iu.Backfill:
-		return fmt.Sprintf("%s-backfill", iu.SrcName)
-	default:
-		return fmt.Sprintf("%s-main", iu.SrcName)
-	}
-}
-
-func IGUpdates(ctx context.Context, pg wpg.Conn) ([]IGUpdate, error) {
-	rows, _ := pg.Query(ctx, `
-        with f as (
-            select name, src_name, backfill, max(num) num
-            from shovel.ig_updates
-			group by 1, 2, 3
-        ) select
-			f.name,
-			f.src_name,
-			f.backfill,
-			f.num,
-			coalesce(stop, 0) stop,
-			coalesce(nrows, 0) nrows,
-			coalesce(latency, '0')::interval latency
-        from f
-
-        left join shovel.ig_updates latest
-		on latest.name = f.name
-		and latest.src_name = f.src_name
-		and latest.backfill = f.backfill
-		and latest.num = f.num
-    `)
-	ius, err := pgx.CollectRows(rows, pgx.RowToStructByName[IGUpdate])
-	if err != nil {
-		return nil, fmt.Errorf("querying for ig updates: %w", err)
-	}
-	for i := range ius {
-		switch {
-		case ius[i].Backfill:
-			ius[i].DOMID = fmt.Sprintf("%s-backfill-%s", ius[i].SrcName, ius[i].Name)
-		default:
-			ius[i].DOMID = fmt.Sprintf("%s-main-%s", ius[i].SrcName, ius[i].Name)
-		}
-	}
-	return ius, nil
 }
 
 // Loads, Starts, and provides method for Restarting tasks
@@ -1059,7 +587,7 @@ func (tm *Manager) runTask(t *Task) {
 	for {
 		select {
 		case <-tm.restart:
-			slog.Info("restart-task", "chain", t.srcConfig.ChainID)
+			slog.Info("restart-task", "chain", t.srcChainID)
 			return
 		default:
 			switch err := t.Converge(false); {
@@ -1070,13 +598,13 @@ func (tm *Manager) runTask(t *Task) {
 				time.Sleep(time.Second)
 			case err != nil:
 				time.Sleep(time.Second)
-				slog.ErrorContext(t.ctx, "converge", "error", err)
+				slog.ErrorContext(t.ctx, "converge", "error", err, "ig_name", t.destConfig.Name)
 			default:
 				go func() {
 					// try out best to deliver update
 					// but don't stack up work
 					select {
-					case tm.updates <- t.srcConfig.ChainID:
+					case tm.updates <- t.srcChainID:
 					default:
 					}
 				}()
@@ -1110,12 +638,6 @@ func (tm *Manager) Run(ec chan error) {
 		ec <- fmt.Errorf("loading tasks: %w", err)
 		return
 	}
-	for i := range tm.tasks {
-		if err := tm.tasks[i].Setup(); err != nil {
-			ec <- fmt.Errorf("setting up task: %w", err)
-			return
-		}
-	}
 	close(ec)
 
 	tm.restart = make(chan struct{})
@@ -1132,38 +654,49 @@ func (tm *Manager) Run(ec chan error) {
 }
 
 func loadTasks(ctx context.Context, pgp *pgxpool.Pool, c config.Root) ([]*Task, error) {
-	igs, err := c.IntegrationsBySource(ctx, pgp)
+	allIntegrations, err := c.AllIntegrations(ctx, pgp)
 	if err != nil {
 		return nil, fmt.Errorf("loading integrations: %w", err)
 	}
-	scs, err := c.AllSources(ctx, pgp)
+	scByName, err := c.AllSourcesByName(ctx, pgp)
 	if err != nil {
 		return nil, fmt.Errorf("loading source configs: %w", err)
 	}
+	var sources = map[string]Source{}
+	for _, sc := range scByName {
+		sources[sc.Name] = jrpc2.New(sc.URL)
+	}
 	var tasks []*Task
-	for _, sc := range scs {
-		mt, err := NewTask(
-			WithContext(ctx),
-			WithPG(pgp),
-			WithConcurrency(sc.Concurrency, sc.BatchSize),
-			WithSourceConfig(sc),
-			WithIntegrations(igs[sc.Name]...),
-		)
-		if err != nil {
-			return nil, fmt.Errorf("setting up main task: %w", err)
+	for _, ig := range allIntegrations {
+		if !ig.Enabled {
+			continue
 		}
-		bt, err := NewTask(
-			WithContext(ctx),
-			WithBackfill(true),
-			WithPG(pgp),
-			WithConcurrency(sc.Concurrency, sc.BatchSize),
-			WithSourceConfig(sc),
-			WithIntegrations(igs[sc.Name]...),
-		)
-		if err != nil {
-			return nil, fmt.Errorf("setting up backfill task: %w", err)
+		for _, scRef := range ig.Sources {
+			sc, ok := scByName[scRef.Name]
+			if !ok {
+				return nil, fmt.Errorf("finding source config for %s", scRef.Name)
+			}
+			ctx = wctx.WithChainID(ctx, sc.ChainID)
+			ctx = wctx.WithSrcName(ctx, sc.Name)
+			src, ok := sources[scRef.Name]
+			if !ok {
+				return nil, fmt.Errorf("finding source for %s", scRef.Name)
+			}
+			task, err := NewTask(
+				WithContext(ctx),
+				WithPG(pgp),
+				WithRange(scRef.Start, scRef.Stop),
+				WithConcurrency(sc.Concurrency, sc.BatchSize),
+				WithSrcName(sc.Name),
+				WithChainID(sc.ChainID),
+				WithSource(src),
+				WithIntegration(ig),
+			)
+			if err != nil {
+				return nil, fmt.Errorf("setting up main task: %w", err)
+			}
+			tasks = append(tasks, task)
 		}
-		tasks = append(tasks, mt, bt)
 	}
 	return tasks, nil
 }
