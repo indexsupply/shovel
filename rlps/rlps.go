@@ -3,6 +3,7 @@ package rlps
 import (
 	"bytes"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -40,7 +41,7 @@ func (c *Client) ChainID() uint64 { return c.chainID }
 var bufferPool = sync.Pool{New: func() any { return new(bytes.Buffer) }}
 
 func (c *Client) Get(_ *glf.Filter, _ uint64, _ uint64) ([]eth.Block, error) {
-	return nil, nil
+	return nil, errors.New("todo")
 }
 
 func (c *Client) LoadBlocks(filter [][]byte, blocks []eth.Block) error {
