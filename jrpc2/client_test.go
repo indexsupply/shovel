@@ -52,6 +52,19 @@ func TestError(t *testing.T) {
 	diff.Test(t, t.Errorf, want, got.Error())
 }
 
+func TestGet(t *testing.T) {
+	const start, limit = 10, 5
+	blocks, err := New("").Get(&glf.Filter{}, start, limit)
+	diff.Test(t, t.Fatalf, nil, err)
+	diff.Test(t, t.Fatalf, len(blocks), limit)
+	diff.Test(t, t.Fatalf, blocks[0].Num(), uint64(10))
+	diff.Test(t, t.Fatalf, blocks[1].Num(), uint64(11))
+	diff.Test(t, t.Fatalf, blocks[2].Num(), uint64(12))
+	diff.Test(t, t.Fatalf, blocks[3].Num(), uint64(13))
+	diff.Test(t, t.Fatalf, blocks[4].Num(), uint64(14))
+
+}
+
 func TestNoLogs(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, err := io.ReadAll(r.Body)
