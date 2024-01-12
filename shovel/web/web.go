@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/indexsupply/x/jrpc2"
 	"github.com/indexsupply/x/shovel"
 	"github.com/indexsupply/x/shovel/config"
 	"github.com/indexsupply/x/wstrings"
@@ -206,7 +207,7 @@ func (h *Handler) Diag(w http.ResponseWriter, r *http.Request) {
 	for _, sc := range scs {
 		var (
 			dr  = &DiagResult{Source: sc.Name}
-			src = shovel.NewSource(sc)
+			src = jrpc2.New(sc.URL)
 		)
 		checkPG(dr)
 		checkSrc(src, dr)

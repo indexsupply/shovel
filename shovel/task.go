@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -15,7 +14,6 @@ import (
 	"github.com/indexsupply/x/dig"
 	"github.com/indexsupply/x/eth"
 	"github.com/indexsupply/x/jrpc2"
-	"github.com/indexsupply/x/rlps"
 	"github.com/indexsupply/x/shovel/config"
 	"github.com/indexsupply/x/shovel/glf"
 	"github.com/indexsupply/x/wctx"
@@ -52,23 +50,21 @@ func WithContext(ctx context.Context) Option {
 	}
 }
 
-func WithSourceFactory(f func(config.Source) Source) Option {
+func WithSrcName(name string) Option {
 	return func(t *Task) {
-		t.srcFactory = f
+		t.srcName = name
+	}
+}
+
+func WithChainID(chainID uint64) Option {
+	return func(t *Task) {
+		t.srcChainID = chainID
 	}
 }
 
 func WithSource(src Source) Option {
 	return func(t *Task) {
 		t.src = src
-	}
-}
-
-func WithSourceConfig(sc config.Source) Option {
-	return func(t *Task) {
-		t.srcConfig = sc
-		t.ctx = wctx.WithChainID(t.ctx, sc.ChainID)
-		t.ctx = wctx.WithSrcName(t.ctx, sc.Name)
 	}
 }
 
@@ -126,24 +122,11 @@ func NewDestination(ig config.Integration) (Destination, error) {
 	}
 }
 
-func NewSource(sc config.Source) Source {
-	switch {
-	case strings.Contains(string(sc.URL), "rlps"):
-		return rlps.NewClient(sc.ChainID, string(sc.URL))
-	case strings.HasPrefix(string(sc.URL), "http"):
-		return jrpc2.New(string(sc.URL))
-	default:
-		// TODO add back support for local geth
-		panic(fmt.Sprintf("unsupported src type: %v", sc))
-	}
-}
-
 func NewTask(opts ...Option) (*Task, error) {
 	t := &Task{
 		ctx:         context.Background(),
 		batchSize:   1,
 		concurrency: 1,
-		srcFactory:  NewSource,
 		destFactory: NewDestination,
 	}
 	for _, opt := range opts {
@@ -160,12 +143,12 @@ func NewTask(opts ...Option) (*Task, error) {
 	t.filter = t.dests[0].Filter()
 	t.lockid = wpg.LockHash(fmt.Sprintf(
 		"shovel-task-%s-%s",
-		t.srcConfig.Name,
+		t.srcName,
 		t.destConfig.Name,
 	))
 	_, err := t.pgp.Exec(t.ctx, fmt.Sprintf(
 		"set application_name = 'shovel-task-%s-%s-%s'",
-		t.srcConfig.Name,
+		t.srcName,
 		t.destConfig.Name,
 		wctx.Version(t.ctx),
 	))
@@ -173,7 +156,7 @@ func NewTask(opts ...Option) (*Task, error) {
 		return nil, fmt.Errorf("setting application_name: %w", err)
 	}
 	slog.InfoContext(t.ctx, "new-task",
-		"src", t.srcConfig.Name,
+		"src", t.srcName,
 		"dest", t.destConfig.Name,
 	)
 	return t, nil
@@ -191,8 +174,8 @@ type Task struct {
 	filter glf.Filter
 
 	src        Source
-	srcFactory func(config.Source) Source
-	srcConfig  config.Source
+	srcName    string
+	srcChainID uint64
 
 	dests       []Destination
 	destFactory func(config.Integration) (Destination, error)
@@ -222,8 +205,8 @@ func (t *Task) update(
 		values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 	`
 	_, err := pg.Exec(t.ctx, uq,
-		t.srcConfig.ChainID,
-		t.srcConfig.Name,
+		t.srcChainID,
+		t.srcName,
 		t.destConfig.Name,
 		hash,
 		num,
@@ -242,7 +225,7 @@ func (t *Task) Delete(pg wpg.Conn, n uint64) error {
 		and ig_name = $2
 		and num >= $3
 	`
-	_, err := pg.Exec(t.ctx, q, t.srcConfig.Name, t.destConfig.Name, n)
+	_, err := pg.Exec(t.ctx, q, t.srcName, t.destConfig.Name, n)
 	if err != nil {
 		return fmt.Errorf("deleting block from task table: %w", err)
 	}
@@ -266,7 +249,7 @@ func (t *Task) latest(pg wpg.Conn) (uint64, []byte, error) {
 	err := pg.QueryRow(
 		t.ctx,
 		q,
-		t.srcConfig.Name,
+		t.srcName,
 		t.destConfig.Name,
 	).Scan(&localNum, &localHash)
 	switch {
@@ -328,7 +311,7 @@ func (task *Task) Converge(notx bool) error {
 		const lockq = `select pg_advisory_xact_lock($1)`
 		_, err = pg.Exec(task.ctx, lockq, task.lockid)
 		if err != nil {
-			return fmt.Errorf("task lock %d: %w", task.srcConfig.ChainID, err)
+			return fmt.Errorf("task lock %d: %w", task.srcChainID, err)
 		}
 	}
 	for reorgs := 0; reorgs <= 10; {
@@ -397,8 +380,8 @@ func (t *Task) loadinsert(pg wpg.Conn, localHash []byte, start, limit uint64) er
 	for i := 0; i < t.concurrency; i++ {
 		i := i
 		m := start + uint64(i*part)
-		n := min(uint64(part), limit)
-		if m > start+limit || n == 0 {
+		n := min(uint64(part), limit-uint64(i*part))
+		if m > start+limit {
 			continue
 		}
 		eg.Go(func() error {
@@ -441,9 +424,10 @@ func (t *Task) loadinsert(pg wpg.Conn, localHash []byte, start, limit uint64) er
 		return err
 	}
 	slog.InfoContext(t.ctx, "insert",
-		"src", t.srcConfig.Name,
+		"src", t.srcName,
 		"dst", t.destConfig.Name,
 		"n", last.num,
+		"h", fmt.Sprintf("%.4x", last.hash),
 		"nrows", nrows,
 		"elapsed", time.Since(t0),
 	)
@@ -603,7 +587,7 @@ func (tm *Manager) runTask(t *Task) {
 	for {
 		select {
 		case <-tm.restart:
-			slog.Info("restart-task", "chain", t.srcConfig.ChainID)
+			slog.Info("restart-task", "chain", t.srcChainID)
 			return
 		default:
 			switch err := t.Converge(false); {
@@ -620,7 +604,7 @@ func (tm *Manager) runTask(t *Task) {
 					// try out best to deliver update
 					// but don't stack up work
 					select {
-					case tm.updates <- t.srcConfig.ChainID:
+					case tm.updates <- t.srcChainID:
 					default:
 					}
 				}()
@@ -703,6 +687,8 @@ func loadTasks(ctx context.Context, pgp *pgxpool.Pool, c config.Root) ([]*Task, 
 				WithPG(pgp),
 				WithRange(scRef.Start, scRef.Stop),
 				WithConcurrency(sc.Concurrency, sc.BatchSize),
+				WithSrcName(sc.Name),
+				WithChainID(sc.ChainID),
 				WithSource(src),
 				WithIntegration(ig),
 			)
