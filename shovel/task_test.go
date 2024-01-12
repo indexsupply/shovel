@@ -125,6 +125,10 @@ func (tg *testGeth) Latest() (uint64, []byte, error) {
 }
 
 func (tg *testGeth) Get(filter *glf.Filter, start, limit uint64) ([]eth.Block, error) {
+	if start+limit-1 > tg.blocks[len(tg.blocks)-1].Num() {
+		const tag = "no blocks. start=%d limit=%d latest=%d"
+		return nil, fmt.Errorf(tag, start, limit, tg.blocks[len(tg.blocks)-1].Num())
+	}
 	var res []eth.Block
 	for i := uint64(0); i < limit; i++ {
 		for j := range tg.blocks {
@@ -240,15 +244,15 @@ func TestConverge_DeltaBatchSize(t *testing.T) {
 	diff.Test(t, t.Fatalf, err, nil)
 
 	tg.add(0, hash(0), hash(0))
-	for i := uint64(1); i <= batchSize+1; i++ {
+	// reduce the batch size by 1 so that
+	// the second part's limit is one less than it's part
+	// adjusted batchSize
+	for i := uint64(1); i <= batchSize-1; i++ {
 		tg.add(i, hash(byte(i)), hash(byte(i-1)))
 	}
 
 	diff.Test(t, t.Errorf, nil, task.Converge(false))
-	diff.Test(t, t.Errorf, dest.blocks(), tg.blocks[1:batchSize+1])
-
-	diff.Test(t, t.Errorf, nil, task.Converge(false))
-	diff.Test(t, t.Errorf, dest.blocks(), tg.blocks[1:])
+	diff.Test(t, t.Errorf, dest.blocks(), tg.blocks[1:batchSize])
 }
 
 func TestConverge_MultipleTasks(t *testing.T) {

@@ -381,7 +381,7 @@ func (t *Task) loadinsert(pg wpg.Conn, localHash []byte, start, limit uint64) er
 		i := i
 		m := start + uint64(i*part)
 		n := min(uint64(part), limit-uint64(i*part))
-		if m > start+limit {
+		if m > start+limit || n == 0 {
 			continue
 		}
 		eg.Go(func() error {
