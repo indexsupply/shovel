@@ -3,6 +3,7 @@ package shovel
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	_ "embed"
 	"errors"
 	"fmt"
@@ -508,6 +509,27 @@ func (d jsonDuration) String() string {
 	default:
 		return td.Truncate(time.Second).String()
 	}
+}
+
+type SrcUpdate struct {
+	DOMID   string        `db:"-"`
+	Name    string        `db:"src_name"`
+	Num     sql.NullInt64 `db:"num"`
+	Hash    eth.Bytes     `db:"hash"`
+	SrcNum  sql.NullInt64 `db:"src_num"`
+	SrcHash eth.Bytes     `db:"src_hash"`
+	NBlocks sql.NullInt64 `db:"nblocks"`
+	NRows   sql.NullInt64 `db:"nrows"`
+	Latency jsonDuration  `db:"latency"`
+}
+
+func SourceUpdates(ctx context.Context, pg wpg.Conn) ([]SrcUpdate, error) {
+	rows, _ := pg.Query(ctx, `select * from shovel.source_updates`)
+	updates, err := pgx.CollectRows(rows, pgx.RowToStructByName[SrcUpdate])
+	if err != nil {
+		return nil, fmt.Errorf("querying for source updates: %w", err)
+	}
+	return updates, nil
 }
 
 type TaskUpdate struct {

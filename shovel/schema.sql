@@ -105,3 +105,10 @@ create unique index
 if not exists task_src_name_num_idx
 on shovel.task_updates
 using btree (ig_name, src_name, num DESC);
+
+drop view if exists shovel.source_updates;
+create or replace view shovel.source_updates as
+select distinct on (src_name)
+src_name, num, hash, src_num, src_hash, nblocks, nrows, latency
+from shovel.task_updates
+order by src_name, num desc;

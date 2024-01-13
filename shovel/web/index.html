@@ -127,7 +127,7 @@
 			</div>
 		</div>
 		<div class="taskHeader">
-			{{ if (gt (len .Sources) 0) -}}
+			{{ if (gt (len .SourceUpdates) 0) -}}
 			<div class="Name">Source</div>
 			<div class="NRows">Rows</div>
 			<div class="Latency"><span>Latency</span></div>
@@ -137,44 +137,29 @@
 			{{ end -}}
 		</div>
 		<div class="tasks">
-			{{ range $sc := .Sources -}}
-				{{ with $tu := (index $.TaskUpdates (printf "%s-main" $sc.Name)) -}}
-				<div class="task" id="{{ $tu.DOMID }}">
+			{{ range $su := .SourceUpdates -}}
+				<div class="task" id="{{ $su.Name }}">
 					<div class="source">
-						<div class="Name">{{ $sc.Name }}</div>
-						<div class="NRows">{{ $tu.NRows }}</div>
-						<div class="Latency">{{ $tu.Latency }}</div>
-						<div class="Hash">{{(printf "0x%x" $tu.Hash)}}</div>
-						<div class="Num addComma">{{ $tu.Num }}</div>
+						<div class="Name">{{ $su.Name }}</div>
+						<div class="NRows">{{ $su.NRows.Int64 }}</div>
+						<div class="Latency">{{ $su.Latency }}</div>
+						<div class="Hash">{{(printf "0x%x" $su.Hash)}}</div>
+						<div class="Num addComma">{{ $su.Num.Int64 }}</div>
 						<div class="Progress">-</div>
 					</div>
-					<div class="destinations" style="display:none;">
+					<div class="destinations" style="">
+						{{ range $tu := (index $.TaskUpdates $su.Name) -}}
+						<div class="destination" id="{{ $tu.DOMID }}">
+							<div class="Name">{{ $tu.DestName }}</div>
+							<div class="NRows">{{ $tu.NRows }}</div>
+							<div class="Latency">{{ $tu.Latency }}</div>
+							<div class="Hash"></div>
+							<div class="Num"></div>
+							<div class="Progress"></div>
+						</div>
+						{{ end -}}
 					</div>
 				</div>
-				{{ end -}}
-			{{ end -}}
-		</div>
-		<div class="backfill">
-			{{ if .ShowBackfill -}}
-			<h2>Backfill Tasks</h2>
-			<div class="backfill-tasks">
-				{{ range $sc := .Sources -}}
-				{{ with $tu := (index $.TaskUpdates (printf "%s-backfill" $sc.Name)) -}}
-				<div class="task" id="{{ $tu.DOMID }}">
-					<div class="source">
-						<div class="Name">{{ $sc.Name }}</div>
-						<div class="NRows">{{ $tu.NRows }}</div>
-						<div class="Latency">{{ $tu.Latency }}</div>
-						<div class="Hash">{{(printf "0x%x" $tu.Hash)}}</div>
-						<div class="Num addComma">{{ $tu.Num }}</div>
-						<div class="Progress">-</div>
-					</div>
-					<div class="destinations" style="display:none;">
-					</div>
-				</div>
-				{{ end -}}
-				{{ end -}}
-			</div>
 			{{ end -}}
 		</div>
 	</body>
@@ -219,11 +204,9 @@
 					update(tu.DOMID, "Hash", tu.Hash);
 					update(tu.DOMID, "Latency", tu.Latency);
 					update(tu.DOMID, "NRows", tu.NRows);
-					update(tu.DOMID, "Progress", progress(tu.Num, tu.Stop));
 				} else {
 					update(tu.DOMID, "Latency", tu.Latency);
 					update(tu.DOMID, "NRows", tu.NRows);
-					update(tu.DOMID, "Progress", progress(tu.Num, tu.Stop));
 				}
 			};
 		});

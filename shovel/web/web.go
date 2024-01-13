@@ -53,10 +53,9 @@ var htmlpages = map[string]string{
 }
 
 type Handler struct {
-	local bool
-	pgp   *pgxpool.Pool
-	mgr   *shovel.Manager
-	conf  *config.Root
+	pgp  *pgxpool.Pool
+	mgr  *shovel.Manager
+	conf *config.Root
 
 	clientsMutex sync.Mutex
 	clients      map[string]chan []byte
@@ -117,7 +116,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 	switch r.Method {
 	case "GET":
-		tmpl, err := h.template("login")
+		tmpl, err := h.template(isLoopback(r), "login")
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -237,8 +236,8 @@ func (h *Handler) PushUpdates() error {
 	}
 }
 
-func (h *Handler) template(name string) (*template.Template, error) {
-	if h.local {
+func (h *Handler) template(local bool, name string) (*template.Template, error) {
+	if local {
 		b, err := os.ReadFile(fmt.Sprintf("./shovel/web/%s.html", name))
 		if err != nil {
 			return nil, fmt.Errorf("reading %s: %w", name, err)
@@ -320,7 +319,7 @@ func (h *Handler) AddIntegration(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	tmpl, err := h.template("add-integration")
+	tmpl, err := h.template(isLoopback(r), "add-integration")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -333,32 +332,34 @@ func (h *Handler) AddIntegration(w http.ResponseWriter, r *http.Request) {
 }
 
 type IndexView struct {
-	TaskUpdates  map[string]shovel.TaskUpdate
-	Sources      []config.Source
-	ShowBackfill bool
+	SourceUpdates []shovel.SrcUpdate
+	TaskUpdates   map[string][]shovel.TaskUpdate
 }
 
 func (h *Handler) Index(w http.ResponseWriter, r *http.Request) {
 	var (
 		ctx  = r.Context()
 		view = IndexView{}
+		err  error
 	)
+	view.SourceUpdates, err = shovel.SourceUpdates(ctx, h.pgp)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 	tus, err := shovel.TaskUpdates(ctx, h.pgp)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	view.TaskUpdates = make(map[string]shovel.TaskUpdate)
+	view.TaskUpdates = make(map[string][]shovel.TaskUpdate)
 	for _, tu := range tus {
-		view.TaskUpdates[tu.DOMID] = tu
+		view.TaskUpdates[tu.SrcName] = append(
+			view.TaskUpdates[tu.SrcName],
+			tu,
+		)
 	}
-
-	view.Sources, err = h.conf.AllSources(ctx, h.pgp)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	t, err := h.template("index")
+	t, err := h.template(isLoopback(r), "index")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -404,7 +405,7 @@ func (h *Handler) Updates(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) AddSource(w http.ResponseWriter, r *http.Request) {
-	t, err := h.template("add-source")
+	t, err := h.template(isLoopback(r), "add-source")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
