@@ -458,7 +458,15 @@ func (c *Client) logs(filter *glf.Filter, bm blockmap, tm txmap, blocks []eth.Bl
 		}
 		if tx, ok := tm[k]; ok {
 			for i := range logs {
-				tx.Logs = append(tx.Logs, *logs[i].Log)
+				var found bool
+				for j := range tx.Logs {
+					if tx.Logs[j].Idx == logs[i].Log.Idx {
+						found = true
+					}
+				}
+				if !found {
+					tx.Logs = append(tx.Logs, *logs[i].Log)
+				}
 			}
 			continue
 		}

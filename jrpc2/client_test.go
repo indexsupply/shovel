@@ -62,7 +62,31 @@ func TestGet(t *testing.T) {
 	diff.Test(t, t.Fatalf, blocks[2].Num(), uint64(12))
 	diff.Test(t, t.Fatalf, blocks[3].Num(), uint64(13))
 	diff.Test(t, t.Fatalf, blocks[4].Num(), uint64(14))
+}
 
+func TestGet_Cached(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		diff.Test(t, t.Fatalf, nil, err)
+		switch {
+		case strings.Contains(string(body), "eth_getBlockByNumber"):
+			_, err := w.Write([]byte(block18000000JSON))
+			diff.Test(t, t.Fatalf, nil, err)
+		case strings.Contains(string(body), "eth_getLogs"):
+			_, err := w.Write([]byte(logs18000000JSON))
+			diff.Test(t, t.Fatalf, nil, err)
+		}
+	}))
+	defer ts.Close()
+
+	c := New(ts.URL)
+	blocks, err := c.Get(&glf.Filter{UseBlocks: true, UseLogs: true}, 18000000, 1)
+	diff.Test(t, t.Errorf, nil, err)
+	diff.Test(t, t.Errorf, len(blocks[0].Txs[0].Logs), 1)
+
+	blocks, err = c.Get(&glf.Filter{UseBlocks: true, UseLogs: true}, 18000000, 1)
+	diff.Test(t, t.Errorf, nil, err)
+	diff.Test(t, t.Errorf, len(blocks[0].Txs[0].Logs), 1)
 }
 
 func TestNoLogs(t *testing.T) {
