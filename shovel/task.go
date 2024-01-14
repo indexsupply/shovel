@@ -294,29 +294,21 @@ var (
 // If pg contains an invalid latest block (ie reorg) then [ErrReorg]
 // is returned and the caller may rollback the transaction resulting
 // in no side-effects.
-func (task *Task) Converge(notx bool) error {
-	var (
-		pg       wpg.Conn = task.pgp
-		commit            = func() error { return nil }
-		rollback          = func() error { return nil }
-	)
-	if !notx {
-		pgTx, err := task.pgp.Begin(task.ctx)
-		if err != nil {
-			return err
-		}
-		commit = func() error { return pgTx.Commit(task.ctx) }
-		rollback = func() error { return pgTx.Rollback(task.ctx) }
-		defer rollback()
-		pg = wpg.NewTxLocker(pgTx)
-		const lockq = `select pg_advisory_xact_lock($1)`
-		_, err = pg.Exec(task.ctx, lockq, task.lockid)
-		if err != nil {
-			return fmt.Errorf("task lock %d: %w", task.srcChainID, err)
-		}
+func (task *Task) Converge() error {
+	pgtx, err := task.pgp.Begin(task.ctx)
+	if err != nil {
+		return fmt.Errorf("starting converge tx: %w", err)
 	}
-	for reorgs := 0; reorgs <= 10; {
-		localNum, localHash, err := task.latest(pg)
+	defer pgtx.Rollback(task.ctx)
+
+	const lockq = `select pg_advisory_xact_lock($1)`
+	_, err = pgtx.Exec(task.ctx, lockq, task.lockid)
+	if err != nil {
+		return fmt.Errorf("task lock %d: %w", task.srcChainID, err)
+	}
+
+	for reorgs := 0; reorgs <= 10; reorgs++ {
+		localNum, localHash, err := task.latest(pgtx)
 		if err != nil {
 			return fmt.Errorf("getting latest from task: %w", err)
 		}
@@ -344,23 +336,23 @@ func (task *Task) Converge(notx bool) error {
 		if delta == 0 {
 			return ErrNothingNew
 		}
-		switch err := task.loadinsert(pg, localHash, localNum+1, delta); {
+		switch err := task.loadinsert(wpg.NewTxLocker(pgtx), localHash, localNum+1, delta); {
 		case errors.Is(err, ErrReorg):
-			reorgs++
 			slog.ErrorContext(task.ctx, "reorg",
 				"n", localNum,
 				"h", fmt.Sprintf("%.4x", localHash),
 			)
-			if err := task.Delete(pg, localNum); err != nil {
+			if err := task.Delete(pgtx, localNum); err != nil {
 				return fmt.Errorf("deleting during reorg: %w", err)
 			}
 			continue
 		case err != nil:
-			return fmt.Errorf("loading blocks: %w", err)
+			return fmt.Errorf("loading blocks start=%d lim=%d: %w", localNum+1, delta, err)
+		default:
+			return pgtx.Commit(task.ctx)
 		}
-		return commit()
 	}
-	return errors.Join(ErrReorg, rollback())
+	return ErrReorg
 }
 
 type hashcheck struct {
@@ -390,11 +382,11 @@ func (t *Task) loadinsert(pg wpg.Conn, localHash []byte, start, limit uint64) er
 			if err != nil {
 				return fmt.Errorf("loading blocks: %w", err)
 			}
-			n, err := t.dests[i].Insert(t.ctx, pg, blocks)
+			nr, err := t.dests[i].Insert(t.ctx, pg, blocks)
 			if err != nil {
 				return fmt.Errorf("inserting blocks: %w", err)
 			}
-			atomic.AddInt64(&nrows, n)
+			atomic.AddInt64(&nrows, nr)
 
 			if b := blocks[0]; first.num == 0 || first.num > b.Num() {
 				first.num = b.Num()
@@ -612,7 +604,7 @@ func (tm *Manager) runTask(t *Task) {
 			slog.Info("restart-task", "chain", t.srcChainID)
 			return
 		default:
-			switch err := t.Converge(false); {
+			switch err := t.Converge(); {
 			case errors.Is(err, ErrDone):
 				slog.InfoContext(t.ctx, "done")
 				return

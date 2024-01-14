@@ -190,7 +190,7 @@ func TestConverge_EmptyDestination(t *testing.T) {
 	tg.add(1, hash(1), hash(0))
 	dest.add(0, hash(0), hash(0))
 
-	diff.Test(t, t.Fatalf, task.Converge(true), nil)
+	diff.Test(t, t.Fatalf, task.Converge(), nil)
 	diff.Test(t, t.Errorf, dest.blocks(), tg.blocks)
 }
 
@@ -218,8 +218,8 @@ func TestConverge_Reorg(t *testing.T) {
 	diff.Test(t, t.Fatalf, nil, task.update(pg, hash(0), 0, 0, 0, 0))
 	diff.Test(t, t.Fatalf, nil, task.update(pg, hash(1), 1, 0, 0, 0))
 
-	diff.Test(t, t.Fatalf, task.Converge(false), nil)
-	diff.Test(t, t.Fatalf, task.Converge(false), nil)
+	diff.Test(t, t.Fatalf, task.Converge(), nil)
+	diff.Test(t, t.Fatalf, task.Converge(), nil)
 	diff.Test(t, t.Errorf, dest.blocks(), tg.blocks)
 }
 
@@ -251,7 +251,7 @@ func TestConverge_DeltaBatchSize(t *testing.T) {
 		tg.add(i, hash(byte(i)), hash(byte(i-1)))
 	}
 
-	diff.Test(t, t.Errorf, nil, task.Converge(false))
+	diff.Test(t, t.Errorf, nil, task.Converge())
 	diff.Test(t, t.Errorf, dest.blocks(), tg.blocks[1:batchSize])
 }
 
@@ -285,11 +285,11 @@ func TestConverge_MultipleTasks(t *testing.T) {
 	tg.add(1, hash(1), hash(0))
 	tg.add(2, hash(2), hash(1))
 
-	diff.Test(t, t.Errorf, task1.Converge(true), nil)
+	diff.Test(t, t.Errorf, task1.Converge(), nil)
 	diff.Test(t, t.Errorf, dest1.blocks(), tg.blocks[1:])
 
 	diff.Test(t, t.Errorf, len(dest2.blocks()), 0)
-	diff.Test(t, t.Errorf, task2.Converge(true), nil)
+	diff.Test(t, t.Errorf, task2.Converge(), nil)
 	diff.Test(t, t.Errorf, dest2.blocks(), tg.blocks[1:])
 }
 
@@ -311,7 +311,7 @@ func TestConverge_LocalAhead(t *testing.T) {
 	diff.Test(t, t.Fatalf, nil, task.update(pg, hash(0), 0, 0, 0, 0))
 	diff.Test(t, t.Fatalf, nil, task.update(pg, hash(1), 1, 0, 0, 0))
 	diff.Test(t, t.Fatalf, nil, task.update(pg, hash(2), 2, 0, 0, 0))
-	diff.Test(t, t.Errorf, task.Converge(true), ErrAhead)
+	diff.Test(t, t.Errorf, task.Converge(), ErrAhead)
 }
 
 func TestConverge_Done(t *testing.T) {
@@ -333,9 +333,9 @@ func TestConverge_Done(t *testing.T) {
 	tg.add(1, hash(1), hash(0))
 	tg.add(2, hash(2), hash(1))
 
-	diff.Test(t, t.Errorf, nil, task.Converge(true))
-	diff.Test(t, t.Errorf, nil, task.Converge(true))
-	diff.Test(t, t.Errorf, ErrDone, task.Converge(true))
+	diff.Test(t, t.Errorf, nil, task.Converge())
+	diff.Test(t, t.Errorf, nil, task.Converge())
+	diff.Test(t, t.Errorf, ErrDone, task.Converge())
 }
 
 func TestPruneTask(t *testing.T) {

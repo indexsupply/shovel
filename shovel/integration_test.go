@@ -36,7 +36,7 @@ func process(tb testing.TB, pg *pgxpool.Pool, conf config.Root, n uint64) *Task 
 		WithRange(n, n+1),
 	)
 	check(tb, err)
-	check(tb, task.Converge(true))
+	check(tb, task.Converge())
 	return task
 }
 
