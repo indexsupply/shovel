@@ -37,7 +37,7 @@ type Source interface {
 
 type Destination interface {
 	Name() string
-	Insert(context.Context, wpg.Conn, []eth.Block) (int64, error)
+	Insert(context.Context, *sync.Mutex, wpg.Conn, []eth.Block) (int64, error)
 	Delete(context.Context, wpg.Conn, uint64) error
 	Events(context.Context) [][]byte
 	Filter() glf.Filter
@@ -242,7 +242,7 @@ func (t *Task) latest(pg wpg.Conn) (uint64, []byte, error) {
 		select num, hash
 		from shovel.task_updates
 		where src_name = $1
-		and ig_name = $2
+		and ig_name = ANY($2)
 		order by num desc
 		limit 1
 	`
@@ -336,7 +336,7 @@ func (task *Task) Converge() error {
 		if delta == 0 {
 			return ErrNothingNew
 		}
-		switch err := task.loadinsert(wpg.NewTxLocker(pgtx), localHash, localNum+1, delta); {
+		switch err := task.loadinsert(pgtx, localHash, localNum+1, delta); {
 		case errors.Is(err, ErrReorg):
 			slog.ErrorContext(task.ctx, "reorg",
 				"n", localNum,
@@ -365,6 +365,7 @@ func (t *Task) loadinsert(pg wpg.Conn, localHash []byte, start, limit uint64) er
 	var (
 		t0    = time.Now()
 		eg    errgroup.Group
+		pgmut sync.Mutex
 		nrows int64
 		part  = t.batchSize / t.concurrency
 
@@ -382,7 +383,7 @@ func (t *Task) loadinsert(pg wpg.Conn, localHash []byte, start, limit uint64) er
 			if err != nil {
 				return fmt.Errorf("loading blocks: %w", err)
 			}
-			nr, err := t.dests[i].Insert(t.ctx, pg, blocks)
+			nr, err := t.dests[i].Insert(t.ctx, &pgmut, pg, blocks)
 			if err != nil {
 				return fmt.Errorf("inserting blocks: %w", err)
 			}

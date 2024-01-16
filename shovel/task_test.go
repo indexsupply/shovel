@@ -59,7 +59,7 @@ func (dest *testDestination) blocks() []eth.Block {
 	return blks
 }
 
-func (dest *testDestination) Insert(_ context.Context, _ wpg.Conn, blocks []eth.Block) (int64, error) {
+func (dest *testDestination) Insert(_ context.Context, _ *sync.Mutex, _ wpg.Conn, blocks []eth.Block) (int64, error) {
 	dest.Lock()
 	defer dest.Unlock()
 	for _, b := range blocks {
@@ -69,7 +69,7 @@ func (dest *testDestination) Insert(_ context.Context, _ wpg.Conn, blocks []eth.
 }
 
 func (dest *testDestination) add(n uint64, hash, parent []byte) {
-	dest.Insert(context.Background(), nil, []eth.Block{
+	dest.Insert(context.Background(), nil, nil, []eth.Block{
 		eth.Block{
 			Header: eth.Header{
 				Number: eth.Uint64(n),
