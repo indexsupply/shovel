@@ -15,7 +15,7 @@ func TestNeeds(t *testing.T) {
 		logs     bool
 	}{
 		{
-			fields:   []string{"tx_status", "tx_input", "log_idx"},
+			fields:   []string{"tx_status", "tx_input"},
 			blocks:   true,
 			receipts: true,
 		},
@@ -29,6 +29,18 @@ func TestNeeds(t *testing.T) {
 			blocks: true,
 		},
 		{
+			fields: []string{"tx_hash"},
+			blocks: true,
+		},
+		{
+			fields: []string{"tx_hash", "tx_to"},
+			blocks: true,
+		},
+		{
+			fields: []string{"tx_hash", "block_time"},
+			blocks: true,
+		},
+		{
 			fields: []string{"log_idx"},
 			logs:   true,
 		},
@@ -38,8 +50,7 @@ func TestNeeds(t *testing.T) {
 		},
 	}
 	for _, tc := range cases {
-		f := Filter{}
-		f.Needs(tc.fields)
+		f := New(tc.fields, nil, nil)
 		diff.Test(t, t.Errorf, f.UseHeaders, tc.headers)
 		diff.Test(t, t.Errorf, f.UseBlocks, tc.blocks)
 		diff.Test(t, t.Errorf, f.UseReceipts, tc.receipts)

@@ -1,8 +1,6 @@
 // eth_getLogs filter
 package glf
 
-import "slices"
-
 type Filter struct {
 	needs       []string
 	UseHeaders  bool
@@ -16,7 +14,21 @@ type Filter struct {
 
 func New(needs, addresses []string, topics [][]string) *Filter {
 	f := &Filter{}
-	f.Needs(needs)
+	if any(needs, difference(receipt, block, log)) {
+		f.UseReceipts = true
+		needs = difference(needs, receipt)
+	}
+	if any(needs, difference(block, header)) {
+		f.UseBlocks = true
+		needs = difference(needs, block)
+	}
+	if any(needs, header) {
+		f.UseHeaders = true
+		needs = difference(needs, header)
+	}
+	if any(needs, log) {
+		f.UseLogs = true
+	}
 	f.addresses = append([]string(nil), addresses...)
 	f.topics = append([][]string(nil), topics...)
 	return f
@@ -24,15 +36,6 @@ func New(needs, addresses []string, topics [][]string) *Filter {
 
 func (f *Filter) Addresses() []string { return f.addresses }
 func (f *Filter) Topics() [][]string  { return f.topics }
-func (f *Filter) Empty() bool         { return len(f.needs) == 0 }
-
-func (f *Filter) Needs(needs []string) {
-	f.needs = unique(needs)
-	f.UseHeaders = any(f.needs, distinct(header, block, receipt, log))
-	f.UseBlocks = any(f.needs, distinct(block, header, receipt, log))
-	f.UseReceipts = any(f.needs, distinct(receipt, header, block, log))
-	f.UseLogs = !f.UseReceipts && any(f.needs, distinct(log, block, header))
-}
 
 func any(a, b []string) bool {
 	for i := range a {
@@ -45,24 +48,8 @@ func any(a, b []string) bool {
 	return false
 }
 
-// returns unique, sorted elements in all of x
-func unique(x ...[]string) []string {
-	var u = map[string]struct{}{}
-	for i := range x {
-		for j := range x[i] {
-			u[x[i][j]] = struct{}{}
-		}
-	}
-	var res []string
-	for k := range u {
-		res = append(res, k)
-	}
-	slices.Sort(res)
-	return res
-}
-
 // returns the strings in ours that aren't in others
-func distinct(ours []string, others ...[]string) []string {
+func difference(ours []string, others ...[]string) []string {
 	var uniqueOthers = map[string]struct{}{}
 	for i := range others {
 		for j := range others[i] {
@@ -89,6 +76,7 @@ var (
 	block = []string{
 		"block_hash",
 		"block_num",
+		"block_time",
 		"tx_hash",
 		"tx_idx",
 		"tx_nonce",
