@@ -251,7 +251,7 @@ func (t *Task) latest(pg wpg.Conn) (uint64, []byte, error) {
 		t.ctx,
 		q,
 		t.srcName,
-		t.destConfig.Name,
+		[]string{t.destConfig.Name},
 	).Scan(&localNum, &localHash)
 	switch {
 	case errors.Is(err, pgx.ErrNoRows):
