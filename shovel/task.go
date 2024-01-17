@@ -37,7 +37,7 @@ type Source interface {
 
 type Destination interface {
 	Name() string
-	Insert(context.Context, wpg.Conn, []eth.Block) (int64, error)
+	Insert(context.Context, *sync.Mutex, wpg.Conn, []eth.Block) (int64, error)
 	Delete(context.Context, wpg.Conn, uint64) error
 	Events(context.Context) [][]byte
 	Filter() glf.Filter
@@ -237,6 +237,38 @@ func (t *Task) Delete(pg wpg.Conn, n uint64) error {
 	return nil
 }
 
+func (t *Task) latestDependency(pg wpg.Conn) (uint64, []byte, error) {
+	const q = `
+		with latest as (
+			select distinct on (ig_name)
+			ig_name, num, hash
+			from shovel.task_updates
+			where src_name = $1
+			and ig_name = ANY($2)
+			order by ig_name, num desc
+		)
+		select num, hash
+		from latest
+		order by num asc
+		limit 1;
+	`
+	num, hash := uint64(0), []byte{}
+	err := pg.QueryRow(
+		t.ctx,
+		q,
+		t.srcName,
+		t.destConfig.Dependencies,
+	).Scan(&num, &hash)
+	switch {
+	case errors.Is(err, pgx.ErrNoRows):
+		return 0, nil, nil
+	case err != nil:
+		return 0, nil, err
+	default:
+		return num, hash, nil
+	}
+}
+
 func (t *Task) latest(pg wpg.Conn) (uint64, []byte, error) {
 	const q = `
 		select num, hash
@@ -315,28 +347,44 @@ func (task *Task) Converge() error {
 		if task.stop > 0 && localNum >= task.stop {
 			return ErrDone
 		}
-		gethNum, gethHash, err := task.src.Latest()
+		gethNum, _, err := task.src.Latest()
 		if err != nil {
 			return fmt.Errorf("getting latest from eth: %w", err)
 		}
-		if task.stop > 0 && gethNum > task.stop {
-			gethNum = task.stop
+		var targetNum uint64
+		switch {
+		case len(task.destConfig.Dependencies) > 0:
+			depNum, _, err := task.latestDependency(pgtx)
+			if err != nil {
+				return fmt.Errorf("getting latest from dependencies: %w", err)
+			}
+			switch {
+			case depNum == 0:
+				return ErrNothingNew
+			case depNum < gethNum:
+				targetNum = depNum
+			default:
+				targetNum = gethNum
+			}
+		default:
+			targetNum = gethNum
 		}
-		if localNum > gethNum {
-			slog.ErrorContext(task.ctx, "ahead",
-				"local", fmt.Sprintf("%d %.4x", localNum, localHash),
-				"remote", fmt.Sprintf("%d %.4x", gethNum, gethHash),
-			)
+
+		if task.stop > 0 && targetNum > task.stop {
+			targetNum = task.stop
+		}
+		if localNum > targetNum {
+			slog.ErrorContext(task.ctx, "ahead", "local", localNum, "remote", targetNum)
 			return ErrAhead
 		}
-		if localNum == gethNum {
+		if localNum == targetNum {
 			return ErrNothingNew
 		}
-		delta := min(gethNum-localNum, uint64(task.batchSize))
+		delta := min(targetNum-localNum, uint64(task.batchSize))
 		if delta == 0 {
 			return ErrNothingNew
 		}
-		switch err := task.loadinsert(wpg.NewTxLocker(pgtx), localHash, localNum+1, delta); {
+		switch err := task.loadinsert(pgtx, localHash, localNum+1, delta); {
 		case errors.Is(err, ErrReorg):
 			slog.ErrorContext(task.ctx, "reorg",
 				"n", localNum,
@@ -365,6 +413,7 @@ func (t *Task) loadinsert(pg wpg.Conn, localHash []byte, start, limit uint64) er
 	var (
 		t0    = time.Now()
 		eg    errgroup.Group
+		pgmut sync.Mutex
 		nrows int64
 		part  = t.batchSize / t.concurrency
 
@@ -382,7 +431,7 @@ func (t *Task) loadinsert(pg wpg.Conn, localHash []byte, start, limit uint64) er
 			if err != nil {
 				return fmt.Errorf("loading blocks: %w", err)
 			}
-			nr, err := t.dests[i].Insert(t.ctx, pg, blocks)
+			nr, err := t.dests[i].Insert(t.ctx, &pgmut, pg, blocks)
 			if err != nil {
 				return fmt.Errorf("inserting blocks: %w", err)
 			}

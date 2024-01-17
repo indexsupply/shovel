@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/indexsupply/x/bint"
 	"github.com/indexsupply/x/eth"
@@ -368,27 +369,57 @@ type Input struct {
 	Filter
 }
 
+type Ref struct {
+	Integration string `json:"integration"`
+	Table       string `json:"table"`
+	Column      string `json:"column"`
+}
+
 type Filter struct {
 	Op  string   `json:"filter_op"`
 	Arg []string `json:"filter_arg"`
+	Ref Ref      `json:"filter_ref"`
 }
 
-func (f Filter) Accept(d []byte) bool {
+func (f Filter) Accept(ctx context.Context, pgmut *sync.Mutex, pg wpg.Conn, d any) (bool, error) {
+	val, ok := d.([]byte)
+	if !ok {
+		return true, nil
+	}
 	switch {
 	case strings.HasSuffix(f.Op, "contains"):
 		var res bool
-		for i := range f.Arg {
-			if bytes.Contains(d, eth.DecodeHex(f.Arg[i])) {
-				res = true
-				break
+		switch {
+		case len(f.Ref.Table) > 0:
+			q := fmt.Sprintf(
+				`select true from %s where %s = $1`,
+				f.Ref.Table,
+				f.Ref.Column,
+			)
+			pgmut.Lock()
+			defer pgmut.Unlock()
+			err := pg.QueryRow(ctx, q, val).Scan(&res)
+			switch {
+			case errors.Is(err, pgx.ErrNoRows):
+				res = false
+			case err != nil:
+				const tag = "filter using reference (%s %s): %w"
+				return false, fmt.Errorf(tag, f.Ref.Table, f.Ref.Column, err)
+			}
+		default:
+			for i := range f.Arg {
+				if bytes.Contains(val, eth.DecodeHex(f.Arg[i])) {
+					res = true
+					break
+				}
 			}
 		}
 		if strings.HasPrefix(f.Op, "!") {
-			return !res
+			return !res, nil
 		}
-		return res
+		return res, nil
 	default:
-		return true
+		return true, nil
 	}
 }
 
@@ -649,7 +680,7 @@ func (ig Integration) Delete(ctx context.Context, pg wpg.Conn, n uint64) error {
 	return err
 }
 
-func (ig Integration) Insert(ctx context.Context, pg wpg.Conn, blocks []eth.Block) (int64, error) {
+func (ig Integration) Insert(ctx context.Context, pgmut *sync.Mutex, pg wpg.Conn, blocks []eth.Block) (int64, error) {
 	var (
 		err  error
 		skip bool
@@ -660,7 +691,7 @@ func (ig Integration) Insert(ctx context.Context, pg wpg.Conn, blocks []eth.Bloc
 		lwc.b = &blocks[bidx]
 		for tidx := range blocks[bidx].Txs {
 			lwc.t = &lwc.b.Txs[tidx]
-			rows, skip, err = ig.processTx(rows, lwc)
+			rows, skip, err = ig.processTx(rows, lwc, pgmut, pg)
 			if err != nil {
 				return 0, fmt.Errorf("processing tx: %w", err)
 			}
@@ -669,13 +700,15 @@ func (ig Integration) Insert(ctx context.Context, pg wpg.Conn, blocks []eth.Bloc
 			}
 			for lidx := range blocks[bidx].Txs[tidx].Logs {
 				lwc.l = &lwc.t.Logs[lidx]
-				rows, err = ig.processLog(rows, lwc)
+				rows, err = ig.processLog(rows, lwc, pgmut, pg)
 				if err != nil {
 					return 0, fmt.Errorf("processing log: %w", err)
 				}
 			}
 		}
 	}
+	pgmut.Lock()
+	defer pgmut.Unlock()
 	return pg.CopyFrom(
 		ctx,
 		pgx.Identifier{ig.Table.Name},
@@ -735,7 +768,7 @@ func (lwc *logWithCtx) get(name string) any {
 	}
 }
 
-func (ig Integration) processTx(rows [][]any, lwc *logWithCtx) ([][]any, bool, error) {
+func (ig Integration) processTx(rows [][]any, lwc *logWithCtx, pgmut *sync.Mutex, pg wpg.Conn) ([][]any, bool, error) {
 	switch {
 	case ig.numSelected > 0:
 		return rows, false, nil
@@ -745,7 +778,11 @@ func (ig Integration) processTx(rows [][]any, lwc *logWithCtx) ([][]any, bool, e
 			switch {
 			case !def.BlockData.Empty():
 				d := lwc.get(def.BlockData.Name)
-				if b, ok := d.([]byte); ok && !def.BlockData.Accept(b) {
+				accept, err := def.BlockData.Accept(lwc.ctx, pgmut, pg, d)
+				if err != nil {
+					return nil, false, fmt.Errorf("checking filter: %w", err)
+				}
+				if !accept {
 					return rows, true, nil
 				}
 				row[i] = d
@@ -758,7 +795,7 @@ func (ig Integration) processTx(rows [][]any, lwc *logWithCtx) ([][]any, bool, e
 	return rows, true, nil
 }
 
-func (ig Integration) processLog(rows [][]any, lwc *logWithCtx) ([][]any, error) {
+func (ig Integration) processLog(rows [][]any, lwc *logWithCtx, pgmut *sync.Mutex, pg wpg.Conn) ([][]any, error) {
 	switch {
 	case len(lwc.l.Topics)-1 != ig.numIndexed:
 		return rows, nil
@@ -785,14 +822,22 @@ func (ig Integration) processLog(rows [][]any, lwc *logWithCtx) ([][]any, error)
 						d = i
 					default:
 						d = lwc.get(def.BlockData.Name)
-						if b, ok := d.([]byte); ok && !def.BlockData.Accept(b) {
+						accept, err := def.BlockData.Accept(lwc.ctx, pgmut, pg, d)
+						if err != nil {
+							return nil, fmt.Errorf("checking filter: %w", err)
+						}
+						if !accept {
 							return rows, nil
 						}
 					}
 					row[j] = d
 				default:
 					d := ig.resultCache.At(i)[actr]
-					if !def.Input.Accept(d) {
+					accept, err := def.Input.Accept(lwc.ctx, pgmut, pg, d)
+					if err != nil {
+						return nil, fmt.Errorf("checking filter: %w", err)
+					}
+					if !accept {
 						return rows, nil
 					}
 					row[j] = dbtype(def.Input.Type, d)
@@ -807,13 +852,21 @@ func (ig Integration) processLog(rows [][]any, lwc *logWithCtx) ([][]any, error)
 			switch {
 			case def.Input.Indexed:
 				d := dbtype(def.Input.Type, lwc.l.Topics[1+i])
-				if b, ok := d.([]byte); ok && !def.Input.Accept(b) {
+				accept, err := def.Input.Accept(lwc.ctx, pgmut, pg, d)
+				if err != nil {
+					return nil, fmt.Errorf("checking filter: %w", err)
+				}
+				if !accept {
 					return rows, nil
 				}
 				row[i] = d
 			case !def.BlockData.Empty():
 				d := lwc.get(def.BlockData.Name)
-				if b, ok := d.([]byte); ok && !def.BlockData.Accept(b) {
+				accept, err := def.BlockData.Accept(lwc.ctx, pgmut, pg, d)
+				if err != nil {
+					return nil, fmt.Errorf("checking filter: %w", err)
+				}
+				if !accept {
 					return rows, nil
 				}
 				row[i] = d
