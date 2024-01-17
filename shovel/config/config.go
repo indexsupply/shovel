@@ -114,7 +114,7 @@ func ValidateFilterRefs(conf *Root) error {
 		return fmt.Errorf("table %q column %q not found", table, col)
 	}
 
-	check := func(ref dig.Ref) (bool, error) {
+	check := func(ref *dig.Ref) (bool, error) {
 		switch {
 		case len(ref.Integration) > 0:
 			if err := igexists(ref.Integration); err != nil {
@@ -128,6 +128,7 @@ func ValidateFilterRefs(conf *Root) error {
 			if err := colexists(table, ref.Column); err != nil {
 				return false, fmt.Errorf("filter_ref depends on %q: %w", ref.Column, err)
 			}
+			ref.Table = table
 			return true, nil
 		case len(ref.Table) > 0 || len(ref.Column) > 0:
 			return false, fmt.Errorf("filter_ref requires integration field")
@@ -135,28 +136,28 @@ func ValidateFilterRefs(conf *Root) error {
 			return false, nil
 		}
 	}
-	for i, ig := range conf.Integrations {
-		for _, inp := range ig.Event.Inputs {
-			ok, err := check(inp.Filter.Ref)
+	for i := range conf.Integrations {
+		for j := range conf.Integrations[i].Event.Inputs {
+			ok, err := check(&conf.Integrations[i].Event.Inputs[j].Filter.Ref)
 			if err != nil {
 				return err
 			}
 			if ok {
 				conf.Integrations[i].Dependencies = append(
 					conf.Integrations[i].Dependencies,
-					inp.Filter.Ref.Integration,
+					conf.Integrations[i].Event.Inputs[j].Filter.Ref.Integration,
 				)
 			}
 		}
-		for _, bd := range ig.Block {
-			ok, err := check(bd.Filter.Ref)
+		for j := range conf.Integrations[i].Block {
+			ok, err := check(&conf.Integrations[i].Block[j].Filter.Ref)
 			if err != nil {
-				return fmt.Errorf("field %q: %w", bd.Name, err)
+				return fmt.Errorf("field %q: %w", conf.Integrations[i].Block[j].Name, err)
 			}
 			if ok {
 				conf.Integrations[i].Dependencies = append(
 					conf.Integrations[i].Dependencies,
-					bd.Filter.Ref.Integration,
+					conf.Integrations[i].Block[j].Filter.Ref.Integration,
 				)
 			}
 		}
