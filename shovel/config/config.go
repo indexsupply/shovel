@@ -272,6 +272,12 @@ func CheckUserInput(conf Root) error {
 			check("column name", c.Name)
 			check("column type", c.Type)
 		}
+		for _, inp := range ig.Event.Inputs {
+			check("referenced column name", inp.Filter.Ref.Column)
+		}
+		for _, bd := range ig.Block {
+			check("referenced column name", bd.Filter.Ref.Column)
+		}
 	}
 	for _, sc := range conf.Sources {
 		check("source name", sc.Name)
