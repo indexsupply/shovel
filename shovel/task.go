@@ -142,6 +142,7 @@ func NewTask(opts ...Option) (*Task, error) {
 		t.dests[i] = dest
 	}
 	t.filter = t.dests[0].Filter()
+	t.dependencies = append(t.destConfig.Dependencies, t.destConfig.Name)
 	t.lockid = wpg.LockHash(fmt.Sprintf(
 		"shovel-task-%s-%s",
 		t.srcName,
@@ -181,6 +182,8 @@ type Task struct {
 	dests       []Destination
 	destFactory func(config.Integration) (Destination, error)
 	destConfig  config.Integration
+
+	dependencies []string
 }
 
 func (t *Task) update(
@@ -251,7 +254,7 @@ func (t *Task) latest(pg wpg.Conn) (uint64, []byte, error) {
 		t.ctx,
 		q,
 		t.srcName,
-		[]string{t.destConfig.Name},
+		t.dependencies,
 	).Scan(&localNum, &localHash)
 	switch {
 	case errors.Is(err, pgx.ErrNoRows):

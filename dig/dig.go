@@ -370,8 +370,9 @@ type Input struct {
 }
 
 type Ref struct {
-	Table  string `json:"table"`
-	Column string `json:"column"`
+	Integration string `json:"integration"`
+	Table       string `json:"table"`
+	Column      string `json:"column"`
 }
 
 type Filter struct {

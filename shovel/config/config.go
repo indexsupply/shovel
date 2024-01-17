@@ -73,11 +73,92 @@ func ValidateFix(conf *Root) error {
 	if err := CheckUserInput(*conf); err != nil {
 		return fmt.Errorf("checking config for dangerous strings: %w", err)
 	}
+	if err := ValidateFilterRefs(conf); err != nil {
+		return fmt.Errorf("checking config for filter_refs: %w", err)
+	}
 	for i := range conf.Integrations {
 		conf.Integrations[i].AddRequiredFields()
 		AddUniqueIndex(&conf.Integrations[i].Table)
 		if err := ValidateColRefs(conf.Integrations[i]); err != nil {
 			return fmt.Errorf("checking config for references: %w", err)
+		}
+	}
+	return nil
+}
+
+func ValidateFilterRefs(conf *Root) error {
+	var igs = map[string]Integration{}
+	for _, ig := range conf.Integrations {
+		igs[ig.Name] = ig
+	}
+	igexists := func(key string) error {
+		if _, ok := igs[key]; ok {
+			return nil
+		}
+		return fmt.Errorf("%q not found", key)
+	}
+
+	var cols = map[string]map[string]bool{}
+	for _, ig := range conf.Integrations {
+		if _, ok := cols[ig.Table.Name]; !ok {
+			cols[ig.Table.Name] = map[string]bool{}
+		}
+		for _, col := range ig.Table.Columns {
+			cols[ig.Table.Name][col.Name] = true
+		}
+	}
+	colexists := func(table, col string) error {
+		if _, ok := cols[table][col]; ok {
+			return nil
+		}
+		return fmt.Errorf("table %q column %q not found", table, col)
+	}
+
+	check := func(ref dig.Ref) (bool, error) {
+		switch {
+		case len(ref.Integration) > 0:
+			if err := igexists(ref.Integration); err != nil {
+				const tag = "filter_ref depends on %q: %w"
+				return false, fmt.Errorf(tag, ref.Integration, err)
+			}
+			if len(ref.Column) == 0 {
+				return false, fmt.Errorf("missing filter_ref column")
+			}
+			var table = igs[ref.Integration].Table.Name
+			if err := colexists(table, ref.Column); err != nil {
+				return false, fmt.Errorf("filter_ref depends on %q: %w", ref.Column, err)
+			}
+			return true, nil
+		case len(ref.Table) > 0 || len(ref.Column) > 0:
+			return false, fmt.Errorf("filter_ref requires integration field")
+		default:
+			return false, nil
+		}
+	}
+	for i, ig := range conf.Integrations {
+		for _, inp := range ig.Event.Inputs {
+			ok, err := check(inp.Filter.Ref)
+			if err != nil {
+				return err
+			}
+			if ok {
+				conf.Integrations[i].Dependencies = append(
+					conf.Integrations[i].Dependencies,
+					inp.Filter.Ref.Integration,
+				)
+			}
+		}
+		for _, bd := range ig.Block {
+			ok, err := check(bd.Filter.Ref)
+			if err != nil {
+				return fmt.Errorf("field %q: %w", bd.Name, err)
+			}
+			if ok {
+				conf.Integrations[i].Dependencies = append(
+					conf.Integrations[i].Dependencies,
+					bd.Filter.Ref.Integration,
+				)
+			}
 		}
 	}
 	return nil
@@ -259,13 +340,14 @@ type Compiled struct {
 }
 
 type Integration struct {
-	Name     string          `json:"name"`
-	Enabled  bool            `json:"enabled"`
-	Sources  []Source        `json:"sources"`
-	Table    wpg.Table       `json:"table"`
-	Compiled Compiled        `json:"compiled"`
-	Block    []dig.BlockData `json:"block"`
-	Event    dig.Event       `json:"event"`
+	Name         string          `json:"name"`
+	Enabled      bool            `json:"enabled"`
+	Sources      []Source        `json:"sources"`
+	Table        wpg.Table       `json:"table"`
+	Compiled     Compiled        `json:"compiled"`
+	Block        []dig.BlockData `json:"block"`
+	Event        dig.Event       `json:"event"`
+	Dependencies []string
 }
 
 func (ig *Integration) AddRequiredFields() {
