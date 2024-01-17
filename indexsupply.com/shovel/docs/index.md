@@ -477,7 +477,11 @@ The filter is built from the following fields:
     - **integration** Must be the name of an integration. This reference is used to determine the table name used for the filter data.
     - **column** Must be the name of a column defined in the integration's table.
 
-### Examples
+**Filter References and Integration Dependencies**
+
+Using `filter_ref` creates a dependency between the integration being filtered and the referenced integration. Shovel ensures that the referenced integration runs before the dependent integration.
+
+### Filter Examples
 
 <details>
 <summary>Block filter</summary>
