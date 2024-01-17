@@ -380,6 +380,7 @@ Here is a config snippet outlining how to index block data
 - **column** The name of the corresponding column in the table definition.
 - **filter_op** See [filters](#filters) for available operations and usage.
 - **filter_arg** See [filters](#filters) for available operations and usage.
+- **filter_ref** See [filters](#filters) for available operations and usage.
 
 <details>
 <summary>Example: Index transactions that call a specific function</summary>
@@ -454,6 +455,7 @@ Here is a config snippet outlining how to index event data
   - **column** Setting this value indicates that you would like this value to be saved in the table. Therefore, the column value must reference a column defined in the integration's table. Its types must also be compatible.
   - **filter_op** See [filters](#filters) for available operations and usage.
   - **filter_arg** See [filters](#filters) for available operations and usage.
+  - **filter_ref** See [filters](#filters) for available operations and usage.
 
 The event object is a superset of [Solidity's ABI JSON spec](https://docs.soliditylang.org/en/v0.8.23/abi-spec.html#json). Shovel will read a few additional fields to determine how it will index an event. If an input defines a column, and that column name references a valid column in the integration's table configuration, then the input's value will be saved in the table. Omitting a column value indicates that the input's value should not be saved.
 
@@ -463,19 +465,135 @@ The event name, and input type names can be used to construct the hashed event s
 
 ## Filters
 
-Both block and event config objects expose a function for filtering block and event data. This gives the user the ability to reduce the amount of data that is being saved in the Postgres database.
+A filter provides a way to reduce the amount of data in your database. You can filter on the block level (eg `tx_input`, `log_addr`) or at the event level (custom event fields).
 
-In the case of a block object, you can add `filter_op` and `filter_arg` directly to the block object. In the case of an event object, the `filter_op` and `filter_arg` are located alongside an input object. See [block](#block) and [event](#event) sections for more details on their usage.
+The basic filter operation is to check if the incoming ethereum data contains (or doesn't contain) one or many byte arrays. You can specify the byte arrays either using a static, hex encoded json array (`filter_arg`) or you can reference annother integration's table as the source of data (`filter_ref`).
 
-In both cases, an item can be filtered using two fields: `filter_op` and `filter_arg`.
+The filter is built from the following fields:
 
-**filter_op**
+- **filter_op** Must be either `contains` or `!contains`
+- **filter_arg** Must be an array of hex encoded (0x prefixed) bytes. Not required if using `filter_ref`. Use `filter_arg` when you want to filter on a set of static data.
+- **filter_ref** Not required if using `filter_arg`. Use `filter_ref` if you want to filter based on dynamic data that has been created by other integrations. For example, this is useful for indexing events from factory created contracts.
+    - **integration** Must be the name of an integration. This reference is used to determine the table name used for the filter data.
+    - **column** Must be the name of a column defined in the integration's table.
 
-Current filter operations include: `contains` and `!contains`
+### Examples
 
-**contains** takes an item (implicitly) and an array of hex encoded bytes. The bytes may be prefixed with '0x'. It compares the item to see if the item is contained in at least one of the hex encoded byte arrays in the argument.
+<details>
+<summary>Block filter</summary>
 
-**!contains** is the inverse of **contains**
+```
+...
+"integrations": [
+    {
+        ...
+        "block": [
+            {
+                "name": "log_addr",
+                "column": "log_addr",
+                "filter_op": "contains",
+                "filter_arg": ["0xabc"]
+            }
+        ]
+    }
+]
+```
+</details>
+
+<details>
+<summary>Event filter</summary>
+
+```
+...
+"integrations": [
+    {
+        ...
+        "event": {
+            "name": "Transfer",
+            "type": "event",
+            "anonymous": false,
+            "inputs": [
+                {
+                    "indexed": true,
+                    "name": "from",
+                    "type": "address",
+                    "column": "f",
+                    "filter_op": "contains",
+                    "filter_arg": ["0x0000000000000000000000000000000000000000"]
+                },
+                {
+                    "indexed": true,
+                    "name": "to",
+                    "type": "address",
+                    "column": "t"
+                },
+                {
+                    "indexed": false,
+                    "name": "value",
+                    "type": "uint256",
+                    "column": "v"
+                }
+            ]
+        }
+    }
+]
+```
+</details>
+
+<details>
+<summary>Block filter using filter_ref</summary>
+
+```
+...
+"integrations": [
+    {
+        "name": "factory_contracts",
+        ...
+        "table": {
+            "name": "factory_contracts",
+            "columns": [
+                {"name": "log_addr", "type": "bytea"},
+                {"name": "addr", "type": "bytea"}
+            ]
+        },
+        ...
+    },
+    {
+        ...
+        "event": {
+            "name": "Transfer",
+            "type": "event",
+            "anonymous": false,
+            "inputs": [
+                {
+                    "indexed": true,
+                    "name": "from",
+                    "type": "address",
+                    "column": "f",
+                    "filter_op": "contains",
+                    "filter_ref": {
+                        "integration": "factory_contracts",
+                        "column": "addr"
+                    }
+                },
+                {
+                    "indexed": true,
+                    "name": "to",
+                    "type": "address",
+                    "column": "t"
+                },
+                {
+                    "indexed": false,
+                    "name": "value",
+                    "type": "uint256",
+                    "column": "v"
+                }
+            ]
+        }
+    }
+]
+```
+</details>
 
 <hr>
 
