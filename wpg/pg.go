@@ -47,6 +47,7 @@ type Table struct {
 
 	DisableUnique bool       `json:"disable_unique"`
 	Unique        [][]string `json:"unique"`
+	Index         [][]string `json:"index"`
 }
 
 func (t Table) DDL() []string {
@@ -82,6 +83,24 @@ func (t Table) DDL() []string {
 		}
 		res = append(res, createIndex)
 	}
+
+	for _, cols := range t.Index {
+		createIndex := fmt.Sprintf(
+			"create index if not exists shovel_%s on %s (",
+			strings.Join(cols, "_"),
+			t.Name,
+		)
+		for i, cname := range cols {
+			createIndex += cname
+			if i+1 == len(cols) {
+				createIndex += ")"
+				break
+			}
+			createIndex += ", "
+		}
+		res = append(res, createIndex)
+	}
+
 	return res
 }
 

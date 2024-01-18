@@ -86,10 +86,13 @@ func ValidateFix(conf *Root) error {
 	return nil
 }
 
+// Checks each integration for a filter_ref and ensures that the referenced
+// integration exists and has the specified column.
+// Also ensures that the referenced table has an index on the column.
 func ValidateFilterRefs(conf *Root) error {
-	var igs = map[string]Integration{}
-	for _, ig := range conf.Integrations {
-		igs[ig.Name] = ig
+	var igs = map[string]*Integration{}
+	for i := range conf.Integrations {
+		igs[conf.Integrations[i].Name] = &conf.Integrations[i]
 	}
 	igexists := func(key string) error {
 		if _, ok := igs[key]; ok {
@@ -142,24 +145,36 @@ func ValidateFilterRefs(conf *Root) error {
 			if err != nil {
 				return err
 			}
-			if ok {
-				conf.Integrations[i].Dependencies = append(
-					conf.Integrations[i].Dependencies,
-					conf.Integrations[i].Event.Inputs[j].Filter.Ref.Integration,
-				)
+			if !ok {
+				continue
 			}
+			var (
+				refName = conf.Integrations[i].Event.Inputs[j].Filter.Ref.Integration
+				refCol  = conf.Integrations[i].Event.Inputs[j].Filter.Ref.Column
+			)
+			conf.Integrations[i].Dependencies = append(
+				conf.Integrations[i].Dependencies,
+				refName,
+			)
+			igs[refName].Table.Index = append(igs[refName].Table.Index, []string{refCol})
 		}
 		for j := range conf.Integrations[i].Block {
 			ok, err := check(&conf.Integrations[i].Block[j].Filter.Ref)
 			if err != nil {
 				return fmt.Errorf("field %q: %w", conf.Integrations[i].Block[j].Name, err)
 			}
-			if ok {
-				conf.Integrations[i].Dependencies = append(
-					conf.Integrations[i].Dependencies,
-					conf.Integrations[i].Block[j].Filter.Ref.Integration,
-				)
+			if !ok {
+				continue
 			}
+			var (
+				refName = conf.Integrations[i].Block[j].Filter.Ref.Integration
+				refCol  = conf.Integrations[i].Block[j].Filter.Ref.Column
+			)
+			conf.Integrations[i].Dependencies = append(
+				conf.Integrations[i].Dependencies,
+				refName,
+			)
+			igs[refName].Table.Index = append(igs[refName].Table.Index, []string{refCol})
 		}
 	}
 	return nil
