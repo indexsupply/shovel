@@ -2,14 +2,17 @@
 package jrpc2
 
 import (
+	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 	"unicode"
 
 	"github.com/indexsupply/x/eth"
@@ -18,6 +21,8 @@ import (
 	"github.com/goccy/go-json"
 	"github.com/klauspost/compress/gzhttp"
 	"golang.org/x/sync/errgroup"
+	"nhooyr.io/websocket"
+	"nhooyr.io/websocket/wsjson"
 )
 
 func New(url string) *Client {
@@ -34,6 +39,11 @@ type Client struct {
 	d   bool
 	hc  *http.Client
 	url string
+
+	wserr error
+	once  sync.Once
+	lnum  uint64
+	lhash []byte
 
 	bcache cache
 	hcache cache
@@ -109,7 +119,65 @@ func (e Error) Error() string {
 	return fmt.Sprintf("code=%d msg=%s", e.Code, e.Message)
 }
 
-func (c *Client) Latest() (uint64, []byte, error) {
+func (c *Client) listen(ctx context.Context) {
+	wsc, _, err := websocket.Dial(ctx, c.url, nil)
+	if err != nil {
+		c.wserr = fmt.Errorf("ws dial %q: %w", c.url, err)
+		return
+	}
+	err = wsjson.Write(ctx, wsc, request{
+		ID:      "1",
+		Version: "2.0",
+		Method:  "eth_subscribe",
+		Params:  []any{"newHeads"},
+	})
+	if err != nil {
+		c.wserr = fmt.Errorf("ws write %q: %w", c.url, err)
+		return
+	}
+	res := struct {
+		Error  `json:"error"`
+		Params struct {
+			Result struct {
+				Number eth.Uint64 `json:"number"`
+				Hash   eth.Bytes  `json:"hash"`
+			} `json:"result"`
+		} `json:"params"`
+	}{}
+	for {
+		if err := wsjson.Read(ctx, wsc, &res); err != nil {
+			c.wserr = fmt.Errorf("ws read %q: %w", c.url, err)
+			return
+		}
+		c.lnum = uint64(res.Params.Result.Number)
+		if len(c.lhash) != 32 {
+			c.lhash = make([]byte, 32)
+		}
+		copy(c.lhash, res.Params.Result.Hash)
+		slog.InfoContext(ctx, "newHeads", "n", c.lnum, "h", fmt.Sprintf("%.4x", c.lhash))
+	}
+}
+
+func (c *Client) Latest(n uint64) (uint64, []byte, error) {
+	c.once.Do(func() {
+		go c.listen(context.Background())
+	})
+	if err := c.wserr; err != nil {
+		c.wserr = nil
+		c.once = sync.Once{}
+		return 0, nil, err
+	}
+	if c.lnum > 0 {
+		for {
+			if n > 0 && n >= c.lnum {
+				time.Sleep(time.Millisecond)
+				continue
+			}
+			h := make([]byte, 32)
+			copy(h, c.lhash)
+			return c.lnum, h, nil
+		}
+	}
 	hresp := headerResp{}
 	err := c.do(&hresp, request{
 		ID:      "1",

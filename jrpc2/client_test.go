@@ -1,6 +1,7 @@
 package jrpc2
 
 import (
+	"context"
 	_ "embed"
 	"fmt"
 	"io"
@@ -8,6 +9,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/indexsupply/x/eth"
 	"github.com/indexsupply/x/shovel/glf"
@@ -25,6 +27,18 @@ var (
 	//go:embed testdata/logs-1000001.json
 	logs1000001JSON string
 )
+
+func TestWS(t *testing.T) {
+	c := New("https://dark-chaotic-spring.base-mainnet.quiknode.pro/5e640d33d861636500b3483130410779b3c9a9a6/")
+	go func() {
+		t.Error(c.Listen(context.Background()))
+	}()
+	for {
+		time.Sleep(time.Second)
+		n, h, _ := c.Latest()
+		fmt.Printf("%d %.4x\n", n, h)
+	}
+}
 
 func TestError(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
