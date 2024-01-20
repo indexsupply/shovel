@@ -141,9 +141,9 @@ func (c *Client) listen(ctx context.Context) {
 	ctx, cancel := context.WithTimeout(ctx, time.Minute)
 	defer cancel()
 
-	wsc, _, err := websocket.Dial(ctx, c.url, nil)
+	wsc, _, err := websocket.Dial(ctx, c.wsurl, nil)
 	if err != nil {
-		c.wserr = fmt.Errorf("ws dial %q: %w", c.url, err)
+		c.wserr = fmt.Errorf("ws dial %q: %w", c.wsurl, err)
 		return
 	}
 	err = wsjson.Write(ctx, wsc, request{
@@ -153,7 +153,7 @@ func (c *Client) listen(ctx context.Context) {
 		Params:  []any{"newHeads"},
 	})
 	if err != nil {
-		c.wserr = fmt.Errorf("ws write %q: %w", c.url, err)
+		c.wserr = fmt.Errorf("ws write %q: %w", c.wsurl, err)
 		return
 	}
 	res := struct {
@@ -164,7 +164,7 @@ func (c *Client) listen(ctx context.Context) {
 	}{}
 	for {
 		if err := wsjson.Read(ctx, wsc, &res); err != nil {
-			c.wserr = fmt.Errorf("ws read %q: %w", c.url, err)
+			c.wserr = fmt.Errorf("ws read %q: %w", c.wsurl, err)
 			return
 		}
 		var (
