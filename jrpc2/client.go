@@ -35,6 +35,7 @@ type Client struct {
 	hc  *http.Client
 	url string
 
+	lcache NumHash
 	bcache cache
 	hcache cache
 }
@@ -109,7 +110,31 @@ func (e Error) Error() string {
 	return fmt.Sprintf("code=%d msg=%s", e.Code, e.Message)
 }
 
-func (c *Client) Latest() (uint64, []byte, error) {
+type NumHash struct {
+	sync.Mutex
+	Num  eth.Uint64 `json:"number"`
+	Hash eth.Bytes  `json:"hash"`
+}
+
+// Returns the latest block number/hash greater than n.
+// If n is lower than the cached block number,
+// returns the cached value; otherwise, fetches the
+// latest block. Caching is based on comparing n
+// with the cached block number, not on time/LRU methods.
+//
+// When n is 0, Latest always fetches the latest block
+// rather than using the cached value,
+// bypassing the caching mechanism.
+func (c *Client) Latest(n uint64) (uint64, []byte, error) {
+	c.lcache.Lock()
+	defer c.lcache.Unlock()
+
+	if n > 0 && n < uint64(c.lcache.Num) {
+		h := make([]byte, 32)
+		copy(h, c.lcache.Hash)
+		return uint64(c.lcache.Num), h, nil
+	}
+
 	hresp := headerResp{}
 	err := c.do(&hresp, request{
 		ID:      "1",
@@ -118,13 +143,21 @@ func (c *Client) Latest() (uint64, []byte, error) {
 		Params:  []any{"latest", false},
 	})
 	if err != nil {
-		return 0, nil, fmt.Errorf("unable request hash: %w", err)
+		return 0, nil, fmt.Errorf("unable request latest: %w", err)
 	}
 	if hresp.Error.Exists() {
 		const tag = "eth_getBlockByNumber/latest"
 		return 0, nil, fmt.Errorf("rpc=%s %w", tag, hresp.Error)
 	}
-	return uint64(hresp.Number), hresp.Hash, nil
+
+	if hresp.Number > c.lcache.Num {
+		c.lcache.Num = hresp.Number
+		c.lcache.Hash.Write(hresp.Hash)
+	}
+
+	h := make([]byte, 32)
+	copy(h, hresp.Hash)
+	return uint64(c.lcache.Num), h, nil
 }
 
 func (c *Client) Hash(n uint64) ([]byte, error) {

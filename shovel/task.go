@@ -31,7 +31,7 @@ var Schema string
 
 type Source interface {
 	Get(*glf.Filter, uint64, uint64) ([]eth.Block, error)
-	Latest() (uint64, []byte, error)
+	Latest(uint64) (uint64, []byte, error)
 	Hash(uint64) ([]byte, error)
 }
 
@@ -303,7 +303,7 @@ func (t *Task) latest(pg wpg.Conn) (uint64, []byte, error) {
 			slog.InfoContext(t.ctx, "start at config", "num", t.start)
 			return n, h, nil
 		default:
-			n, _, err := t.src.Latest()
+			n, _, err := t.src.Latest(0)
 			if err != nil {
 				return 0, nil, err
 			}
@@ -354,7 +354,7 @@ func (task *Task) Converge() error {
 		if task.stop > 0 && localNum >= task.stop {
 			return ErrDone
 		}
-		gethNum, gethHash, err := task.src.Latest()
+		gethNum, gethHash, err := task.src.Latest(localNum)
 		if err != nil {
 			return fmt.Errorf("getting latest from eth: %w", err)
 		}

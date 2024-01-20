@@ -116,7 +116,7 @@ func (tg *testGeth) Hash(n uint64) ([]byte, error) {
 	return nil, fmt.Errorf("not found: %d", n)
 }
 
-func (tg *testGeth) Latest() (uint64, []byte, error) {
+func (tg *testGeth) Latest(_ uint64) (uint64, []byte, error) {
 	if len(tg.blocks) == 0 {
 		return 0, nil, nil
 	}

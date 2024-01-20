@@ -26,6 +26,55 @@ var (
 	logs1000001JSON string
 )
 
+func TestLatest_Cached(t *testing.T) {
+	var counter int
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		diff.Test(t, t.Fatalf, nil, err)
+		switch {
+		case strings.Contains(string(body), "eth_getBlockByNumber"):
+			switch counter {
+			case 0:
+				_, err := w.Write([]byte(`{"result": {
+					"hash": "0x95b198e154acbfc64109dfd22d8224fe927fd8dfdedfae01587674482ba4baf3",
+					"number": "0x112a880"
+				}}`))
+				diff.Test(t, t.Fatalf, nil, err)
+			case 1:
+				_, err := w.Write([]byte(`{"result": {
+					"hash": "0xd5ca78be6c6b42cf929074f502cef676372c26f8d0ba389b6f9b5d612d70f815",
+					"number": "0x112a881"
+				}}`))
+				diff.Test(t, t.Fatalf, nil, err)
+			}
+		}
+		counter++
+	}))
+	defer ts.Close()
+	var (
+		c         = New(ts.URL)
+		n, h, err = c.Latest(0)
+	)
+	diff.Test(t, t.Errorf, nil, err)
+	diff.Test(t, t.Errorf, counter, 1)
+	diff.Test(t, t.Errorf, n, uint64(18000000))
+	diff.Test(t, t.Errorf, eth.EncodeHex(h), "0x95b198e154acbfc64109dfd22d8224fe927fd8dfdedfae01587674482ba4baf3")
+
+	_, _, err = c.Latest(18000000 - 1)
+	diff.Test(t, t.Errorf, nil, err)
+	diff.Test(t, t.Errorf, counter, 1)
+
+	n, h, err = c.Latest(18000000)
+	diff.Test(t, t.Errorf, nil, err)
+	diff.Test(t, t.Errorf, counter, 2)
+	diff.Test(t, t.Errorf, n, uint64(18000001))
+	diff.Test(t, t.Errorf, eth.EncodeHex(h), "0xd5ca78be6c6b42cf929074f502cef676372c26f8d0ba389b6f9b5d612d70f815")
+
+	_, _, err = c.Latest(18000000)
+	diff.Test(t, t.Errorf, nil, err)
+	diff.Test(t, t.Errorf, counter, 2)
+}
+
 func TestError(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, err := io.ReadAll(r.Body)
