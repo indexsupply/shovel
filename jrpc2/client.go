@@ -3,6 +3,7 @@ package jrpc2
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -40,13 +41,18 @@ type Client struct {
 	hc  *http.Client
 	url string
 
-	wserr error
-	once  sync.Once
-	lnum  uint64
-	lhash []byte
+	wserr  error
+	once   sync.Once
+	lcache NumHash
 
 	bcache cache
 	hcache cache
+}
+
+type NumHash struct {
+	sync.Mutex
+	Num  eth.Uint64 `json:"number"`
+	Hash eth.Bytes  `json:"hash"`
 }
 
 func (c *Client) debug(r io.Reader) io.Reader {
@@ -120,6 +126,9 @@ func (e Error) Error() string {
 }
 
 func (c *Client) listen(ctx context.Context) {
+	ctx, cancel := context.WithTimeout(ctx, time.Minute)
+	defer cancel()
+
 	wsc, _, err := websocket.Dial(ctx, c.url, nil)
 	if err != nil {
 		c.wserr = fmt.Errorf("ws dial %q: %w", c.url, err)
@@ -138,10 +147,7 @@ func (c *Client) listen(ctx context.Context) {
 	res := struct {
 		Error  `json:"error"`
 		Params struct {
-			Result struct {
-				Number eth.Uint64 `json:"number"`
-				Hash   eth.Bytes  `json:"hash"`
-			} `json:"result"`
+			Result NumHash `json:"result"`
 		} `json:"params"`
 	}{}
 	for {
@@ -149,35 +155,46 @@ func (c *Client) listen(ctx context.Context) {
 			c.wserr = fmt.Errorf("ws read %q: %w", c.url, err)
 			return
 		}
-		c.lnum = uint64(res.Params.Result.Number)
-		if len(c.lhash) != 32 {
-			c.lhash = make([]byte, 32)
+		var (
+			num  = res.Params.Result.Num
+			hash = res.Params.Result.Hash
+		)
+		c.lcache.Lock()
+		if c.lcache.Num >= num {
+			c.lcache.Unlock()
+			continue
 		}
-		copy(c.lhash, res.Params.Result.Hash)
-		slog.InfoContext(ctx, "newHeads", "n", c.lnum, "h", fmt.Sprintf("%.4x", c.lhash))
+		c.lcache.Num = num
+		c.lcache.Hash.Write(hash)
+		c.lcache.Unlock()
+		slog.Debug("wss", "n", num, "h", fmt.Sprintf("%.4x", hash))
 	}
 }
 
 func (c *Client) Latest(n uint64) (uint64, []byte, error) {
+	c.lcache.Lock()
+	defer c.lcache.Unlock()
+
 	c.once.Do(func() {
 		go c.listen(context.Background())
 	})
 	if err := c.wserr; err != nil {
 		c.wserr = nil
 		c.once = sync.Once{}
-		return 0, nil, err
-	}
-	if c.lnum > 0 {
-		for {
-			if n > 0 && n >= c.lnum {
-				time.Sleep(time.Millisecond)
-				continue
-			}
-			h := make([]byte, 32)
-			copy(h, c.lhash)
-			return c.lnum, h, nil
+		switch {
+		case errors.Is(err, context.DeadlineExceeded):
+			slog.Debug("resetting ws connection")
+		default:
+			return 0, nil, fmt.Errorf("wserr: %w", err)
 		}
 	}
+
+	if n > 0 && n <= uint64(c.lcache.Num) {
+		h := make([]byte, 32)
+		copy(h, c.lcache.Hash)
+		return uint64(c.lcache.Num), h, nil
+	}
+
 	hresp := headerResp{}
 	err := c.do(&hresp, request{
 		ID:      "1",
@@ -192,7 +209,19 @@ func (c *Client) Latest(n uint64) (uint64, []byte, error) {
 		const tag = "eth_getBlockByNumber/latest"
 		return 0, nil, fmt.Errorf("rpc=%s %w", tag, hresp.Error)
 	}
-	return uint64(hresp.Number), hresp.Hash, nil
+
+	if hresp.Number > c.lcache.Num {
+		c.lcache.Num = hresp.Number
+		c.lcache.Hash.Write(hresp.Hash)
+	}
+
+	slog.Debug("get latest http",
+		"n", c.lcache.Num,
+		"h", fmt.Sprintf("%.4x", c.lcache.Hash),
+	)
+	h := make([]byte, 32)
+	copy(h, c.lcache.Hash)
+	return uint64(c.lcache.Num), h, nil
 }
 
 func (c *Client) Hash(n uint64) ([]byte, error) {
@@ -224,9 +253,18 @@ type (
 
 func (c *Client) Get(filter *glf.Filter, start, limit uint64) ([]eth.Block, error) {
 	var (
+		t0     = time.Now()
 		blocks []eth.Block
 		err    error
 	)
+	defer func() {
+		slog.Debug("jrpc2 get",
+			"filter", filter,
+			"start", start,
+			"limit", limit,
+			"elapsed", time.Since(t0),
+		)
+	}()
 	switch {
 	case filter.UseBlocks:
 		blocks, err = c.bcache.get(start, limit, c.blocks)
@@ -438,6 +476,9 @@ func (c *Client) receipts(bm blockmap, tm txmap, blocks []eth.Block) error {
 		}
 	}
 	for i := range resps {
+		if len(resps[i].Result) == 0 {
+			return fmt.Errorf("no rpc error and missing result")
+		}
 		b, ok := bm[uint64(resps[i].Result[0].BlockNum)]
 		if !ok {
 			return fmt.Errorf("block not found")

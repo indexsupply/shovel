@@ -15,6 +15,10 @@ func TestNeeds(t *testing.T) {
 		logs     bool
 	}{
 		{
+			fields: []string{"block_hash", "block_num", "tx_hash", "tx_idx", "log_addr"},
+			logs:   true,
+		},
+		{
 			fields:   []string{"tx_status", "tx_input"},
 			blocks:   true,
 			receipts: true,
