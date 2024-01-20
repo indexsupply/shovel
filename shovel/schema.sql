@@ -1,3 +1,4 @@
+create schema if not exists public;
 create schema if not exists shovel;
 
 create table if not exists shovel.integrations (
