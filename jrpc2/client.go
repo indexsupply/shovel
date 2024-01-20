@@ -403,6 +403,9 @@ func (c *Client) receipts(bm blockmap, tm txmap, blocks []eth.Block) error {
 		}
 	}
 	for i := range resps {
+		if len(resps[i].Result) == 0 {
+			return fmt.Errorf("no rpc error but empty result")
+		}
 		b, ok := bm[uint64(resps[i].Result[0].BlockNum)]
 		if !ok {
 			return fmt.Errorf("block not found")
