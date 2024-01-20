@@ -185,9 +185,11 @@ type Task struct {
 
 func (t *Task) update(
 	pg wpg.Conn,
-	hash []byte,
 	num uint64,
-	delta uint64,
+	hash []byte,
+	srcNum uint64,
+	srcHash []byte,
+	nblocks uint64,
 	nrows int64,
 	elapsed time.Duration,
 ) error {
@@ -196,23 +198,27 @@ func (t *Task) update(
 			chain_id,
 			src_name,
 			ig_name,
-			hash,
 			num,
+			hash,
+			src_num,
+			src_hash,
 			stop,
 			nblocks,
 			nrows,
 			latency
 		)
-		values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 	`
 	_, err := pg.Exec(t.ctx, uq,
 		t.srcChainID,
 		t.srcName,
 		t.destConfig.Name,
-		hash,
 		num,
+		hash,
+		srcNum,
+		srcHash,
 		t.stop,
-		delta,
+		nblocks,
 		nrows,
 		elapsed,
 	)
@@ -327,6 +333,7 @@ var (
 // is returned and the caller may rollback the transaction resulting
 // in no side-effects.
 func (task *Task) Converge() error {
+	t0 := time.Now()
 	pgtx, err := task.pgp.Begin(task.ctx)
 	if err != nil {
 		return fmt.Errorf("starting converge tx: %w", err)
@@ -347,14 +354,17 @@ func (task *Task) Converge() error {
 		if task.stop > 0 && localNum >= task.stop {
 			return ErrDone
 		}
-		gethNum, _, err := task.src.Latest()
+		gethNum, gethHash, err := task.src.Latest()
 		if err != nil {
 			return fmt.Errorf("getting latest from eth: %w", err)
 		}
-		var targetNum uint64
+		var (
+			targetNum  uint64
+			targetHash []byte
+		)
 		switch {
 		case len(task.destConfig.Dependencies) > 0:
-			depNum, _, err := task.latestDependency(pgtx)
+			depNum, depHash, err := task.latestDependency(pgtx)
 			if err != nil {
 				return fmt.Errorf("getting latest from dependencies: %w", err)
 			}
@@ -363,13 +373,15 @@ func (task *Task) Converge() error {
 				return ErrNothingNew
 			case depNum < gethNum:
 				targetNum = depNum
+				targetHash = depHash
 			default:
 				targetNum = gethNum
+				targetHash = gethHash
 			}
 		default:
 			targetNum = gethNum
+			targetHash = gethHash
 		}
-
 		if task.stop > 0 && targetNum > task.stop {
 			targetNum = task.stop
 		}
@@ -384,7 +396,7 @@ func (task *Task) Converge() error {
 		if delta == 0 {
 			return ErrNothingNew
 		}
-		switch err := task.loadinsert(pgtx, localHash, localNum+1, delta); {
+		switch last, err := task.loadinsert(pgtx, localHash, localNum+1, delta); {
 		case errors.Is(err, ErrReorg):
 			slog.ErrorContext(task.ctx, "reorg",
 				"n", localNum,
@@ -397,24 +409,40 @@ func (task *Task) Converge() error {
 		case err != nil:
 			return fmt.Errorf("loading blocks start=%d lim=%d: %w", localNum+1, delta, err)
 		default:
-			return pgtx.Commit(task.ctx)
+			err := task.update(pgtx, last.num, last.hash, targetNum, targetHash, delta, last.nrows, time.Since(t0))
+			if err != nil {
+				return fmt.Errorf("updating task: %w", err)
+			}
+			if err := pgtx.Commit(task.ctx); err != nil {
+				return fmt.Errorf("committing tx: %w", err)
+			}
+			slog.InfoContext(task.ctx, "converge",
+				"src", task.srcName,
+				"dst", task.destConfig.Name,
+				"n", last.num,
+				"h", fmt.Sprintf("%.4x", last.hash),
+				"nrows", last.nrows,
+				"delta", delta,
+				"elapsed", time.Since(t0),
+			)
+			return nil
 		}
 	}
 	return ErrReorg
 }
 
 type hashcheck struct {
+	nrows  int64
 	num    uint64
 	hash   []byte
 	parent []byte
 }
 
-func (t *Task) loadinsert(pg wpg.Conn, localHash []byte, start, limit uint64) error {
+func (t *Task) loadinsert(pg wpg.Conn, localHash []byte, start, limit uint64) (hashcheck, error) {
 	var (
 		t0    = time.Now()
 		eg    errgroup.Group
 		pgmut sync.Mutex
-		nrows int64
 		part  = t.batchSize / t.concurrency
 
 		first, last = hashcheck{}, hashcheck{}
@@ -435,7 +463,7 @@ func (t *Task) loadinsert(pg wpg.Conn, localHash []byte, start, limit uint64) er
 			if err != nil {
 				return fmt.Errorf("inserting blocks: %w", err)
 			}
-			atomic.AddInt64(&nrows, nr)
+			atomic.AddInt64(&last.nrows, nr)
 
 			if b := blocks[0]; first.num == 0 || first.num > b.Num() {
 				first.num = b.Num()
@@ -456,24 +484,20 @@ func (t *Task) loadinsert(pg wpg.Conn, localHash []byte, start, limit uint64) er
 		})
 	}
 	if err := eg.Wait(); err != nil {
-		return err
+		return last, err
 	}
 	if len(first.parent) == 32 && !bytes.Equal(localHash, first.parent) {
-		return ErrReorg
+		return last, ErrReorg
 	}
-	err := t.update(pg, last.hash, last.num, limit, nrows, time.Since(t0))
-	if err != nil {
-		return err
-	}
-	slog.InfoContext(t.ctx, "insert",
+	slog.DebugContext(t.ctx, "insert",
 		"src", t.srcName,
 		"dst", t.destConfig.Name,
 		"n", last.num,
 		"h", fmt.Sprintf("%.4x", last.hash),
-		"nrows", nrows,
+		"nrows", last.nrows,
 		"elapsed", time.Since(t0),
 	)
-	return nil
+	return last, nil
 }
 
 func validateChain(ctx context.Context, blks []eth.Block) error {

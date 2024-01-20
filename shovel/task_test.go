@@ -215,8 +215,8 @@ func TestConverge_Reorg(t *testing.T) {
 	dest.add(0, hash(0), hash(0))
 	dest.add(1, hash(2), hash(0))
 
-	diff.Test(t, t.Fatalf, nil, task.update(pg, hash(0), 0, 0, 0, 0))
-	diff.Test(t, t.Fatalf, nil, task.update(pg, hash(1), 1, 0, 0, 0))
+	diff.Test(t, t.Fatalf, nil, task.update(pg, 0, hash(0), 0, hash(0), 0, 0, 0))
+	diff.Test(t, t.Fatalf, nil, task.update(pg, 1, hash(1), 0, hash(0), 0, 0, 0))
 
 	diff.Test(t, t.Fatalf, task.Converge(), nil)
 	diff.Test(t, t.Fatalf, task.Converge(), nil)
@@ -308,9 +308,10 @@ func TestConverge_LocalAhead(t *testing.T) {
 	diff.Test(t, t.Errorf, err, nil)
 	tg.add(1, hash(1), hash(0))
 
-	diff.Test(t, t.Fatalf, nil, task.update(pg, hash(0), 0, 0, 0, 0))
-	diff.Test(t, t.Fatalf, nil, task.update(pg, hash(1), 1, 0, 0, 0))
-	diff.Test(t, t.Fatalf, nil, task.update(pg, hash(2), 2, 0, 0, 0))
+	diff.Test(t, t.Fatalf, nil, task.update(pg, 0, hash(0), 0, hash(0), 0, 0, 0))
+	diff.Test(t, t.Fatalf, nil, task.update(pg, 1, hash(1), 0, hash(0), 0, 0, 0))
+	diff.Test(t, t.Fatalf, nil, task.update(pg, 2, hash(2), 0, hash(0), 0, 0, 0))
+
 	diff.Test(t, t.Errorf, task.Converge(), ErrAhead)
 }
 
