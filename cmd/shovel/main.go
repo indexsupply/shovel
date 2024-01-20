@@ -50,6 +50,7 @@ func main() {
 		notx        bool
 		profile     string
 		version     bool
+		verbose     bool
 	)
 	flag.StringVar(&cfile, "config", "", "task config file")
 	flag.BoolVar(&printSchema, "print-schema", false, "print schema and exit")
@@ -58,10 +59,17 @@ func main() {
 	flag.BoolVar(&notx, "notx", false, "disable pg tx")
 	flag.StringVar(&profile, "profile", "", "run profile after indexing")
 	flag.BoolVar(&version, "version", false, "version")
+	flag.BoolVar(&verbose, "v", false, "verbose logging")
 
 	flag.Parse()
 
-	lh := wslog.New(os.Stdout, nil)
+	logLevel := new(slog.LevelVar)
+	logLevel.Set(slog.LevelInfo)
+	if verbose {
+		logLevel.Set(slog.LevelDebug)
+	}
+
+	lh := wslog.New(os.Stdout, &slog.HandlerOptions{Level: logLevel})
 	lh.RegisterContext(func(ctx context.Context) (string, any) {
 		id := wctx.ChainID(ctx)
 		if id < 1 {

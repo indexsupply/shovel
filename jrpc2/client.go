@@ -207,15 +207,19 @@ func (c *Client) Latest(n uint64) (uint64, []byte, error) {
 		c.once = sync.Once{}
 		switch {
 		case errors.Is(err, context.DeadlineExceeded):
-			slog.Info("resetting ws connection. timeout")
+			slog.Debug("resetting ws connection. timeout")
 		case errors.Is(err, net.ErrClosed):
-			slog.Info("resetting ws connection. closed")
+			slog.Debug("resetting ws connection. closed")
 		default:
 			return 0, nil, fmt.Errorf("wserr: %w", err)
 		}
 	}
 
 	if n > 0 && n < uint64(c.lcache.Num) {
+		slog.Debug("latest cache hit",
+			"n", n,
+			"latest", c.lcache.Num,
+		)
 		h := make([]byte, 32)
 		copy(h, c.lcache.Hash)
 		return uint64(c.lcache.Num), h, nil
@@ -235,6 +239,12 @@ func (c *Client) Latest(n uint64) (uint64, []byte, error) {
 		const tag = "eth_getBlockByNumber/latest"
 		return 0, nil, fmt.Errorf("rpc=%s %w", tag, hresp.Error)
 	}
+
+	slog.Debug("latest cache miss",
+		"n", n,
+		"previous", c.lcache.Num,
+		"latest", hresp.Number,
+	)
 
 	if hresp.Number > c.lcache.Num {
 		c.lcache.Num = hresp.Number
