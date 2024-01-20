@@ -2,14 +2,19 @@
 package jrpc2
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"io"
+	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 	"unicode"
 
 	"github.com/indexsupply/x/eth"
@@ -18,6 +23,8 @@ import (
 	"github.com/goccy/go-json"
 	"github.com/klauspost/compress/gzhttp"
 	"golang.org/x/sync/errgroup"
+	"nhooyr.io/websocket"
+	"nhooyr.io/websocket/wsjson"
 )
 
 func New(url string) *Client {
@@ -35,9 +42,18 @@ type Client struct {
 	hc  *http.Client
 	url string
 
+	wsurl string
+	wserr error
+	once  sync.Once
+
 	lcache NumHash
 	bcache cache
 	hcache cache
+}
+
+func (c *Client) WithWSURL(url string) *Client {
+	c.wsurl = url
+	return c
 }
 
 func (c *Client) debug(r io.Reader) io.Reader {
@@ -116,6 +132,60 @@ type NumHash struct {
 	Hash eth.Bytes  `json:"hash"`
 }
 
+func (c *Client) listen(ctx context.Context) {
+	if len(c.wsurl) == 0 {
+		slog.InfoContext(ctx, "no wsurl set. skipping websocket")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, time.Minute)
+	defer cancel()
+
+	wsc, _, err := websocket.Dial(ctx, c.url, nil)
+	if err != nil {
+		c.wserr = fmt.Errorf("ws dial %q: %w", c.url, err)
+		return
+	}
+	err = wsjson.Write(ctx, wsc, request{
+		ID:      "1",
+		Version: "2.0",
+		Method:  "eth_subscribe",
+		Params:  []any{"newHeads"},
+	})
+	if err != nil {
+		c.wserr = fmt.Errorf("ws write %q: %w", c.url, err)
+		return
+	}
+	res := struct {
+		Error  `json:"error"`
+		Params struct {
+			Result NumHash `json:"result"`
+		} `json:"params"`
+	}{}
+	for {
+		if err := wsjson.Read(ctx, wsc, &res); err != nil {
+			c.wserr = fmt.Errorf("ws read %q: %w", c.url, err)
+			return
+		}
+		var (
+			num  = res.Params.Result.Num
+			hash = res.Params.Result.Hash
+		)
+		c.lcache.Lock()
+		if c.lcache.Num >= num {
+			c.lcache.Unlock()
+			continue
+		}
+		c.lcache.Num = num
+		c.lcache.Hash.Write(hash)
+		c.lcache.Unlock()
+		slog.Debug("websocket newHeads",
+			"n", num,
+			"h", fmt.Sprintf("%.4x", hash),
+		)
+	}
+}
+
 // Returns the latest block number/hash greater than n.
 // If n is lower than the cached block number,
 // returns the cached value; otherwise, fetches the
@@ -128,6 +198,22 @@ type NumHash struct {
 func (c *Client) Latest(n uint64) (uint64, []byte, error) {
 	c.lcache.Lock()
 	defer c.lcache.Unlock()
+
+	c.once.Do(func() {
+		go c.listen(context.Background())
+	})
+	if err := c.wserr; err != nil {
+		c.wserr = nil
+		c.once = sync.Once{}
+		switch {
+		case errors.Is(err, context.DeadlineExceeded):
+			slog.Info("resetting ws connection. timeout")
+		case errors.Is(err, net.ErrClosed):
+			slog.Info("resetting ws connection. closed")
+		default:
+			return 0, nil, fmt.Errorf("wserr: %w", err)
+		}
+	}
 
 	if n > 0 && n < uint64(c.lcache.Num) {
 		h := make([]byte, 32)

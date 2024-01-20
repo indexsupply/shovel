@@ -310,6 +310,7 @@ type Source struct {
 	Name        string
 	ChainID     uint64
 	URL         string
+	WSURL       string
 	Start       uint64
 	Stop        uint64
 	Concurrency int
@@ -321,6 +322,7 @@ func (s *Source) UnmarshalJSON(d []byte) error {
 		Name        wos.EnvString `json:"name"`
 		ChainID     wos.EnvUint64 `json:"chain_id"`
 		URL         wos.EnvString `json:"url"`
+		WSURL       wos.EnvString `json:"ws_url"`
 		Start       wos.EnvUint64 `json:"start"`
 		Stop        wos.EnvUint64 `json:"stop"`
 		Concurrency wos.EnvInt    `json:"concurrency"`
@@ -332,6 +334,7 @@ func (s *Source) UnmarshalJSON(d []byte) error {
 	s.Name = string(x.Name)
 	s.ChainID = uint64(x.ChainID)
 	s.URL = string(x.URL)
+	s.WSURL = string(x.WSURL)
 	s.Start = uint64(x.Start)
 	s.Stop = uint64(x.Stop)
 	s.Concurrency = int(x.Concurrency)

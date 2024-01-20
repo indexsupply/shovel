@@ -17,11 +17,12 @@ require (
 	github.com/kr/pretty v0.3.1
 	github.com/kr/session v0.2.1
 	github.com/yuin/goldmark v1.6.0
-	golang.org/x/crypto v0.6.0
-	golang.org/x/net v0.7.0
+	golang.org/x/crypto v0.18.0
+	golang.org/x/net v0.20.0
 	golang.org/x/sync v0.1.0
 	golang.org/x/xerrors v0.0.0-20220907171357-04be3eba64a2
 	kr.dev/diff v0.3.0
+	nhooyr.io/websocket v1.8.10
 )
 
 require (
@@ -35,7 +36,7 @@ require (
 	github.com/rogpeppe/go-internal v1.9.0 // indirect
 	github.com/xi2/xz v0.0.0-20171230120015-48954b6210f8 // indirect
 	golang.org/x/exp v0.0.0-20230321023759-10a507213a29 // indirect
-	golang.org/x/sys v0.5.0 // indirect
-	golang.org/x/text v0.7.0 // indirect
+	golang.org/x/sys v0.16.0 // indirect
+	golang.org/x/text v0.14.0 // indirect
 	kr.dev/errorfmt v0.1.1 // indirect
 )

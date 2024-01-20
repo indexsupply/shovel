@@ -196,12 +196,15 @@ Any value that is prefixed with a `$` will instruct Shovel to read from the envi
 
 ## Ethereum Sources
 
-A single Shovel process can connect to many Ethereum sources. Each Ethereum source is identified by name and is supplemented with a chain id and a URL. Shovel will use the JSON RPC API on the other end of the URL. Shovel uses the following RPC methods:
+A single Shovel process can connect to many Ethereum sources. Each Ethereum source is identified by name and is supplemented with a chain id and a URL. Shovel uses the following HTTP JSON RPC API methods:
 
 1. eth_getBlockByNumber
 2. eth_getLogs
+3. eth_getBlockReceipts
 
-Upon startup, Shovel will use `eth_getBlockByNumber` to find the latest block. It will then compare that with its latest block in Postgres to figure out where to begin. While indexing data, Shovel will make batched calls to `eth_getBlockByNumber` and a single call to `eth_getLogs` (depending on the configured batch size).
+Shovel will choose the RPC method based on what data the integration requires. The fastest way to index data is to only use data found in the eth_getLogs response. Specifically: `block_hash`, `block_num`, `tx_hash`, `tx_idx`, `log_addr`, `log_idx`, and log topics and events.
+
+Upon startup, Shovel will use `eth_getBlockByNumber` to find the latest block. It will then compare the response with its latest block in Postgres to figure out where to begin. While indexing data, Shovel will make batched calls to `eth_getBlockByNumber`, batched calls to `eth_getBlockReceipts`, and single calls to `eth_getLogs` depending on the configured `batch_size` and the RPC methods required to index the data.
 
 Ethereum sources are defined at the top level configuration object and then referenced in each integration.
 
@@ -213,6 +216,7 @@ Ethereum sources are defined at the top level configuration object and then refe
       "name": "",
       "chain_id": 0,
       "url": "",
+      "ws_url": "",
       "batch_size": 1,
       "concurrency": 1
     }
@@ -235,7 +239,8 @@ Ethereum sources are defined at the top level configuration object and then refe
 
 - **name** A unique name identifying the Ethereum source. This will be used throughout the system to identify the source of the data. It is also used as a foreign key in `integrations[].sources.name`
 - **chain_id** There isn't a whole lot that depends on this value at the moment (ie no crypto functions) but it will end up in the integrations tables.
-- **url** A URL that points to a JSON RPC API. This can be a local {G,R}eth node or a Quicknode.
+- **url** A URL that points to a HTTP JSON RPC API. This can be a local {G,R}eth node or a Quicknode.
+- **ws_url** An optional URL that points to a Websocket JSON RPC API. If this URL is set Shovel will use the websocket to get the _latest_ block instead of calling `eth_getBlockByNumber`. If the websocket fails for any reason Shovel will fallback on the HTTP based API.
 - **batch_size** The maximum number of batched requests to make to the JSON RPC API. This can speed up backfill operations but will potentially use a lot of API credits if you are running on a hosted node.
 - **concurrency** The maximum number of concurrent threads to run within a task. This value relates to `batch_size` in that for each task, the `batch_size` is partitioned amongst `concurrency` threads.
 
