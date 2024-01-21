@@ -5,8 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"sort"
 	"strings"
 	"testing"
@@ -15,6 +17,11 @@ import (
 	"github.com/indexsupply/x/shovel/glf"
 	"kr.dev/diff"
 )
+
+func init() {
+	h := slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug})
+	slog.SetDefault(slog.New(h))
+}
 
 type testGetter struct {
 	callCount int
@@ -101,28 +108,24 @@ func TestLatest_Cached(t *testing.T) {
 		counter++
 	}))
 	defer ts.Close()
-	var (
-		c         = New(ts.URL)
-		n, h, err = c.Latest(0)
-	)
+	c := New(ts.URL).WithMaxReads(1)
+
+	n, h, err := c.Latest(0)
 	diff.Test(t, t.Errorf, nil, err)
 	diff.Test(t, t.Errorf, counter, 1)
 	diff.Test(t, t.Errorf, n, uint64(18000000))
 	diff.Test(t, t.Errorf, eth.EncodeHex(h), "0x95b198e154acbfc64109dfd22d8224fe927fd8dfdedfae01587674482ba4baf3")
 
-	_, _, err = c.Latest(18000000 - 1)
+	n, _, err = c.Latest(18000000 - 1)
 	diff.Test(t, t.Errorf, nil, err)
 	diff.Test(t, t.Errorf, counter, 1)
+	diff.Test(t, t.Errorf, n, uint64(18000000))
 
 	n, h, err = c.Latest(18000000)
 	diff.Test(t, t.Errorf, nil, err)
 	diff.Test(t, t.Errorf, counter, 2)
 	diff.Test(t, t.Errorf, n, uint64(18000001))
 	diff.Test(t, t.Errorf, eth.EncodeHex(h), "0xd5ca78be6c6b42cf929074f502cef676372c26f8d0ba389b6f9b5d612d70f815")
-
-	_, _, err = c.Latest(18000000)
-	diff.Test(t, t.Errorf, nil, err)
-	diff.Test(t, t.Errorf, counter, 2)
 }
 
 func hash(b byte) []byte {
