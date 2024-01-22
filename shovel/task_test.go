@@ -3,7 +3,6 @@ package shovel
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
 	"sort"
 	"sync"
@@ -410,44 +409,4 @@ func TestLoadTasks(t *testing.T) {
 	diff.Test(t, t.Fatalf, err, nil)
 	diff.Test(t, t.Fatalf, len(tasks), 1)
 	diff.Test(t, t.Fatalf, tasks[0].start, uint64(0))
-}
-
-func TestValidateChain(t *testing.T) {
-	cases := []struct {
-		blks []eth.Block
-		want error
-	}{
-		{
-			[]eth.Block{
-				{Header: eth.Header{Hash: hash(1), Parent: hash(0)}},
-			},
-			nil,
-		},
-		{
-			[]eth.Block{
-				{Header: eth.Header{Hash: hash(1), Parent: hash(0)}},
-				{Header: eth.Header{Hash: hash(2), Parent: hash(1)}},
-			},
-			nil,
-		},
-		{
-			[]eth.Block{
-				{Header: eth.Header{Hash: hash(1), Parent: hash(0)}},
-				{Header: eth.Header{Hash: hash(2), Parent: hash(1)}},
-				{Header: eth.Header{Hash: hash(3), Parent: hash(2)}},
-			},
-			nil,
-		},
-		{
-			[]eth.Block{
-				{Header: eth.Header{Hash: hash(1), Parent: hash(0)}},
-				{Header: eth.Header{Hash: hash(4), Parent: hash(3)}},
-				{Header: eth.Header{Hash: hash(3), Parent: hash(2)}},
-			},
-			errors.New("corrupt chain segment"),
-		},
-	}
-	for _, tc := range cases {
-		diff.Test(t, t.Errorf, tc.want, validateChain(context.Background(), tc.blks))
-	}
 }

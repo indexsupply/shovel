@@ -2,6 +2,7 @@ package jrpc2
 
 import (
 	_ "embed"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -73,6 +74,130 @@ func TestLatest_Cached(t *testing.T) {
 	_, _, err = c.Latest(18000000)
 	diff.Test(t, t.Errorf, nil, err)
 	diff.Test(t, t.Errorf, counter, 2)
+}
+
+func hash(b byte) []byte {
+	res := make([]byte, 32)
+	res[0] = b
+	return res
+}
+
+func TestValidate(t *testing.T) {
+	cases := []struct {
+		start uint64
+		limit uint64
+		blks  []eth.Block
+		want  error
+	}{
+		{
+			1,
+			1,
+			[]eth.Block{
+				{Header: eth.Header{Number: 1, Hash: hash(1), Parent: hash(0)}},
+			},
+			nil,
+		},
+		{
+			1,
+			2,
+			[]eth.Block{
+				{Header: eth.Header{Number: 1, Hash: hash(1), Parent: hash(0)}},
+				{Header: eth.Header{Number: 2, Hash: hash(2), Parent: hash(1)}},
+			},
+			nil,
+		},
+		{
+			1,
+			3,
+			[]eth.Block{
+				{Header: eth.Header{Number: 1, Hash: hash(1), Parent: hash(0)}},
+				{Header: eth.Header{Number: 2, Hash: hash(2), Parent: hash(1)}},
+				{Header: eth.Header{Number: 3, Hash: hash(3), Parent: hash(2)}},
+			},
+			nil,
+		},
+		{
+			1,
+			3,
+			[]eth.Block{
+				{Header: eth.Header{Number: 1, Hash: hash(1), Parent: hash(0)}},
+				{Header: eth.Header{Number: 2, Hash: hash(4), Parent: hash(3)}},
+				{Header: eth.Header{Number: 3, Hash: hash(3), Parent: hash(2)}},
+			},
+			errors.New("corrupt chain segment"),
+		},
+	}
+	for _, tc := range cases {
+		diff.Test(t, t.Errorf, tc.want, validate(tc.start, tc.limit, tc.blks))
+	}
+}
+
+func TestValidate_Blocks(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		diff.Test(t, t.Fatalf, nil, err)
+		switch {
+		case strings.Contains(string(body), "eth_getBlockByNumber"):
+			_, err := w.Write([]byte(`[
+				{
+					"result": {
+						"hash": "0x95b198e154acbfc64109dfd22d8224fe927fd8dfdedfae01587674482ba4baf3",
+						"number": "0x112a880"
+					}
+				},
+				{
+					"result": {
+						"hash": "0xd5ca78be6c6b42cf929074f502cef676372c26f8d0ba389b6f9b5d612d70f815",
+						"number": "0x112a882",
+						"COMMENT": "off by one. should be 0x112a881"
+					}
+				}
+			]`))
+			diff.Test(t, t.Fatalf, nil, err)
+		}
+	}))
+	defer ts.Close()
+	var (
+		c      = New(ts.URL)
+		_, err = c.Get(&glf.Filter{UseBlocks: true}, 18000000, 2)
+	)
+	want := "getting blocks: cache get: rpc response contains invalid data. requested last: 18000001 got: 18000002"
+	diff.Test(t, t.Fatalf, false, err == nil)
+	diff.Test(t, t.Fatalf, want, err.Error())
+}
+
+func TestValidate_Logs(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		diff.Test(t, t.Fatalf, nil, err)
+		switch {
+		case strings.Contains(string(body), "eth_getLogs"):
+			_, err := w.Write([]byte(`{"result": [
+				{
+					"address": "0x0000000000000000000000000000000000000000",
+					"topics": [],
+					"blockHash": "0x95b198e154acbfc64109dfd22d8224fe927fd8dfdedfae01587674482ba4baf3",
+					"blockNumber": "0x112a880"
+				},
+				{
+					"address": "0x0000000000000000000000000000000000000000",
+					"topics": [],
+					"blockHash": "0xd5ca78be6c6b42cf929074f502cef676372c26f8d0ba389b6f9b5d612d70f815",
+					"blockNumber": "0x112a882",
+					"COMMENT": "off by one. should be 0x112a881"
+				}
+			]}`))
+			diff.Test(t, t.Fatalf, nil, err)
+		}
+	}))
+	defer ts.Close()
+	var (
+		c      = New(ts.URL)
+		_, err = c.Get(&glf.Filter{UseLogs: true}, 18000000, 2)
+	)
+	want := "getting logs: block not found"
+	diff.Test(t, t.Fatalf, false, err == nil)
+	diff.Test(t, t.Fatalf, want, err.Error())
 }
 
 func TestError(t *testing.T) {

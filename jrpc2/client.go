@@ -2,6 +2,7 @@
 package jrpc2
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -421,7 +422,44 @@ func (c *Client) blocks(start, limit uint64) ([]eth.Block, error) {
 			return nil, fmt.Errorf("rpc=%s %w", tag, resps[i].Error)
 		}
 	}
-	return blocks, nil
+	return blocks, validate(start, limit, blocks)
+}
+
+func validate(start, limit uint64, blocks []eth.Block) error {
+	if len(blocks) == 0 {
+		return fmt.Errorf("no blocks")
+	}
+
+	first, last := blocks[0], blocks[len(blocks)-1]
+	if uint64(first.Num()) != start {
+		const tag = "rpc response contains invalid data. requested first: %d got: %d"
+		return fmt.Errorf(tag, start, first.Num())
+	}
+	if uint64(last.Num()) != start+limit-1 {
+		const tag = "rpc response contains invalid data. requested last: %d got: %d"
+		return fmt.Errorf(tag, start+limit-1, last.Num())
+	}
+
+	// some rpc responses will not return a parent hash
+	// so there is nothing we can do to validate the hash
+	// chain
+	if len(blocks) <= 1 || len(blocks[0].Header.Parent) < 32 {
+		return nil
+	}
+	for i := 1; i < len(blocks); i++ {
+		prev, curr := blocks[i-1], blocks[i]
+		if !bytes.Equal(curr.Header.Parent, prev.Hash()) {
+			slog.Error("rpc response contains invalid data",
+				"num", prev.Num(),
+				"hash", fmt.Sprintf("%.4x", prev.Header.Hash),
+				"next-num", curr.Num(),
+				"next-parent", fmt.Sprintf("%.4x", curr.Header.Parent),
+				"next-hash", fmt.Sprintf("%.4x", curr.Header.Hash),
+			)
+			return fmt.Errorf("corrupt chain segment")
+		}
+	}
+	return nil
 }
 
 type headerResp struct {

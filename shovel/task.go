@@ -445,6 +445,7 @@ func (t *Task) loadinsert(pg wpg.Conn, localHash []byte, start, limit uint64) (h
 		pgmut sync.Mutex
 		part  = t.batchSize / t.concurrency
 
+		checkMut    sync.Mutex
 		first, last = hashcheck{}, hashcheck{}
 	)
 	for i := 0; i < t.concurrency; i++ {
@@ -464,7 +465,7 @@ func (t *Task) loadinsert(pg wpg.Conn, localHash []byte, start, limit uint64) (h
 				return fmt.Errorf("inserting blocks: %w", err)
 			}
 			atomic.AddInt64(&last.nrows, nr)
-
+			checkMut.Lock()
 			if b := blocks[0]; first.num == 0 || first.num > b.Num() {
 				first.num = b.Num()
 				first.hash = b.Hash()
@@ -475,11 +476,7 @@ func (t *Task) loadinsert(pg wpg.Conn, localHash []byte, start, limit uint64) (h
 				last.hash = b.Hash()
 				last.parent = b.Header.Parent
 			}
-			if len(first.parent) == 32 {
-				if err := validateChain(t.ctx, blocks); err != nil {
-					return err
-				}
-			}
+			checkMut.Unlock()
 			return nil
 		})
 	}
@@ -498,26 +495,6 @@ func (t *Task) loadinsert(pg wpg.Conn, localHash []byte, start, limit uint64) (h
 		"elapsed", time.Since(t0),
 	)
 	return last, nil
-}
-
-func validateChain(ctx context.Context, blks []eth.Block) error {
-	if len(blks) <= 1 {
-		return nil
-	}
-	for i := 1; i < len(blks); i++ {
-		prev, curr := blks[i-1], blks[i]
-		if !bytes.Equal(curr.Header.Parent, prev.Hash()) {
-			slog.ErrorContext(ctx, "corrupt-chain-segment",
-				"num", prev.Num(),
-				"hash", fmt.Sprintf("%.4x", prev.Header.Hash),
-				"next-num", curr.Num(),
-				"next-parent", fmt.Sprintf("%.4x", curr.Header.Parent),
-				"next-hash", fmt.Sprintf("%.4x", curr.Header.Hash),
-			)
-			return fmt.Errorf("corrupt chain segment")
-		}
-	}
-	return nil
 }
 
 func PruneTask(ctx context.Context, pg wpg.Conn, n int) error {
