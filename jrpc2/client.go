@@ -32,6 +32,7 @@ func New(url string) *Client {
 	return &Client{
 		d: strings.Contains(url, "debug"),
 		hc: &http.Client{
+			Timeout:   10 * time.Second,
 			Transport: gzhttp.Transport(http.DefaultTransport),
 		},
 		url: url,
