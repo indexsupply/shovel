@@ -135,7 +135,6 @@ type NumHash struct {
 	sync.Mutex
 	err      error
 	once     sync.Once
-	do       func(context.Context)
 	maxreads int
 	nreads   int
 	Num      eth.Uint64 `json:"number"`
