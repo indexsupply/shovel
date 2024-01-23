@@ -911,12 +911,12 @@ Indexes:
       "table": {
         "name": "transfers",
           "columns": [
-            {"name": "chain_id",   "type": "numeric"},
-            {"name": "log_addr",   "type": "bytea"},
-            {"name": "block_time", "type": "numeric"},
-            {"name": "f",          "type": "bytea"},
-            {"name": "t"           "type": "bytea"},
-            {"name": "v",          "type": "numeric"}
+            {"name": "chain_id",    "type": "numeric"},
+            {"name": "log_addr",    "type": "bytea"},
+            {"name": "block_time",  "type": "numeric"},
+            {"name": "f",           "type": "bytea"},
+            {"name": "t",           "type": "bytea"},
+            {"name": "v",           "type": "numeric"}
           ]
       },
       "block": [
