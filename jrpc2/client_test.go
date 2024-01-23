@@ -173,11 +173,11 @@ func TestValidate(t *testing.T) {
 				{Header: eth.Header{Number: 2, Hash: hash(4), Parent: hash(3)}},
 				{Header: eth.Header{Number: 3, Hash: hash(3), Parent: hash(2)}},
 			},
-			errors.New("corrupt chain segment"),
+			errors.New("test: corrupt chain segment"),
 		},
 	}
 	for _, tc := range cases {
-		diff.Test(t, t.Errorf, tc.want, validate(tc.start, tc.limit, tc.blks))
+		diff.Test(t, t.Errorf, tc.want, validate("test", tc.start, tc.limit, tc.blks))
 	}
 }
 
@@ -210,7 +210,7 @@ func TestValidate_Blocks(t *testing.T) {
 		c      = New(ts.URL)
 		_, err = c.Get(&glf.Filter{UseBlocks: true}, 18000000, 2)
 	)
-	want := "getting blocks: cache get: rpc response contains invalid data. requested last: 18000001 got: 18000002"
+	want := "getting blocks: cache get: blocks: rpc response contains invalid data. requested last: 18000001 got: 18000002"
 	diff.Test(t, t.Fatalf, false, err == nil)
 	diff.Test(t, t.Fatalf, want, err.Error())
 }

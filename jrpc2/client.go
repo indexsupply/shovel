@@ -323,15 +323,15 @@ func (c *Client) Get(filter *glf.Filter, start, limit uint64) ([]eth.Block, erro
 
 	switch {
 	case filter.UseReceipts:
-		if err := c.receipts(bm, tm, blocks); err != nil {
+		if err := c.receipts(bm, tm, start, limit); err != nil {
 			return nil, fmt.Errorf("getting receipts: %w", err)
 		}
 	case filter.UseLogs:
-		if err := c.logs(filter, bm, tm, blocks); err != nil {
+		if err := c.logs(filter, bm, tm, start, limit); err != nil {
 			return nil, fmt.Errorf("getting logs: %w", err)
 		}
 	}
-	return blocks, validate(start, limit, blocks)
+	return blocks, validate("Get", start, limit, blocks)
 }
 
 type blockResp struct {
@@ -423,22 +423,22 @@ func (c *Client) blocks(start, limit uint64) ([]eth.Block, error) {
 			return nil, fmt.Errorf("rpc=%s %w", tag, resps[i].Error)
 		}
 	}
-	return blocks, validate(start, limit, blocks)
+	return blocks, validate("blocks", start, limit, blocks)
 }
 
-func validate(start, limit uint64, blocks []eth.Block) error {
+func validate(caller string, start, limit uint64, blocks []eth.Block) error {
 	if len(blocks) == 0 {
-		return fmt.Errorf("no blocks")
+		return fmt.Errorf("%s: no blocks", caller)
 	}
 
 	first, last := blocks[0], blocks[len(blocks)-1]
 	if uint64(first.Num()) != start {
-		const tag = "rpc response contains invalid data. requested first: %d got: %d"
-		return fmt.Errorf(tag, start, first.Num())
+		const tag = "%s: rpc response contains invalid data. requested first: %d got: %d"
+		return fmt.Errorf(tag, caller, start, first.Num())
 	}
 	if uint64(last.Num()) != start+limit-1 {
-		const tag = "rpc response contains invalid data. requested last: %d got: %d"
-		return fmt.Errorf(tag, start+limit-1, last.Num())
+		const tag = "%s: rpc response contains invalid data. requested last: %d got: %d"
+		return fmt.Errorf(tag, caller, start+limit-1, last.Num())
 	}
 
 	// some rpc responses will not return a parent hash
@@ -457,7 +457,7 @@ func validate(start, limit uint64, blocks []eth.Block) error {
 				"next-parent", fmt.Sprintf("%.4x", curr.Header.Parent),
 				"next-hash", fmt.Sprintf("%.4x", curr.Header.Hash),
 			)
-			return fmt.Errorf("corrupt chain segment")
+			return fmt.Errorf("%s: corrupt chain segment", caller)
 		}
 	}
 	return nil
@@ -493,7 +493,7 @@ func (c *Client) headers(start, limit uint64) ([]eth.Block, error) {
 			return nil, fmt.Errorf("rpc=%s %w", tag, resps[i].Error)
 		}
 	}
-	return blocks, nil
+	return blocks, validate("headers", start, limit, blocks)
 }
 
 type receiptResult struct {
@@ -514,22 +514,22 @@ type receiptResp struct {
 	Result []receiptResult `json:"result"`
 }
 
-func (c *Client) receipts(bm blockmap, tm txmap, blocks []eth.Block) error {
+func (c *Client) receipts(bm blockmap, tm txmap, start, limit uint64) error {
 	var (
-		reqs  = make([]request, len(blocks))
-		resps = make([]receiptResp, len(blocks))
+		reqs  = make([]request, limit)
+		resps = make([]receiptResp, limit)
 	)
-	for i := range blocks {
+	for i := uint64(0); i < limit; i++ {
 		reqs[i] = request{
 			ID:      "1",
 			Version: "2.0",
 			Method:  "eth_getBlockReceipts",
-			Params:  []any{eth.EncodeUint64(blocks[i].Num())},
+			Params:  []any{eth.EncodeUint64(start + i)},
 		}
 	}
 	err := c.do(&resps, reqs)
 	if err != nil {
-		return fmt.Errorf("requesting blocks: %w", err)
+		return fmt.Errorf("requesting receipts: %w", err)
 	}
 	for i := range resps {
 		if resps[i].Error.Exists() {
@@ -586,7 +586,7 @@ type logResp struct {
 	Result []logResult `json:"result"`
 }
 
-func (c *Client) logs(filter *glf.Filter, bm blockmap, tm txmap, blocks []eth.Block) error {
+func (c *Client) logs(filter *glf.Filter, bm blockmap, tm txmap, start, limit uint64) error {
 	var (
 		lf = struct {
 			From    string     `json:"fromBlock"`
@@ -594,8 +594,8 @@ func (c *Client) logs(filter *glf.Filter, bm blockmap, tm txmap, blocks []eth.Bl
 			Address []string   `json:"address"`
 			Topics  [][]string `json:"topics"`
 		}{
-			From:    eth.EncodeUint64(blocks[0].Num()),
-			To:      eth.EncodeUint64(blocks[len(blocks)-1].Num()),
+			From:    eth.EncodeUint64(start),
+			To:      eth.EncodeUint64(start + limit - 1),
 			Address: filter.Addresses(),
 			Topics:  filter.Topics(),
 		}
@@ -627,6 +627,8 @@ func (c *Client) logs(filter *glf.Filter, bm blockmap, tm txmap, blocks []eth.Bl
 		if !ok {
 			return fmt.Errorf("block not found")
 		}
+		b.Header.Hash.Write(logs[0].BlockHash)
+
 		if tx, ok := tm[k]; ok {
 			for i := range logs {
 				var found bool
@@ -648,8 +650,6 @@ func (c *Client) logs(filter *glf.Filter, bm blockmap, tm txmap, blocks []eth.Bl
 		for i := range logs {
 			tx.Logs.Add(logs[i].Log)
 		}
-		b.Header.Hash.Write(logs[0].BlockHash)
-		b.Header.Number = eth.Uint64(logs[0].BlockNum)
 		b.Txs = append(b.Txs, tx)
 	}
 	return nil
