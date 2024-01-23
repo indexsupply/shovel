@@ -35,22 +35,25 @@ func New(url string) *Client {
 			Timeout:   10 * time.Second,
 			Transport: gzhttp.Transport(http.DefaultTransport),
 		},
-		url: url,
+		url:    url,
+		lcache: NumHash{maxreads: 20},
 	}
 }
 
 type Client struct {
-	d   bool
-	hc  *http.Client
-	url string
-
+	d     bool
+	hc    *http.Client
+	url   string
 	wsurl string
-	wserr error
-	once  sync.Once
 
 	lcache NumHash
 	bcache cache
 	hcache cache
+}
+
+func (c *Client) WithMaxReads(n int) *Client {
+	c.lcache.maxreads = n
+	return c
 }
 
 func (c *Client) WithWSURL(url string) *Client {
@@ -130,22 +133,84 @@ func (e Error) Error() string {
 
 type NumHash struct {
 	sync.Mutex
-	Num  eth.Uint64 `json:"number"`
-	Hash eth.Bytes  `json:"hash"`
+	err      error
+	once     sync.Once
+	maxreads int
+	nreads   int
+	Num      eth.Uint64 `json:"number"`
+	Hash     eth.Bytes  `json:"hash"`
 }
 
-func (c *Client) listen(ctx context.Context) {
-	if len(c.wsurl) == 0 {
-		slog.InfoContext(ctx, "no wsurl set. skipping websocket")
+func (nh *NumHash) error(err error) {
+	nh.Lock()
+	nh.nreads = 0
+	nh.err = err
+	nh.Unlock()
+}
+
+func (nh *NumHash) update(n eth.Uint64, h []byte) {
+	nh.Lock()
+	defer nh.Unlock()
+	if n <= nh.Num {
 		return
 	}
+	nh.nreads = 0
+	nh.Num = n
+	nh.Hash.Write(h)
+}
 
+func (nh *NumHash) get(n uint64) (uint64, []byte, bool) {
+	nh.Lock()
+	defer nh.Unlock()
+
+	if err := nh.err; err != nil {
+		switch {
+		case errors.Is(err, net.ErrClosed), errors.Is(err, context.DeadlineExceeded):
+			slog.Debug("rpc connection reset")
+		default:
+			slog.Debug("rpc connection error: %w", err)
+		}
+		nh.err = nil
+		nh.once = sync.Once{}
+		return 0, nil, false
+	}
+
+	if n == 0 || uint64(nh.Num) < n {
+		slog.Debug("latest cache miss", "n", n, "latest", nh.Num)
+		return 0, nil, false
+	}
+
+	if nh.nreads >= nh.maxreads {
+		slog.Debug("expiring latest cache",
+			"n", n,
+			"latest", nh.Num,
+			"nreads", nh.nreads,
+			"maxreads", nh.maxreads,
+		)
+		nh.nreads = 0
+		nh.Num = eth.Uint64(0)
+		nh.Hash.Write([]byte{})
+		return 0, nil, false
+	}
+
+	nh.nreads++
+	slog.Debug("latest cache hit",
+		"n", n,
+		"latest", nh.Num,
+		"nreads", nh.nreads,
+	)
+	h := make([]byte, 32)
+	copy(h, nh.Hash)
+	return uint64(nh.Num), h, true
+}
+
+func (c *Client) wsListen(ctx context.Context) {
 	ctx, cancel := context.WithTimeout(ctx, time.Minute)
 	defer cancel()
 
 	wsc, _, err := websocket.Dial(ctx, c.wsurl, nil)
 	if err != nil {
-		c.wserr = fmt.Errorf("ws dial %q: %w", c.wsurl, err)
+		c.lcache.error(fmt.Errorf("ws dial %q: %w", c.wsurl, err))
 		return
 	}
 	err = wsjson.Write(ctx, wsc, request{
@@ -155,36 +220,55 @@ func (c *Client) listen(ctx context.Context) {
 		Params:  []any{"newHeads"},
 	})
 	if err != nil {
-		c.wserr = fmt.Errorf("ws write %q: %w", c.wsurl, err)
+		c.lcache.error(fmt.Errorf("ws write %q: %w", c.wsurl, err))
 		return
 	}
 	res := struct {
-		Error  `json:"error"`
-		Params struct {
-			Result NumHash `json:"result"`
+		Error `json:"error"`
+		P     struct {
+			R NumHash `json:"result"`
 		} `json:"params"`
 	}{}
 	for {
 		if err := wsjson.Read(ctx, wsc, &res); err != nil {
-			c.wserr = fmt.Errorf("ws read %q: %w", c.wsurl, err)
+			c.lcache.error(fmt.Errorf("ws read %q: %w", c.wsurl, err))
 			return
 		}
-		var (
-			num  = res.Params.Result.Num
-			hash = res.Params.Result.Hash
-		)
-		c.lcache.Lock()
-		if c.lcache.Num >= num {
-			c.lcache.Unlock()
-			continue
-		}
-		c.lcache.Num = num
-		c.lcache.Hash.Write(hash)
-		c.lcache.Unlock()
 		slog.Debug("websocket newHeads",
-			"n", num,
-			"h", fmt.Sprintf("%.4x", hash),
+			"n", res.P.R.Num,
+			"h", fmt.Sprintf("%.4x", res.P.R.Hash),
 		)
+		c.lcache.update(res.P.R.Num, res.P.R.Hash)
+	}
+}
+
+func (c *Client) httpPoll(ctx context.Context) {
+	var (
+		ticker = time.NewTicker(time.Second)
+		hresp  = headerResp{}
+	)
+	defer ticker.Stop()
+	for range ticker.C {
+		err := c.do(&hresp, request{
+			ID:      "1",
+			Version: "2.0",
+			Method:  "eth_getBlockByNumber",
+			Params:  []any{"latest", false},
+		})
+		if err != nil {
+			c.lcache.error(err)
+			return
+		}
+		if hresp.Error.Exists() {
+			const tag = "eth_getBlockByNumber/latest"
+			c.lcache.error(fmt.Errorf("rpc=%s %w", tag, hresp.Error))
+			return
+		}
+		slog.Debug("http poll",
+			"n", hresp.Number,
+			"h", fmt.Sprintf("%.4x", hresp.Hash),
+		)
+		c.lcache.update(hresp.Number, hresp.Hash)
 	}
 }
 
@@ -198,33 +282,18 @@ func (c *Client) listen(ctx context.Context) {
 // rather than using the cached value,
 // bypassing the caching mechanism.
 func (c *Client) Latest(n uint64) (uint64, []byte, error) {
-	c.lcache.Lock()
-	defer c.lcache.Unlock()
-
-	c.once.Do(func() {
-		go c.listen(context.Background())
-	})
-	if err := c.wserr; err != nil {
-		c.wserr = nil
-		c.once = sync.Once{}
+	c.lcache.once.Do(func() {
 		switch {
-		case errors.Is(err, context.DeadlineExceeded):
-			slog.Debug("resetting ws connection. timeout")
-		case errors.Is(err, net.ErrClosed):
-			slog.Debug("resetting ws connection. closed")
+		case len(c.wsurl) > 0:
+			slog.Debug("jrpc2 ws listening")
+			go c.wsListen(context.Background())
 		default:
-			return 0, nil, fmt.Errorf("wserr: %w", err)
+			slog.Debug("jrpc2 http polling")
+			go c.httpPoll(context.Background())
 		}
-	}
-
-	if n > 0 && n < uint64(c.lcache.Num) {
-		slog.Debug("latest cache hit",
-			"n", n,
-			"latest", c.lcache.Num,
-		)
-		h := make([]byte, 32)
-		copy(h, c.lcache.Hash)
-		return uint64(c.lcache.Num), h, nil
+	})
+	if n, h, ok := c.lcache.get(n); ok {
+		return n, h, nil
 	}
 
 	hresp := headerResp{}
@@ -241,21 +310,12 @@ func (c *Client) Latest(n uint64) (uint64, []byte, error) {
 		const tag = "eth_getBlockByNumber/latest"
 		return 0, nil, fmt.Errorf("rpc=%s %w", tag, hresp.Error)
 	}
-
-	slog.Debug("latest cache miss",
-		"n", n,
-		"previous", c.lcache.Num,
-		"latest", hresp.Number,
+	slog.Debug("http get latest",
+		"n", hresp.Number,
+		"h", fmt.Sprintf("%.4x", hresp.Hash),
 	)
-
-	if hresp.Number > c.lcache.Num {
-		c.lcache.Num = hresp.Number
-		c.lcache.Hash.Write(hresp.Hash)
-	}
-
-	h := make([]byte, 32)
-	copy(h, hresp.Hash)
-	return uint64(c.lcache.Num), h, nil
+	c.lcache.update(hresp.Number, hresp.Hash)
+	return uint64(hresp.Number), hresp.Hash, nil
 }
 
 func (c *Client) Hash(n uint64) ([]byte, error) {
