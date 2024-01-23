@@ -331,7 +331,7 @@ func (c *Client) Get(filter *glf.Filter, start, limit uint64) ([]eth.Block, erro
 			return nil, fmt.Errorf("getting logs: %w", err)
 		}
 	}
-	return blocks, nil
+	return blocks, validate(start, limit, blocks)
 }
 
 type blockResp struct {
