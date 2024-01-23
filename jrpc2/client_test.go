@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"sort"
 	"strings"
 	"testing"
 
@@ -14,6 +15,54 @@ import (
 	"github.com/indexsupply/x/shovel/glf"
 	"kr.dev/diff"
 )
+
+type testGetter struct {
+	callCount int
+}
+
+func (tg *testGetter) get(start, limit uint64) ([]eth.Block, error) {
+	tg.callCount++
+
+	var res []eth.Block
+	for i := uint64(0); i < limit; i++ {
+		res = append(res, eth.Block{Header: eth.Header{Number: eth.Uint64(start + i)}})
+	}
+	return res, nil
+}
+
+func TestCache_Prune(t *testing.T) {
+	tg := testGetter{}
+	c := cache{}
+	blocks, err := c.get(1, 1, tg.get)
+	diff.Test(t, t.Fatalf, nil, err)
+	diff.Test(t, t.Errorf, 1, len(blocks))
+	diff.Test(t, t.Errorf, 1, tg.callCount)
+	diff.Test(t, t.Errorf, 1, len(c.segments))
+
+	for i := uint64(0); i < 9; i++ {
+		blocks, err := c.get(2+i, 1, tg.get)
+		diff.Test(t, t.Fatalf, nil, err)
+		diff.Test(t, t.Errorf, 1, len(blocks))
+	}
+	diff.Test(t, t.Errorf, 5, len(c.segments))
+
+	var got []eth.Block
+	for _, seg := range c.segments {
+		for _, b := range seg.d {
+			got = append(got, b)
+		}
+	}
+	sort.Slice(got, func(i, j int) bool {
+		return got[i].Num() < got[j].Num()
+	})
+	diff.Test(t, t.Errorf, got, []eth.Block{
+		eth.Block{Header: eth.Header{Number: 6}},
+		eth.Block{Header: eth.Header{Number: 7}},
+		eth.Block{Header: eth.Header{Number: 8}},
+		eth.Block{Header: eth.Header{Number: 9}},
+		eth.Block{Header: eth.Header{Number: 10}},
+	})
+}
 
 var (
 	//go:embed testdata/block-18000000.json

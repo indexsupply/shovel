@@ -354,7 +354,7 @@ type getter func(start, limit uint64) ([]eth.Block, error)
 
 func (c *cache) prune() {
 	const size = 5
-	if len(c.segments) < size {
+	if len(c.segments) <= size {
 		return
 	}
 	var keys []key
@@ -362,7 +362,7 @@ func (c *cache) prune() {
 		keys = append(keys, k)
 	}
 	sort.Slice(keys, func(i, j int) bool {
-		return keys[i].a > keys[i].b
+		return keys[i].a > keys[j].a
 	})
 	for i := range keys[size:] {
 		delete(c.segments, keys[size+i])
@@ -374,12 +374,12 @@ func (c *cache) get(start, limit uint64, f getter) ([]eth.Block, error) {
 	if c.segments == nil {
 		c.segments = make(map[key]*segment)
 	}
-	c.prune()
 	seg, ok := c.segments[key{start, limit}]
 	if !ok {
 		seg = &segment{}
 		c.segments[key{start, limit}] = seg
 	}
+	c.prune()
 	c.Unlock()
 
 	seg.Lock()
