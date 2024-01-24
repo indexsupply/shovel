@@ -352,18 +352,39 @@ Shovel can use the [Postgres NOTIFY function](https://www.postgresql.org/docs/cu
 
 To configure notifications on an integration, speicfy a `notification` object in the integration's config.
 
+There is a slight performance cost to using notifications. The cost should be almost 0 when Shovel is processing latest blocks but it may be non-zero when backfilling data. A couple of performance related things to keep in mind:
+
+1. If there are no listeners then the notifications are instantly dropped
+2. You can ommit the notification config if you are doing a backfill and then add it once things are in the steady state
+
 ```
 {
-  "integrations": [{
     ...
-    "notification": {
-      "columns": ["block_num", "f", "t", "v"],
-    }
-  }]
+    "integrations": [{
+        "name": "foo",
+        "sources": [{"name": "mainnet"}],
+        "table": {
+            ...
+            "columns": [
+                {"name": "a", "type": "bytea"},
+                {"name": "b", "type": "bytea"}
+            ]
+        },
+        "notification": {
+            "columns": ["block_num", "a", "b"],
+        }
+        ...
+    }]
 }
 ```
 
 - **columns** A list of strings that reference column names. Column names must be previously defined the the integration's [table](#table) config. The columns are serialized to text (hex when binary) and encoded into a comma seperated list and placed in the notification's payload. The order of the payload is the order used in the `columns` list.
+
+With this config, and when Shovel is inserting new data into the foo table, it will send a notification with the following data:
+
+```
+NOTIFY mainnet-foo '$block_num,$a,$b'
+```
 
 <hr>
 
