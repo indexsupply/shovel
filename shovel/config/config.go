@@ -233,6 +233,19 @@ func ValidateColRefs(ig Integration) error {
 			return fmt.Errorf("missing column for block.%s", bd.Name)
 		}
 	}
+	// Every notification column must have a coresponding column
+	for _, colName := range ig.Notification.Columns {
+		var found bool
+		for _, c := range ig.Table.Columns {
+			if c.Name == colName {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return fmt.Errorf("missing column for notification.%s", colName)
+		}
+	}
 	return nil
 }
 
@@ -286,6 +299,9 @@ func CheckUserInput(conf Root) error {
 		for _, c := range ig.Table.Columns {
 			check("column name", c.Name)
 			check("column type", c.Type)
+		}
+		for _, name := range ig.Notification.Columns {
+			check("notification column name", name)
 		}
 		for _, inp := range ig.Event.Inputs {
 			check("referenced column name", inp.Filter.Ref.Column)
@@ -365,13 +381,14 @@ type Compiled struct {
 }
 
 type Integration struct {
-	Name         string          `json:"name"`
-	Enabled      bool            `json:"enabled"`
-	Sources      []Source        `json:"sources"`
-	Table        wpg.Table       `json:"table"`
-	Compiled     Compiled        `json:"compiled"`
-	Block        []dig.BlockData `json:"block"`
-	Event        dig.Event       `json:"event"`
+	Name         string           `json:"name"`
+	Enabled      bool             `json:"enabled"`
+	Sources      []Source         `json:"sources"`
+	Table        wpg.Table        `json:"table"`
+	Notification dig.Notification `json:"notification"`
+	Compiled     Compiled         `json:"compiled"`
+	Block        []dig.BlockData  `json:"block"`
+	Event        dig.Event        `json:"event"`
 	Dependencies []string
 }
 

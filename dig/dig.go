@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -575,18 +576,24 @@ func (e Event) numIndexed() int {
 	return res
 }
 
+type Notification struct {
+	Columns []string `json:"columns"`
+}
+
 type coldef struct {
 	Input     Input
 	BlockData BlockData
 	Column    wpg.Column
+	Notify    bool
 }
 
 // Implements the [shovel.Integration] interface
 type Integration struct {
-	name  string
-	Event Event
-	Block []BlockData
-	Table wpg.Table
+	name         string
+	Event        Event
+	Block        []BlockData
+	Table        wpg.Table
+	Notification Notification
 
 	Columns []string
 	coldefs []coldef
@@ -594,18 +601,21 @@ type Integration struct {
 	numIndexed    int
 	numSelected   int
 	numBDSelected int
+	numNotify     int
 
 	resultCache *Result
 	sighash     []byte
 }
 
-func New(name string, ev Event, bd []BlockData, table wpg.Table) (Integration, error) {
+func New(name string, ev Event, bd []BlockData, table wpg.Table, notif Notification) (Integration, error) {
 	ig := Integration{
-		name:  name,
-		Event: ev,
-		Block: bd,
-		Table: table,
+		name:         name,
+		Event:        ev,
+		Block:        bd,
+		Table:        table,
+		Notification: notif,
 
+		numNotify:   len(notif.Columns),
 		numIndexed:  ev.numIndexed(),
 		resultCache: NewResult(ev.ABIType()),
 		sighash:     ev.SignatureHash(),
@@ -629,6 +639,7 @@ func (ig *Integration) setCols() {
 		ig.coldefs = append(ig.coldefs, coldef{
 			Input:  input,
 			Column: c,
+			Notify: slices.Contains(ig.Notification.Columns, c.Name),
 		})
 		ig.numSelected++
 	}
@@ -638,6 +649,7 @@ func (ig *Integration) setCols() {
 		ig.coldefs = append(ig.coldefs, coldef{
 			BlockData: bd,
 			Column:    c,
+			Notify:    slices.Contains(ig.Notification.Columns, c.Name),
 		})
 		ig.numBDSelected++
 	}
@@ -709,12 +721,62 @@ func (ig Integration) Insert(ctx context.Context, pgmut *sync.Mutex, pg wpg.Conn
 	}
 	pgmut.Lock()
 	defer pgmut.Unlock()
-	return pg.CopyFrom(
+
+	nr, err := pg.CopyFrom(
 		ctx,
 		pgx.Identifier{ig.Table.Name},
 		ig.Columns,
 		pgx.CopyFromRows(rows),
 	)
+	if err != nil {
+		return 0, err
+	}
+	if ig.numNotify == 0 {
+		return nr, nil
+	}
+	if err := ig.notify(lwc, pg, rows); err != nil {
+		slog.ErrorContext(lwc.ctx, "sending notifications", "error", err)
+	}
+	return nr, nil
+}
+
+func (ig *Integration) notify(lwc *logWithCtx, pg wpg.Conn, rows [][]any) error {
+	q := fmt.Sprintf(
+		`select pg_notify('%s-%s', $1)`,
+		lwc.get("src_name"),
+		lwc.get("ig_name"),
+	)
+	for i := range rows {
+		var payload []string
+		for j := range ig.Notification.Columns {
+			for k := range ig.coldefs {
+				if !ig.coldefs[k].Notify {
+					continue
+				}
+				if ig.coldefs[k].Column.Name != ig.Notification.Columns[j] {
+					continue
+				}
+				switch v := rows[i][k].(type) {
+				case int:
+					payload = append(payload, strconv.Itoa(v))
+				case uint64:
+					payload = append(payload, strconv.FormatUint(v, 10))
+				case eth.Uint64:
+					payload = append(payload, strconv.FormatUint(uint64(v), 10))
+				case string:
+					payload = append(payload, v)
+				case []byte:
+					payload = append(payload, eth.EncodeHex(v))
+				default:
+					panic(v)
+				}
+			}
+		}
+		if _, err := pg.Exec(lwc.ctx, q, strings.Join(payload, ",")); err != nil {
+			return fmt.Errorf("sending pg notification: %w", err)
+		}
+	}
+	return nil
 }
 
 type logWithCtx struct {

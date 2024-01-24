@@ -346,6 +346,27 @@ Each integration contains a `table` object. It is possible for many integrations
 
 <hr>
 
+## Notification
+
+Shovel can use the [Postgres NOTIFY function](https://www.postgresql.org/docs/current/sql-notify.html) to send realtime notifications when new rows are added to a table. This is useful if you want to provide low latency updates to clients. For example, you may have a web browser client that opens an HTTP SSE connection to your web server. Your web server can use Postgres' `LISTEN` command to wait for new rows added to an integration's table. When the web server receives a notification, it can use data in the payload to quickly send the update to the client via the HTTP SSE connection.
+
+To configure notifications on an integration, speicfy a `notification` object in the integration's config.
+
+```
+{
+  "integrations": [{
+    ...
+    "notification": {
+      "columns": ["block_num", "f", "t", "v"],
+    }
+  }]
+}
+```
+
+- **columns** A list of strings that reference column names. Column names must be previously defined the the integration's [table](#table) config. The columns are serialized to text (hex when binary) and encoded into a comma seperated list and placed in the notification's payload. The order of the payload is the order used in the `columns` list.
+
+<hr>
+
 ## Block
 
 In addition to log/event indexing, Shovel can also index standard block, transaction, receipt, and log data. It's possible to index log/event data and block data or just block data.
