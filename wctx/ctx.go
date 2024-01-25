@@ -1,15 +1,19 @@
 // index for context values
 package wctx
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 type key int
 
 const (
-	chainIDKey key = 1
-	igNameKey  key = 2
-	srcNameKey key = 3
-	versionKey key = 4
+	chainIDKey  key = 1
+	igNameKey   key = 2
+	srcNameKey  key = 3
+	versionKey  key = 4
+	starTimeKey key = 5
 )
 
 func WithChainID(ctx context.Context, id uint64) context.Context {
@@ -46,4 +50,13 @@ func WithVersion(ctx context.Context, v string) context.Context {
 func Version(ctx context.Context) string {
 	v, _ := ctx.Value(versionKey).(string)
 	return v
+}
+
+func WithStartTime(ctx context.Context, t time.Time) context.Context {
+	return context.WithValue(ctx, starTimeKey, t)
+}
+
+func StartTime(ctx context.Context) time.Time {
+	t, _ := ctx.Value(starTimeKey).(time.Time)
+	return t
 }

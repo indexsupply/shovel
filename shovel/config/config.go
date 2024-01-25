@@ -242,7 +242,7 @@ func ValidateColRefs(ig Integration) error {
 				break
 			}
 		}
-		if !found {
+		if !found && colName != "shovel_latency" {
 			return fmt.Errorf("missing column for notification.%s", colName)
 		}
 	}

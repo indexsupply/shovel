@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset="utf-8"><title>Shovel Demo</title>
+		<style>
+			body {
+				font-family: system-ui;
+				max-width: 900px;
+				margin: 0 auto 200px auto;
+			}
+			section {
+				font-size: 2em;
+				margin-top: 100px;
+			}
+			h2 {
+				font-size: 2.25em;
+				font-weight: bolder;
+				margin-top: 0;
+				padding-top: 0;
+			}
+			header img {
+				max-width: 100%;
+				margin: 10px 0 40px 0;
+			}
+			.events {
+				min-height: 400px;
+			}
+			.events-header .event {
+				border-bottom: 1px dotted black;
+				margin-bottom: 5px;
+			}
+			.events-header .event div {
+				text-transform: uppercase;
+			}
+			.event {
+				font-family: monospace;
+				font-size: 2em;
+
+				width: 100%;
+				display: flex;
+				flex-direction: row;
+				justify-content: start;
+				align-items: baseline;
+				gap: 20px;
+			}
+			.tx_hash, .from, .to, .value, .total_latency, .shovel_latency {
+				width: 20%;
+				text-transform: lowercase;
+				text-align: left;
+				font-family: monospace;
+				overflow: hidden;
+				text-overflow: ellipsis;
+			}
+		</style>
+	</head>
+	<body>
+		<header>
+		<img src="https://indexsupply.com/shovel-demo-logo-cropped.png" />
+		</header>
+		<main>
+			<div class="events-header">
+				<div class="event">
+					<div class="tx_hash">tx</div>
+					<div class="from">from</div>
+					<div class="to">to</div>
+					<div class="value">value</div>
+					<div class="total_latency">e2e</div>
+					<div class="shovel_latency">shovel</div>
+				</div>
+			</div>
+			<div class="events"></div>
+			<section>
+				<h2>E2E Latency</h2>
+				<code>= block.timestamp - api.now()</code>
+			</section>
+			<section>
+				<h2>Shovel Latency</h2>
+				<img src="https://indexsupply.com/shovel-latency.svg" />
+			</section>
+			<section>
+				<h2>Interesting bits</h2>
+				<ul>
+					<li>Cache RPC API. Don't request same data more than once</li>
+					<li>Custom ABI decoder. Only decode selected data</li>
+					<li>Single transaction per block range</li>
+					<li>COPY Protocol / Append Only architecture</li>
+					<li>LISTEN/NOTIFY</li>
+				</ul>
+			</section>
+			<section>
+				<h2>Other things to think about</h2>
+				<ul>
+					<li>Why use JSON RPC?</li>
+					<li>Should we index from within the EL client?</li>
+					<li>How many computers does it take to index eth data?</li>
+					<li>Postgres is good</li>
+				</ul>
+			</section>
+			<section>
+				<h2>Test Address</h2>
+				<p><code>0xc8de9Ae0eC64f60e59244c5fC51F9b4a24d5FbdB</code></p>
+			</section>
+			<section>
+				<h2>Thank you</h2>
+				<p>@indexsupply</p>
+			</section>
+		</main>
+	</body>
+	<script>
+		function addEvent(eventData) {
+			const ev = document.createElement('div');
+			ev.className = 'event';
+			const fields = ['tx_hash', 'from', 'to', 'value', 'total_latency', 'shovel_latency'];
+			fields.forEach(field => {
+				const div = document.createElement('div');
+				div.className = field;
+				div.textContent = eventData[field] || '';
+				ev.appendChild(div);
+			});
+			const eventsDiv  = document.querySelector('.events')
+			eventsDiv.insertBefore(ev, eventsDiv.firstChild);
+		}
+
+		function pruneEvents() {
+			const eventsDiv = document.querySelector('.events');
+			const eventDivs = eventsDiv.querySelectorAll('.event');
+			const max = 10;
+			if (eventDivs.length <= max) {
+				return;
+			}
+			for (let i = 0; i < eventDivs.length - max; i++) {
+				eventsDiv.removeChild(eventDivs[eventDivs.length - 1 - i]);
+			}
+		}
+
+		function parseEvent(data) {
+			let keys = [];
+			switch (data.length) {
+				case 8: {
+					keys = [
+						'block_num',
+						'block_time',
+						'tx_hash',
+						'f',
+						't',
+						'v',
+						'shovel_latency',
+						'now',
+					];
+					break;
+				}
+				case 7: {
+					keys = [
+						'block_num',
+						'tx_hash',
+						'f',
+						't',
+						'v',
+						'shovel_latency',
+						'now',
+					];
+					break;
+				}
+			}
+			let parsed = {};
+			keys.forEach((key, index) => {
+				parsed[key] = data[index];
+			});
+			const dollars = Math.round((parsed.v/ 1e6) * 1e2) / 1e2;
+			return {
+				tx_hash: parsed.tx_hash,
+				from: parsed.f,
+				to: parsed.t,
+				value: `$${dollars.toLocaleString()}`,
+				total_latency: parsed.block_time ? `${parsed.now - parsed.block_time}s` : 'n/a',
+				shovel_latency: `${parsed.shovel_latency}ms`
+			};
+		}
+
+		window.addEventListener("load", function() {
+			const params = new URLSearchParams(window.location.search);
+			const src = params.get("src");
+			const ig = params.get("ig");
+			let updates = new EventSource(`/demo-updates?src=${src}&ig=${ig}`);
+			updates.onmessage = function(event) {
+				addEvent(parseEvent(JSON.parse(event.data)));
+				pruneEvents();
+			};
+		});
+	</script>
+</html>

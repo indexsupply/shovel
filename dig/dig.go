@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/indexsupply/x/bint"
 	"github.com/indexsupply/x/eth"
@@ -755,6 +756,11 @@ func (ig *Integration) notify(lwc *logWithCtx, pg wpg.Conn, rows [][]any) error 
 	for i := range rows {
 		var payload []string
 		for j := range ig.Notification.Columns {
+			if ig.Notification.Columns[j] == "shovel_latency" {
+				lat := time.Since(wctx.StartTime(lwc.ctx)).Milliseconds()
+				payload = append(payload, strconv.Itoa(int(lat)))
+				continue
+			}
 			for k := range ig.coldefs {
 				if !ig.coldefs[k].Notify {
 					continue

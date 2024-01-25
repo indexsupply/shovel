@@ -1,0 +1,114 @@
+{
+    "pg_url": "postgres:///shovel",
+    "eth_sources": [
+        {
+            "name": "base",
+            "chain_id": 8453,
+            "url": "https://dark-chaotic-spring.base-mainnet.quiknode.pro/5e640d33d861636500b3483130410779b3c9a9a6/",
+            "getblock": "https://go.getblock.io/f3ab1a375ef645a9a02311a659fc3213",
+            "alchemy": "https://base-mainnet.g.alchemy.com/v2/E1sFxXiOWL9X7CV2qhmlK7b-1NsbyoYe"
+        },
+        {
+            "name": "main",
+            "chain_id": 1,
+            "url": "http://eth-1:8545"
+        }
+    ],
+    "integrations": [
+        {
+            "name": "transfers",
+            "enabled": true,
+            "sources": [{"name": "base"}],
+            "table": {
+                "name": "transfers",
+                "enable_insert_at": true,
+                "columns": [
+                    {"name": "chain_id", "type": "numeric"},
+                    {"name": "tx_hash", "type": "bytea"},
+                    {"name": "log_addr", "type": "bytea"},
+                    {"name": "block_time", "type": "numeric"},
+                    {"name": "f", "type": "bytea"},
+                    {"name": "t", "type": "bytea"},
+                    {"name": "v", "type": "numeric"}
+                ]
+            },
+            "notification": {
+                "columns": ["block_num", "block_time", "tx_hash", "f", "t", "v", "shovel_latency"]
+            },
+            "block": [
+                {"name": "chain_id", "column": "chain_id"},
+                {"name": "block_time", "column": "block_time"},
+                {"name": "tx_hash", "column": "tx_hash"},
+                {
+                    "name": "log_addr",
+                    "column": "log_addr",
+                    "filter_op": "contains",
+                    "filter_arg": [
+                        "a0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+                        "833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+                    ]
+                }
+            ],
+            "event": {
+                "name": "Transfer",
+                "type": "event",
+                "anonymous": false,
+                "inputs": [
+                    {"indexed": true,  "name": "from",  "type": "address", "column": "f"},
+                    {"indexed": true,  "name": "to",    "type": "address", "column": "t"},
+                    {"indexed": false, "name": "value", "type": "uint256", "column": "v"}
+                ]
+            }
+        },
+        {
+            "name": "transfers-min",
+            "enabled": true,
+            "sources": [{"name": "base"}, {"name": "main"}],
+            "table": {
+                "name": "transfers",
+                "enable_insert_at": true,
+                "columns": [
+                    {"name": "chain_id", "type": "numeric"},
+                    {"name": "tx_hash", "type": "bytea"},
+                    {"name": "log_addr", "type": "bytea"},
+                    {"name": "f", "type": "bytea"},
+                    {"name": "t", "type": "bytea"},
+                    {"name": "v", "type": "numeric"}
+                ]
+            },
+            "notification": {
+                "columns": ["block_num", "tx_hash", "f", "t", "v", "shovel_latency"]
+            },
+            "block": [
+                {"name": "chain_id", "column": "chain_id"},
+                {"name": "tx_hash", "column": "tx_hash"},
+                {
+                    "name": "log_addr",
+                    "column": "log_addr",
+                    "filter_op": "contains",
+                    "filter_arg": [
+                        "a0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+                        "833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+                    ]
+                }
+            ],
+            "event": {
+                "name": "Transfer",
+                "type": "event",
+                "anonymous": false,
+                "inputs": [
+                    {"indexed": true,  "name": "from",  "type": "address", "column": "f"},
+                    {
+                        "indexed": true,
+                        "name": "to",
+                        "type": "address",
+                        "column": "t",
+                        "Xfilter_op": "contains",
+                        "Xfilter_arg": ["0xc8de9Ae0eC64f60e59244c5fC51F9b4a24d5FbdB"]
+                    },
+                    {"indexed": false, "name": "value", "type": "uint256", "column": "v"}
+                ]
+            }
+        }
+    ]
+}

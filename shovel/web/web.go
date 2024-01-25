@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -34,6 +35,9 @@ var (
 	//go:embed login.html
 	loginHTML string
 
+	//go:embed demo.html
+	demoHTML string
+
 	//go:embed diag.html
 	diagHTML string
 
@@ -47,6 +51,7 @@ var (
 var htmlpages = map[string]string{
 	"index":           indexHTML,
 	"diag":            diagHTML,
+	"demo":            demoHTML,
 	"login":           loginHTML,
 	"add-source":      addSourceHTML,
 	"add-integration": addIntegrationHTML,
@@ -456,4 +461,74 @@ func (h *Handler) SaveSource(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Redirect(w, r, "/", http.StatusSeeOther)
+}
+
+func (h *Handler) Demo(w http.ResponseWriter, r *http.Request) {
+	t, err := h.template(isLoopback(r), "demo")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if err := t.Execute(w, nil); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+}
+
+func (h *Handler) DemoUpdates(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), time.Minute)
+	defer cancel()
+
+	var (
+		srcName = r.URL.Query().Get("src")
+		igName  = r.URL.Query().Get("ig")
+	)
+	if err := wstrings.Safe(srcName); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if err := wstrings.Safe(igName); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	pc, err := h.pgp.Acquire(r.Context())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	c := pc.Hijack()
+	defer c.Close(ctx)
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+
+	var lq = fmt.Sprintf(`listen "%s-%s"`, srcName, igName)
+	for {
+		if _, err := c.Exec(ctx, lq); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		notif, err := c.WaitForNotification(ctx)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		payload, err := json.Marshal(append(
+			strings.Split(notif.Payload, ","),
+			fmt.Sprintf("%d", time.Now().Unix()),
+		))
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		fmt.Fprintf(w, "data: %s\n\n", payload)
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			http.Error(w, "Streaming unsupported", http.StatusInternalServerError)
+			return
+		}
+		flusher.Flush()
+	}
 }

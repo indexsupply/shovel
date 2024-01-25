@@ -441,6 +441,7 @@ type hashcheck struct {
 func (t *Task) loadinsert(pg wpg.Conn, localHash []byte, start, limit uint64) (hashcheck, error) {
 	var (
 		t0    = time.Now()
+		ctx   = wctx.WithStartTime(t.ctx, t0)
 		eg    errgroup.Group
 		pgmut sync.Mutex
 		part  = t.batchSize / t.concurrency
@@ -460,7 +461,7 @@ func (t *Task) loadinsert(pg wpg.Conn, localHash []byte, start, limit uint64) (h
 			if err != nil {
 				return fmt.Errorf("loading blocks: %w", err)
 			}
-			nr, err := t.dests[i].Insert(t.ctx, &pgmut, pg, blocks)
+			nr, err := t.dests[i].Insert(ctx, &pgmut, pg, blocks)
 			if err != nil {
 				return fmt.Errorf("inserting blocks: %w", err)
 			}
@@ -486,7 +487,7 @@ func (t *Task) loadinsert(pg wpg.Conn, localHash []byte, start, limit uint64) (h
 	if len(first.parent) == 32 && !bytes.Equal(localHash, first.parent) {
 		return last, ErrReorg
 	}
-	slog.DebugContext(t.ctx, "insert",
+	slog.DebugContext(ctx, "insert",
 		"src", t.srcName,
 		"dst", t.destConfig.Name,
 		"n", last.num,
