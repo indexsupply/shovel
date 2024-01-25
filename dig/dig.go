@@ -383,10 +383,16 @@ type Filter struct {
 }
 
 func (f Filter) Accept(ctx context.Context, pgmut *sync.Mutex, pg wpg.Conn, d any) (bool, error) {
-	val, ok := d.([]byte)
-	if !ok {
+	var val []byte
+	switch v := d.(type) {
+	case []byte:
+		val = []byte(v)
+	case eth.Bytes:
+		val = []byte(v)
+	default:
 		return true, nil
 	}
+
 	switch {
 	case strings.HasSuffix(f.Op, "contains"):
 		var res bool
@@ -875,6 +881,13 @@ func (ig Integration) processLog(rows [][]any, lwc *logWithCtx, pgmut *sync.Mute
 				switch {
 				case def.Input.Indexed:
 					d := lwc.l.Topics[ictr]
+					accept, err := def.Input.Accept(lwc.ctx, pgmut, pg, d)
+					if err != nil {
+						return nil, fmt.Errorf("checking filter: %w", err)
+					}
+					if !accept {
+						return rows, nil
+					}
 					row[j] = dbtype(def.Input.Type, d)
 					ictr++
 				case !def.BlockData.Empty():
