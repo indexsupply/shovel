@@ -659,7 +659,7 @@ func (tm *Manager) runTask(t *Task) {
 				slog.InfoContext(t.ctx, "done")
 				return
 			case errors.Is(err, ErrNothingNew):
-				time.Sleep(time.Second / 2)
+				time.Sleep(time.Second / 4)
 			case err != nil:
 				time.Sleep(time.Second)
 				slog.ErrorContext(t.ctx, "converge", "error", err, "ig_name", t.destConfig.Name)
