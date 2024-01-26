@@ -530,6 +530,7 @@ type headerResp struct {
 
 func (c *Client) headers(start, limit uint64) ([]eth.Block, error) {
 	var (
+		t0     = time.Now()
 		reqs   = make([]request, limit)
 		resps  = make([]headerResp, limit)
 		blocks = make([]eth.Block, limit)
@@ -553,6 +554,11 @@ func (c *Client) headers(start, limit uint64) ([]eth.Block, error) {
 			return nil, fmt.Errorf("rpc=%s %w", tag, resps[i].Error)
 		}
 	}
+	slog.Debug("http get headers",
+		"start", start,
+		"limit", limit,
+		"latency", time.Since(t0),
+	)
 	return blocks, validate("headers", start, limit, blocks)
 }
 
@@ -648,6 +654,7 @@ type logResp struct {
 
 func (c *Client) logs(filter *glf.Filter, bm blockmap, tm txmap, start, limit uint64) error {
 	var (
+		t0 = time.Now()
 		lf = struct {
 			From    string     `json:"fromBlock"`
 			To      string     `json:"toBlock"`
@@ -712,5 +719,10 @@ func (c *Client) logs(filter *glf.Filter, bm blockmap, tm txmap, start, limit ui
 		}
 		b.Txs = append(b.Txs, tx)
 	}
+	slog.Debug("http get logs",
+		"start", start,
+		"limit", limit,
+		"latency", time.Since(t0),
+	)
 	return nil
 }
