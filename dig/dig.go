@@ -954,24 +954,25 @@ func (ig Integration) processLog(rows [][]any, lwc *logWithCtx, pgmut *sync.Mute
 	return rows, nil
 }
 
-func dbtype(t string, d []byte) any {
+func dbtype(abitype string, d []byte) any {
 	switch {
-	case strings.HasPrefix(t, "uint"):
+	case strings.HasPrefix(abitype, "uint"):
 		var x uint256.Int
 		x.SetBytes(d)
 		return x.Dec()
-	case t == "address":
+	case abitype == "address":
 		if len(d) == 32 {
 			return d[12:]
 		}
 		return d
-	case t == "bool":
+	case abitype == "bool":
 		var x uint256.Int
 		x.SetBytes32(d)
 		return x.Dec() == "1"
-	case t == "text":
+	case abitype == "string":
 		return string(d)
 	default:
+		fmt.Println("here")
 		return d
 	}
 }

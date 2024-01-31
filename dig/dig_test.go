@@ -2,6 +2,7 @@ package dig
 
 import (
 	"encoding/hex"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -264,6 +265,33 @@ func TestABIType(t *testing.T) {
 	for _, tc := range cases {
 		_, got := tc.input.ABIType(0)
 		diff.Test(t, t.Errorf, tc.want, got)
+	}
+}
+
+func TestDBType(t *testing.T) {
+	cases := []struct {
+		abitype  string
+		input    []byte
+		want     any
+		wantType reflect.Kind
+	}{
+		{
+			"string",
+			[]byte{},
+			string([]byte{}),
+			reflect.String,
+		},
+		{
+			"bool",
+			make([]byte, 32),
+			false,
+			reflect.Bool,
+		},
+	}
+	for _, tc := range cases {
+		got := dbtype(tc.abitype, tc.input)
+		diff.Test(t, t.Errorf, got, tc.want)
+		diff.Test(t, t.Errorf, reflect.TypeOf(got).Kind(), tc.wantType)
 	}
 }
 
