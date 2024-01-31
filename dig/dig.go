@@ -972,7 +972,6 @@ func dbtype(abitype string, d []byte) any {
 	case abitype == "string":
 		return string(d)
 	default:
-		fmt.Println("here")
 		return d
 	}
 }
