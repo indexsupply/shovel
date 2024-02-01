@@ -346,9 +346,9 @@ Each integration contains a `table` object. It is possible for many integrations
 
 <hr>
 
-## Notification
+## Notifications
 
-Shovel can use the [Postgres NOTIFY function](https://www.postgresql.org/docs/current/sql-notify.html) to send realtime notifications when new rows are added to a table. This is useful if you want to provide low latency updates to clients. For example, you may have a web browser client that opens an HTTP SSE connection to your web server. Your web server can use Postgres' `LISTEN` command to wait for new rows added to an integration's table. When the web server receives a notification, it can use data in the payload to quickly send the update to the client via the HTTP SSE connection.
+Shovel can use the [Postgres NOTIFY function](https://www.postgresql.org/docs/current/sql-notify.html) to send notifications when new rows are added to a table. This is useful if you want to provide low latency updates to clients. For example, you may have a browser client that opens an HTTP SSE connection to your web server. Your web server can use Postgres' `LISTEN` command to wait for new rows added to an integration's table. When the web server receives a notification, it can use data in the notification's payload to quickly send the update to the client via the HTTP SSE connection.
 
 To configure notifications on an integration, speicfy a `notification` object in the integration's config.
 
@@ -378,7 +378,7 @@ There is a slight performance cost to using notifications. The cost should be al
 }
 ```
 
-- **columns** A list of strings that reference column names. Column names must be previously defined the the integration's [table](#table) config. The columns are serialized to text (hex when binary) and encoded into a comma seperated list and placed in the notification's payload. The order of the payload is the order used in the `columns` list.
+- **columns** A list of strings that reference column names. Column names must be previously defined the the integration's [table](#table) config. The columns values are serialized to text (hex when binary) and encoded into a comma seperated list and placed in the notification's payload. The order of the payload is the order used in the `columns` list.
 
 With this config, and when Shovel is inserting new data into the foo table, it will send a notification with the following data:
 
