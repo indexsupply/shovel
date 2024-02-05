@@ -16,6 +16,7 @@ import (
 	"github.com/indexsupply/x/wpg"
 
 	"blake.io/pqx/pqxtest"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/stdlib"
 	"kr.dev/diff"
@@ -409,4 +410,72 @@ func TestLoadTasks(t *testing.T) {
 	diff.Test(t, t.Fatalf, err, nil)
 	diff.Test(t, t.Fatalf, len(tasks), 1)
 	diff.Test(t, t.Fatalf, tasks[0].start, uint64(0))
+}
+
+func TestLatest(t *testing.T) {
+	ctx := context.Background()
+	pqxtest.CreateDB(t, Schema)
+	pg, err := pgxpool.New(ctx, pqxtest.DSNForTest(t))
+	diff.Test(t, t.Fatalf, err, nil)
+
+	check := func(_ pgconn.CommandTag, err error) {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	checkLatest := func(srcName string, want uint64) {
+		var got uint64
+		const q = `select num from shovel.latest where src_name = $1`
+		if err := pg.QueryRow(ctx, q, srcName).Scan(&got); err != nil {
+			t.Fatalf("checking %s error: %v", srcName, err)
+		}
+		if got != want {
+			t.Errorf("wanted latest %d got %d", want, got)
+		}
+	}
+
+	const q = `insert into shovel.task_updates (src_name, ig_name, num) values ($1, $2, $3)`
+	check(pg.Exec(ctx, q, "main", "foo", 1))
+
+	check(pg.Exec(ctx, q, "base", "foo", 1))
+	check(pg.Exec(ctx, q, "base", "foo", 2))
+	check(pg.Exec(ctx, q, "base", "bar", 1))
+	checkLatest("main", 1)
+	checkLatest("base", 1)
+
+	check(pg.Exec(ctx, q, "base", "bar", 2))
+	checkLatest("main", 1)
+	checkLatest("base", 2)
+}
+
+func TestLatest_Backfill(t *testing.T) {
+	ctx := context.Background()
+	pqxtest.CreateDB(t, Schema)
+	pg, err := pgxpool.New(ctx, pqxtest.DSNForTest(t))
+	diff.Test(t, t.Fatalf, err, nil)
+
+	check := func(_ pgconn.CommandTag, err error) {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	checkLatest := func(srcName string, want uint64) {
+		var got uint64
+		const q = `select num from shovel.latest where src_name = $1`
+		if err := pg.QueryRow(ctx, q, srcName).Scan(&got); err != nil {
+			t.Fatalf("checking %s error: %v", srcName, err)
+		}
+		if got != want {
+			t.Errorf("wanted latest %d got %d", want, got)
+		}
+	}
+
+	const q = `insert into shovel.task_updates (src_name, ig_name, num) values ($1, $2, $3)`
+	check(pg.Exec(ctx, q, "base", "foo", 100))
+	check(pg.Exec(ctx, q, "base", "foo", 101))
+	check(pg.Exec(ctx, q, "base", "bar", 1))
+	checkLatest("base", 101)
+
+	check(pg.Exec(ctx, q, "base", "bar", 91))
+	checkLatest("base", 91)
 }

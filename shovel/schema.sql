@@ -113,3 +113,20 @@ select distinct on (src_name)
 src_name, num, hash, src_num, src_hash, nblocks, nrows, latency
 from shovel.task_updates
 order by src_name, num desc;
+
+drop view if exists shovel.latest;
+create or replace view shovel.latest as
+with abs_latest as (
+	select src_name, max(num) num
+	from shovel.task_updates
+	group by src_name
+), src_latest as (
+	select
+		shovel.task_updates.src_name,
+		max(shovel.task_updates.num) num
+	from shovel.task_updates, abs_latest
+	where shovel.task_updates.src_name = abs_latest.src_name
+	and abs_latest.num - shovel.task_updates.num <= 10
+	group by shovel.task_updates.src_name, shovel.task_updates.ig_name
+)
+select src_name, min(num) num from src_latest group by 1;
