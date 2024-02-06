@@ -479,3 +479,32 @@ func TestLatest_Backfill(t *testing.T) {
 	check(pg.Exec(ctx, q, "base", "bar", 91))
 	checkLatest("base", 91)
 }
+
+func TestLatest_NoSrc(t *testing.T) {
+	ctx := context.Background()
+	pqxtest.CreateDB(t, Schema)
+	pg, err := pgxpool.New(ctx, pqxtest.DSNForTest(t))
+	diff.Test(t, t.Fatalf, err, nil)
+
+	check := func(_ pgconn.CommandTag, err error) {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	checkLatest := func(want uint64) {
+		var got uint64
+		const q = `select num from shovel.latest`
+		if err := pg.QueryRow(ctx, q).Scan(&got); err != nil {
+			t.Fatalf("checking table error: %v", err)
+		}
+		if got != want {
+			t.Errorf("wanted latest %d got %d", want, got)
+		}
+	}
+
+	const q = `insert into shovel.task_updates (src_name, ig_name, num) values ($1, $2, $3)`
+	check(pg.Exec(ctx, q, "base", "foo", 100))
+	check(pg.Exec(ctx, q, "base", "foo", 101))
+	check(pg.Exec(ctx, q, "base", "bar", 1))
+	checkLatest(101)
+}
