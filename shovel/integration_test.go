@@ -69,6 +69,12 @@ func TestIntegrations(t *testing.T) {
 				where tx_hash = '\x713df81a2ab53db1d01531106fc5de43012a401ddc3e0586d522e5c55a162d42'
 				and contract = '\x57f1887a8bf19b14fc0df6fd9b2acc9af147ea85'
 				`,
+				`
+				select count(*) = 1 from erc721_test
+				where tx_hash = '\x713df81a2ab53db1d01531106fc5de43012a401ddc3e0586d522e5c55a162d42'
+				and contract = '\x57f1887a8bf19b14fc0df6fd9b2acc9af147ea85'
+				and "from" = '\xce020e4bca3a181cacd771a4750e03f384779313'
+				`,
 			},
 			"select count(*) = 0 from erc721_test",
 		},
