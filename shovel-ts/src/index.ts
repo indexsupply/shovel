@@ -1,4 +1,4 @@
-type hex = `0x${string}`;
+type Hex = `0x${string}`;
 
 type DbType = "bool" | "bytea" | "int" | "numeric" | "text" | "timestamp";
 
