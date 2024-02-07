@@ -68,11 +68,15 @@ export type Config = {
     integrations : Integration[];
 };
 
-export function makeConfig(pgURL: string, sources: EthSource[], integrations: Integration[]): Config {
-    //TODO validation
-    return {
-        pgURL: pgURL,
-        ethSources: sources,
-        integrations: integrations
-    };
+export function makeConfig(args: {
+  pgURL: string;
+  sources: EthSource[];
+  integrations: Integration[];
+}): Config {
+  //TODO validation
+  return {
+    pgURL: args.pgURL,
+    ethSources: args.sources,
+    integrations: args.integrations,
+  };
 }

@@ -32,7 +32,11 @@ test("XXX", () => {
         },
       },
     ];
-    const c = makeConfig("", [], integrations);
+    const c = makeConfig({
+      pgURL: "",
+      sources: [],
+      integrations: integrations,
+    });
     expect(c).toEqual({
         "pgURL":"",
         "ethSources":[],
