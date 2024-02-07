@@ -16,23 +16,22 @@ test("XXX", () => {
         url: "https://ethereum.publicnode.com",
         chainId: 1,
     };
-    const integrations: Integration[] = [];
-
-    integrations.push({
+    const integrations: Integration[] = [
+      {
         name: "transfers",
         enabled: true,
         source: {
-            name: mainnet.name,
-            startBlock: 0n,
+          name: mainnet.name,
+          startBlock: 0n,
         },
         table: transfersTable,
         block: [],
         event: {
-            name: "Transfer",
-            anonamous: false,
+          name: "Transfer",
+          anonamous: false,
         },
-    });
-
+      },
+    ];
     const c = makeConfig("", [], integrations);
     expect(c).toEqual({
         "pgURL":"",
