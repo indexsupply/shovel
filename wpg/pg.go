@@ -44,12 +44,10 @@ type Column struct {
 	Type string `db:"data_type"json:"type"`
 }
 
-func escaped(s string) string {
-	_, kw := keywords[strings.ToLower(s)]
-	if kw {
+func quote(s string) string {
+	if _, ok := reservedWords[strings.ToLower(s)]; ok {
 		return strconv.Quote(s)
 	}
-
 	return s
 }
 
@@ -70,7 +68,7 @@ func (t Table) DDL() []string {
 
 	createTable := fmt.Sprintf("create table if not exists %s(", t.Name)
 	for i, col := range t.Columns {
-		createTable += fmt.Sprintf("%s %s", escaped(col.Name), col.Type)
+		createTable += fmt.Sprintf("%s %s", quote(col.Name), col.Type)
 		if i+1 == len(t.Columns) {
 			createTable += ")"
 			break
@@ -86,7 +84,7 @@ func (t Table) DDL() []string {
 			t.Name,
 		)
 		for i, cname := range cols {
-			createIndex += escaped(cname)
+			createIndex += quote(cname)
 			if i+1 == len(cols) {
 				createIndex += ")"
 				break
@@ -103,7 +101,7 @@ func (t Table) DDL() []string {
 			t.Name,
 		)
 		for i, cname := range cols {
-			createIndex += escaped(cname)
+			createIndex += quote(cname)
 			if i+1 == len(cols) {
 				createIndex += ")"
 				break
@@ -130,7 +128,7 @@ func (t Table) Migrate(ctx context.Context, pg Conn) error {
 		var q = fmt.Sprintf(
 			"alter table %s add column if not exists %s %s",
 			t.Name,
-			escaped(c.Name),
+			quote(c.Name),
 			c.Type,
 		)
 		if _, err := pg.Exec(ctx, q); err != nil {
