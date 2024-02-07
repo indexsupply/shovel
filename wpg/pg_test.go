@@ -56,10 +56,10 @@ func TestMigrate(t *testing.T) {
 			Table{},
 			Table{
 				Name:    "x",
-				Columns: []Column{{Name: "x", Type: "integer"}},
+				Columns: []Column{{Name: "x", Type: "integer"}, {Name: "from", Type: "integer"}},
 			},
 			DiffDetails{
-				Add: []Column{{Name: "x", Type: "integer"}},
+				Add: []Column{{Name: "x", Type: "integer"}, {Name: "from", Type: "integer"}},
 			},
 			DiffDetails{},
 		},
