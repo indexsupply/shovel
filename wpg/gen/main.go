@@ -48,7 +48,7 @@ func main() {
 		var word string
 		err := rows.Scan(&word)
 		check(err)
-		words = append(words, fmt.Sprintf("%s: struct{}{},", strconv.Quote(word)))
+		words = append(words, fmt.Sprintf("%s: {},", strconv.Quote(word)))
 	}
 	check(rows.Err())
 
