@@ -35,8 +35,8 @@ func TestDDL(t *testing.T) {
 				Unique: [][]string{{"a", "b"}},
 			},
 			[]string{
-				"create table if not exists foo(a int, b int)",
-				"create unique index if not exists u_foo on foo (a, b)",
+				"create table if not exists foo(\"a\" int, \"b\" int)",
+				"create unique index if not exists u_foo on foo (\"a\", \"b\")",
 			},
 		},
 	}
@@ -56,10 +56,10 @@ func TestMigrate(t *testing.T) {
 			Table{},
 			Table{
 				Name:    "x",
-				Columns: []Column{{Name: "x", Type: "integer"}},
+				Columns: []Column{{Name: "x", Type: "integer"}, {Name: "from", Type: "integer"}},
 			},
 			DiffDetails{
-				Add: []Column{{Name: "x", Type: "integer"}},
+				Add: []Column{{Name: "x", Type: "integer"}, {Name: "from", Type: "integer"}},
 			},
 			DiffDetails{},
 		},

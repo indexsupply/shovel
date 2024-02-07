@@ -41,6 +41,10 @@ type Column struct {
 	Type string `db:"data_type"json:"type"`
 }
 
+func escaped(s string) string {
+	return fmt.Sprintf("\"%s\"", s)
+}
+
 type Table struct {
 	Name    string   `json:"name"`
 	Columns []Column `json:"columns"`
@@ -58,7 +62,7 @@ func (t Table) DDL() []string {
 
 	createTable := fmt.Sprintf("create table if not exists %s(", t.Name)
 	for i, col := range t.Columns {
-		createTable += fmt.Sprintf("%s %s", col.Name, col.Type)
+		createTable += fmt.Sprintf("%s %s", escaped(col.Name), col.Type)
 		if i+1 == len(t.Columns) {
 			createTable += ")"
 			break
@@ -74,7 +78,7 @@ func (t Table) DDL() []string {
 			t.Name,
 		)
 		for i, cname := range cols {
-			createIndex += cname
+			createIndex += escaped(cname)
 			if i+1 == len(cols) {
 				createIndex += ")"
 				break
@@ -91,7 +95,7 @@ func (t Table) DDL() []string {
 			t.Name,
 		)
 		for i, cname := range cols {
-			createIndex += cname
+			createIndex += escaped(cname)
 			if i+1 == len(cols) {
 				createIndex += ")"
 				break
@@ -118,7 +122,7 @@ func (t Table) Migrate(ctx context.Context, pg Conn) error {
 		var q = fmt.Sprintf(
 			"alter table %s add column if not exists %s %s",
 			t.Name,
-			c.Name,
+			escaped(c.Name),
 			c.Type,
 		)
 		if _, err := pg.Exec(ctx, q); err != nil {
