@@ -12,7 +12,7 @@ export type Table = {
     columns: Column[];
 }
 
-type FilterOp = "conains" | "!contains";
+type FilterOp = "contains" | "!contains";
 
 type FilterReference = {
     integration: string;
