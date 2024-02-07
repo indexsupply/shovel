@@ -97,6 +97,7 @@ func TestDDL(t *testing.T) {
 						{Name: "block_num", Type: "numeric"},
 						{Name: "b", Type: "bytea"},
 						{Name: "c", Type: "bytea"},
+						{Name: "from", Type: "bytea"},
 					},
 				},
 				Block: []dig.BlockData{
@@ -115,8 +116,8 @@ func TestDDL(t *testing.T) {
 	}
 	diff.Test(t, t.Errorf, ValidateFix(conf), nil)
 	diff.Test(t, t.Errorf, DDL(*conf), []string{
-		"create table if not exists foo(\"block_num\" numeric, \"b\" bytea, \"c\" bytea, \"ig_name\" text, \"src_name\" text, \"tx_idx\" int, \"log_idx\" int, \"abi_idx\" int2)",
-		"create unique index if not exists u_foo on foo (\"ig_name\", \"src_name\", \"block_num\", \"tx_idx\", \"log_idx\", \"abi_idx\")",
+		"create table if not exists foo(block_num numeric, b bytea, c bytea, \"from\" bytea, ig_name text, src_name text, tx_idx int, log_idx int, abi_idx int2)",
+		"create unique index if not exists u_foo on foo (ig_name, src_name, block_num, tx_idx, log_idx, abi_idx)",
 	})
 }
 

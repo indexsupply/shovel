@@ -13,6 +13,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+//go:generate go run gen/main.go
+
 func TestPG(tb testing.TB, schema string) *pgxpool.Pool {
 	tb.Helper()
 	db := pqxtest.CreateDB(tb, schema)
@@ -43,7 +45,12 @@ type Column struct {
 }
 
 func escaped(s string) string {
-	return strconv.Quote(s)
+	_, kw := keywords[strings.ToLower(s)]
+	if kw {
+		return strconv.Quote(s)
+	}
+
+	return s
 }
 
 type Table struct {

@@ -35,8 +35,8 @@ func TestDDL(t *testing.T) {
 				Unique: [][]string{{"a", "b"}},
 			},
 			[]string{
-				"create table if not exists foo(\"a\" int, \"b\" int)",
-				"create unique index if not exists u_foo on foo (\"a\", \"b\")",
+				"create table if not exists foo(a int, b int)",
+				"create unique index if not exists u_foo on foo (a, b)",
 			},
 		},
 	}
