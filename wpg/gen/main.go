@@ -28,7 +28,7 @@ package wpg
 
 var reservedWords = map[string]struct{}{
 	{{ range . -}}
-	"{{ . -}}": struct{}{},
+	"{{ . -}}": {},
 	{{ end -}}
 }
 `
