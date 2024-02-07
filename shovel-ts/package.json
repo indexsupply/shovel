@@ -1,0 +1,28 @@
+{
+  "name": "shovel-ts",
+  "version": "0.0.1",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "description": "",
+  "scripts": {
+    "build": "bun run build.mjs",
+    "prepublishOnly": "bun run build"
+  },
+  "files": [
+    "dist"
+  ],
+  "keywords": [
+    "bun"
+  ],
+  "license": "MIT",
+  "homepage": "https://indexsupply.com/shovel/docs",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/indexsupply/code.git"
+  },
+  "bugs": "https://github.com/indexsupply/code/issues",
+  "author": "Ryan Smith <r@32k.io>",
+  "devDependencies": {
+    "@types/bun": "^1.0.5"
+  }
+}
