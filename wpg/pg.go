@@ -3,6 +3,7 @@ package wpg
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -42,7 +43,7 @@ type Column struct {
 }
 
 func escaped(s string) string {
-	return fmt.Sprintf("\"%s\"", s)
+	return strconv.Quote(s)
 }
 
 type Table struct {
