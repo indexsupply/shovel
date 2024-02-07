@@ -31,7 +31,7 @@ type BlockData = {
 
 type EthSourceReference = {
     name: string;
-    startBlock: number;
+    startBlock: BigInt;
 }
 
 type EventIntput = {
@@ -45,7 +45,7 @@ type EventData = {
     anonamous: boolean;
 }
 
-type Integration = {
+export type Integration = {
     name: string;
     enabled: boolean;
     source: EthSourceReference;
@@ -68,10 +68,11 @@ export type Config = {
     integrations : Integration[];
 };
 
-export function newConfig(): Config {
+export function makeConfig(pgURL: string, sources: EthSource[], integrations: Integration[]): Config {
+    //TODO validation
     return {
-        pgURL: "",
-        ethSources: [],
-        integrations: []
+        pgURL: pgURL,
+        ethSources: sources,
+        integrations: integrations
     };
 }

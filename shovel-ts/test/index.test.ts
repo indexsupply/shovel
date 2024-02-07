@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
-import { newConfig } from "../src/index";
-import type { EthSource, Table } from "../src/index";
+import { makeConfig } from "../src/index";
+import type { EthSource, Table, Integration } from "../src/index";
 
 test("XXX", () => {
     const transfersTable: Table = {
@@ -16,13 +16,14 @@ test("XXX", () => {
         url: "https://ethereum.publicnode.com",
         chainId: 1,
     };
-    let c = newConfig();
-    c.integrations.push({
+    const integrations: Integration[] = [];
+
+    integrations.push({
         name: "transfers",
         enabled: true,
         source: {
             name: mainnet.name,
-            startBlock: 0,
+            startBlock: 0n,
         },
         table: transfersTable,
         block: [],
@@ -31,7 +32,9 @@ test("XXX", () => {
             anonamous: false,
         },
     });
-    expect(JSON.parse(JSON.stringify(c))).toEqual(JSON.parse(`{
+
+    const c = makeConfig("", [], integrations);
+    expect(c).toEqual({
         "pgURL":"",
         "ethSources":[],
         "integrations":[
@@ -40,22 +43,22 @@ test("XXX", () => {
                 "enabled": true,
                 "source": {
                     "name": "mainnet",
-                    "startBlock": 0
+                    "startBlock": 0n
                 },
                 "table": {
                     "name": "transfers",
                     "columns": [
                         {
                             "name": "from",
-                            "type": "address"
+                            "type": "bytea"
                         },
                         {
                             "name": "to",
-                            "type": "address"
+                            "type": "bytea"
                         },
                         {
                             "name": "value",
-                            "type": "uint256"
+                            "type": "numeric"
                         }
                     ]
                 },
@@ -66,5 +69,5 @@ test("XXX", () => {
                 }
             }
         ]
-    }`))
+    });
 });
