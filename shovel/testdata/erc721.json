@@ -8,7 +8,7 @@
 			{"name": "block_num", "type": "numeric"},
 			{"name": "tx_hash", "type": "bytea"},
 			{"name": "contract", "type": "bytea"},
-			{"name": "f", "type": "bytea"},
+			{"name": "from", "type": "bytea"},
 			{"name": "t", "type": "bytea"},
 			{"name": "token", "type": "numeric"}
 		]
@@ -28,7 +28,7 @@
 				"indexed": true,
 				"name": "from",
 				"type": "address",
-				"column": "f"
+				"column": "from"
 			},
 			{
 				"indexed": true,
