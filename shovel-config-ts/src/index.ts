@@ -57,11 +57,11 @@ export type BlockData = {
   filter_ref?: FilterReference;
 };
 
-export type EventIntput = {
+export type EventInput = {
   readonly indexed?: boolean;
   readonly name: string;
   readonly type: string;
-  readonly components?: EventIntput[];
+  readonly components?: EventInput[];
 
   column?: string;
   filter_op?: FilterOp;
@@ -73,7 +73,7 @@ export type Event = {
   readonly name: string;
   readonly type: "event";
   readonly anonymous?: boolean;
-  readonly inputs: readonly EventIntput[];
+  readonly inputs: readonly EventInput[];
 };
 
 export type Source = {
