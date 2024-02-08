@@ -1,15 +1,18 @@
 {
-  "name": "shovel-ts",
+  "name": "shovel-config-ts",
   "version": "0.0.1",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "description": "",
+  "description": "Types and functions for building a Shovel config file.",
   "scripts": {
-    "build": "bun run build.mjs",
+    "build": "bun run build.mjs && bun run build:declaration",
+    "build:declaration": "tsc --emitDeclarationOnly --project tsconfig.types.json",
+    "postbuild": "rimraf tsconfig.types.tsbuildinfo",
     "prepublishOnly": "bun run build"
   },
   "files": [
-    "dist"
+    "dist/*.js",
+    "dist/*.d.ts"
   ],
   "keywords": [
     "bun"
@@ -23,6 +26,10 @@
   "bugs": "https://github.com/indexsupply/code/issues",
   "author": "Ryan Smith <r@32k.io>",
   "devDependencies": {
-    "@types/bun": "^1.0.5"
+    "@types/bun": "^1.0.5",
+    "rimraf": "^5.0.5"
+  },
+  "peerDependencies": {
+    "typescript": "^5.0.0"
   }
 }
