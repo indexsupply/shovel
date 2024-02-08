@@ -1,0 +1,22 @@
+name: bun
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+jobs:
+  build:
+    name: "test"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: oven-sh/setup-bun@v1
+      - name: "install"
+        working-directory: shovel-ts
+        run: |
+          bun install
+      - name: "test"
+        working-directory: shovel-ts
+        run: |
+          bun test
