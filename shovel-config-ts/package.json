@@ -5,18 +5,10 @@
   "types": "dist/index.d.ts",
   "description": "Types and functions for building a Shovel config file.",
   "scripts": {
-    "build": "bun run build.mjs && bun run build:declaration",
-    "build:declaration": "tsc --emitDeclarationOnly --project tsconfig.types.json",
-    "postbuild": "rimraf tsconfig.types.tsbuildinfo",
-    "prepublishOnly": "bun run build"
+    "build": "bun run build.mjs"
   },
-  "files": [
-    "dist/*.js",
-    "dist/*.d.ts"
-  ],
-  "keywords": [
-    "bun"
-  ],
+  "files": ["dist"],
+  "keywords": ["ethereum", "indexing", "postgres"],
   "license": "MIT",
   "homepage": "https://indexsupply.com/shovel/docs",
   "repository": {
@@ -26,10 +18,6 @@
   "bugs": "https://github.com/indexsupply/code/issues",
   "author": "Ryan Smith <r@32k.io>",
   "devDependencies": {
-    "@types/bun": "^1.0.5",
-    "rimraf": "^5.0.5"
-  },
-  "peerDependencies": {
-    "typescript": "^5.0.0"
+    "@types/bun": "^1.0.5"
   }
 }
