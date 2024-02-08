@@ -1,71 +1,77 @@
 type Hex = `0x${string}`;
 
-type DbType = "bool" | "bytea" | "int" | "numeric" | "text" | "timestamp";
+export type PGColumnType =
+  | "bool"
+  | "bytea"
+  | "int"
+  | "numeric"
+  | "text"
+  | "timestamp";
 
-type Column = {
-    name: string;
-    type: DbType;
-}
+export type Column = {
+  name: string;
+  type: PGColumnType;
+};
 
 export type Table = {
-    name: string;
-    columns: Column[];
-}
+  name: string;
+  columns: Column[];
+};
 
-type FilterOp = "contains" | "!contains";
+export type FilterOp = "contains" | "!contains";
 
-type FilterReference = {
-    integration: string;
-    column: string;
-}
+export type FilterReference = {
+  integration: string;
+  column: string;
+};
 
-type Filter = {
-    op: FilterOp;
-    arg: hex[];
-}
+export type Filter = {
+  op: FilterOp;
+  arg: Hex[];
+};
 
-type BlockData = {
-    name: "block_hash" | "block_num" | "block_time";
-    column: string;
-}
+export type BlockData = {
+  name: "block_hash" | "block_num" | "block_time";
+  column: string;
+};
 
-type EthSourceReference = {
-    name: string;
-    startBlock: BigInt;
-}
+export type EthSourceReference = {
+  name: string;
+  startBlock: BigInt;
+};
 
-type EventIntput = {
-    indexed: boolean;
-    name: string;
-    type: string;
-}
+export type EventIntput = {
+  indexed: boolean;
+  name: string;
+  type: string;
+};
 
-type EventData = {
-    name: string;
-    anonamous: boolean;
-}
+export type EventData = {
+  name: string;
+  anonamous: boolean;
+};
 
 export type Integration = {
-    name: string;
-    enabled: boolean;
-    source: EthSourceReference;
-    table: Table;
-    block: BlockData[];
-    event: EventData;
-}
+  name: string;
+  enabled: boolean;
+  source: EthSourceReference;
+  table: Table;
+  block: BlockData[];
+  event: EventData;
+};
 
 export type EthSource = {
-    name: string;
-    url: string;
-    chainId: number;
-    concurrency?: number;
-    batchSize?: number;
-}
+  name: string;
+  url: string;
+  chainId: number;
+  concurrency?: number;
+  batchSize?: number;
+};
 
 export type Config = {
-    pgURL: string;
-    ethSources: EthSource[];
-    integrations : Integration[];
+  pgURL: string;
+  ethSources: EthSource[];
+  integrations: Integration[];
 };
 
 export function makeConfig(args: {
