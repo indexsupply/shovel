@@ -1,5 +1,8 @@
 {
-  "name": "shovel-config-ts",
+  "name": "@indexsupply/shovel-config-ts",
+  "publishConfig": {
+    "access": "public"
+  },
   "version": "0.0.1",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -7,8 +10,14 @@
   "scripts": {
     "build": "bun run build.mjs"
   },
-  "files": ["dist"],
-  "keywords": ["ethereum", "indexing", "postgres"],
+  "files": [
+    "dist"
+  ],
+  "keywords": [
+    "ethereum",
+    "indexing",
+    "postgres"
+  ],
   "license": "MIT",
   "homepage": "https://indexsupply.com/shovel/docs",
   "repository": {
