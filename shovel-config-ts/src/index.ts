@@ -117,7 +117,7 @@ export function makeConfig(args: {
   };
 }
 
-export function toJSON(c: Config): string {
+export function toJSON(c: Config, space: number = 0): string {
   const bigintjson = (_key: any, value: any) =>
     typeof value === "bigint" ? value.toString() : value;
   return JSON.stringify(
@@ -126,6 +126,7 @@ export function toJSON(c: Config): string {
       eth_sources: c.sources,
       integrations: c.integrations,
     },
-    bigintjson
+    bigintjson,
+    space
   );
 }
