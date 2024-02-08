@@ -30,9 +30,31 @@ export type Filter = {
   arg: Hex[];
 };
 
+export type BlockDataOptions =
+  | "src_name"
+  | "ig_name"
+  | "chain_id"
+  | "block_hash"
+  | "block_num"
+  | "block_time"
+  | "tx_hash"
+  | "tx_idx"
+  | "tx_signer"
+  | "tx_to"
+  | "tx_value"
+  | "tx_input"
+  | "tx_type"
+  | "tx_status"
+  | "log_idx"
+  | "log_addr";
+
 export type BlockData = {
-  name: "block_hash" | "block_num" | "block_time";
+  name: BlockDataOptions;
+
   column: string;
+  filter_op?: FilterOp;
+  filter_arg?: Hex[];
+  filter_ref?: FilterReference;
 };
 
 export type EthSourceReference = {
@@ -44,11 +66,18 @@ export type EventIntput = {
   indexed: boolean;
   name: string;
   type: string;
+  components?: EventIntput[];
+
+  column?: string;
+  filter_op?: FilterOp;
+  filter_arg?: Hex[];
+  filter_ref?: FilterReference;
 };
 
-export type EventData = {
+export type Event = {
   name: string;
   anonamous: boolean;
+  inputs: EventIntput[];
 };
 
 export type Integration = {
@@ -57,7 +86,7 @@ export type Integration = {
   source: EthSourceReference;
   table: Table;
   block: BlockData[];
-  event: EventData;
+  event: Event;
 };
 
 export type EthSource = {

@@ -29,6 +29,7 @@ test("XXX", () => {
         event: {
           name: "Transfer",
           anonamous: false,
+          inputs: [{ indexed: true, name: "from", type: "address" }],
         },
       },
     ];
@@ -38,39 +39,46 @@ test("XXX", () => {
       integrations: integrations,
     });
     expect(c).toEqual({
-        "pgURL":"",
-        "ethSources":[],
-        "integrations":[
-            {
-                "name": "transfers",
-                "enabled": true,
-                "source": {
-                    "name": "mainnet",
-                    "startBlock": 0n
-                },
-                "table": {
-                    "name": "transfers",
-                    "columns": [
-                        {
-                            "name": "from",
-                            "type": "bytea"
-                        },
-                        {
-                            "name": "to",
-                            "type": "bytea"
-                        },
-                        {
-                            "name": "value",
-                            "type": "numeric"
-                        }
-                    ]
-                },
-                "block": [],
-                "event": {
-                    "name": "Transfer",
-                    "anonamous": false
-                }
-            }
-        ]
+      pgURL: "",
+      ethSources: [],
+      integrations: [
+        {
+          name: "transfers",
+          enabled: true,
+          source: {
+            name: "mainnet",
+            startBlock: 0n,
+          },
+          table: {
+            name: "transfers",
+            columns: [
+              {
+                name: "from",
+                type: "bytea",
+              },
+              {
+                name: "to",
+                type: "bytea",
+              },
+              {
+                name: "value",
+                type: "numeric",
+              },
+            ],
+          },
+          block: [],
+          event: {
+            name: "Transfer",
+            anonamous: false,
+            inputs: [
+              {
+                indexed: true,
+                name: "from",
+                type: "address",
+              },
+            ],
+          },
+        },
+      ],
     });
 });
