@@ -115,3 +115,9 @@ export function makeConfig(args: {
     integrations: args.integrations,
   };
 }
+
+export function toJSON(c: Config): string {
+  const bigintjson = (_key: any, value: any) =>
+    typeof value === "bigint" ? value.toString() : value;
+  return JSON.stringify(c, bigintjson);
+}
