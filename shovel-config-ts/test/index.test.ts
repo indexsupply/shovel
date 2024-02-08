@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
-import { makeConfig } from "../src/index";
-import type { EthSource, Table, Integration } from "../src/index";
+import { makeConfig, toJSON } from "../src/index";
+import type { Source, Table, Integration } from "../src/index";
 
 test("makeConfig", () => {
   const transfersTable: Table = {
@@ -11,7 +11,7 @@ test("makeConfig", () => {
       { name: "value", type: "numeric" },
     ],
   };
-  const mainnet: EthSource = {
+  const mainnet: Source = {
     name: "mainnet",
     url: "https://ethereum.publicnode.com",
     chainId: 1,
@@ -20,27 +20,33 @@ test("makeConfig", () => {
     {
       name: "transfers",
       enabled: true,
-      source: {
-        name: mainnet.name,
-        startBlock: 0n,
-      },
+      source: { name: mainnet.name, startBlock: 0n },
       table: transfersTable,
       block: [],
       event: {
+        type: "event",
         name: "Transfer",
-        anonamous: false,
+        anonymous: false,
         inputs: [{ indexed: true, name: "from", type: "address" }],
       },
     },
   ];
   const c = makeConfig({
     pgURL: "",
-    sources: [],
+    sources: [mainnet],
     integrations: integrations,
   });
+  console.log(toJSON(c));
+
   expect(c).toEqual({
     pgURL: "",
-    ethSources: [],
+    sources: [
+      {
+        name: "mainnet",
+        url: "https://ethereum.publicnode.com",
+        chainId: 1,
+      },
+    ],
     integrations: [
       {
         name: "transfers",
@@ -68,8 +74,9 @@ test("makeConfig", () => {
         },
         block: [],
         event: {
+          type: "event",
           name: "Transfer",
-          anonamous: false,
+          anonymous: false,
           inputs: [
             {
               indexed: true,

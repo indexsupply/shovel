@@ -57,16 +57,11 @@ export type BlockData = {
   filter_ref?: FilterReference;
 };
 
-export type EthSourceReference = {
-  name: string;
-  startBlock: BigInt;
-};
-
 export type EventIntput = {
-  indexed: boolean;
-  name: string;
-  type: string;
-  components?: EventIntput[];
+  readonly indexed?: boolean;
+  readonly name: string;
+  readonly type: string;
+  readonly components?: EventIntput[];
 
   column?: string;
   filter_op?: FilterOp;
@@ -75,21 +70,13 @@ export type EventIntput = {
 };
 
 export type Event = {
-  name: string;
-  anonamous: boolean;
-  inputs: EventIntput[];
+  readonly name: string;
+  readonly type: "event";
+  readonly anonymous?: boolean;
+  readonly inputs: readonly EventIntput[];
 };
 
-export type Integration = {
-  name: string;
-  enabled: boolean;
-  source: EthSourceReference;
-  table: Table;
-  block: BlockData[];
-  event: Event;
-};
-
-export type EthSource = {
+export type Source = {
   name: string;
   url: string;
   chainId: number;
@@ -97,21 +84,35 @@ export type EthSource = {
   batchSize?: number;
 };
 
+export type SourceReference = {
+  name: string;
+  startBlock: bigint;
+};
+
+export type Integration = {
+  name: string;
+  enabled: boolean;
+  source: SourceReference;
+  table: Table;
+  block: BlockData[];
+  event: Event;
+};
+
 export type Config = {
   pgURL: string;
-  ethSources: EthSource[];
+  sources: Source[];
   integrations: Integration[];
 };
 
 export function makeConfig(args: {
   pgURL: string;
-  sources: EthSource[];
+  sources: Source[];
   integrations: Integration[];
 }): Config {
   //TODO validation
   return {
     pgURL: args.pgURL,
-    ethSources: args.sources,
+    sources: args.sources,
     integrations: args.integrations,
   };
 }
@@ -119,5 +120,12 @@ export function makeConfig(args: {
 export function toJSON(c: Config): string {
   const bigintjson = (_key: any, value: any) =>
     typeof value === "bigint" ? value.toString() : value;
-  return JSON.stringify(c, bigintjson);
+  return JSON.stringify(
+    {
+      pg_url: c.pgURL,
+      eth_sources: c.sources,
+      integrations: c.integrations,
+    },
+    bigintjson
+  );
 }

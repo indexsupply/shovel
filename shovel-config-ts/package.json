@@ -1,5 +1,5 @@
 {
-  "name": "@indexsupply/shovel-config-ts",
+  "name": "@indexsupply/shovel-config",
   "publishConfig": {
     "access": "public"
   },
@@ -27,6 +27,7 @@
   "bugs": "https://github.com/indexsupply/code/issues",
   "author": "Ryan Smith <r@32k.io>",
   "devDependencies": {
-    "@types/bun": "^1.0.5"
+    "@types/bun": "^1.0.5",
+    "bun-plugin-dts": "^0.2.1"
   }
 }
