@@ -86,13 +86,13 @@ export type Source = {
 
 export type SourceReference = {
   name: string;
-  startBlock: bigint;
+  start: bigint;
 };
 
 export type Integration = {
   name: string;
   enabled: boolean;
-  source: SourceReference;
+  sources: SourceReference[];
   table: Table;
   block: BlockData[];
   event: Event;

@@ -20,7 +20,7 @@ test("makeConfig", () => {
     {
       name: "transfers",
       enabled: true,
-      source: { name: mainnet.name, startBlock: 0n },
+      sources: [{ name: mainnet.name, start: 0n }],
       table: transfersTable,
       block: [],
       event: {
@@ -36,7 +36,6 @@ test("makeConfig", () => {
     sources: [mainnet],
     integrations: integrations,
   });
-  console.log(toJSON(c));
 
   expect(c).toEqual({
     pgURL: "",
@@ -51,10 +50,12 @@ test("makeConfig", () => {
       {
         name: "transfers",
         enabled: true,
-        source: {
-          name: "mainnet",
-          startBlock: 0n,
-        },
+        sources: [
+          {
+            name: "mainnet",
+            start: 0n,
+          },
+        ],
         table: {
           name: "transfers",
           columns: [
