@@ -1,0 +1,33 @@
+{
+  "name": "@indexsupply/shovel-config",
+  "publishConfig": {
+    "access": "public"
+  },
+  "version": "0.0.2",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "description": "Types and functions for building a Shovel config file.",
+  "scripts": {
+    "build": "bun run build.mjs"
+  },
+  "files": [
+    "dist"
+  ],
+  "keywords": [
+    "ethereum",
+    "indexing",
+    "postgres"
+  ],
+  "license": "MIT",
+  "homepage": "https://indexsupply.com/shovel/docs",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/indexsupply/code.git"
+  },
+  "bugs": "https://github.com/indexsupply/code/issues",
+  "author": "Ryan Smith <r@32k.io>",
+  "devDependencies": {
+    "@types/bun": "^1.0.5",
+    "bun-plugin-dts": "^0.2.1"
+  }
+}
