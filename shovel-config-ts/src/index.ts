@@ -1,6 +1,6 @@
 type Hex = `0x${string}`;
 
-export type PGColumnType = "bool" | "bytea" | "int" | "numeric" | "text";
+export type PGColumnType = "bool" | "byte" | "bytea" | "int" | "numeric" | "text";
 
 export type Column = {
   name: string;

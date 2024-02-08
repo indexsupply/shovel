@@ -303,7 +303,7 @@ Each integration contains a `table` object. It is possible for many integrations
 - **columns** Array of columns that will be written to by the integration. Each column requires a name and a key.
 
   -- **name** Can be anything that is a valid postgres column name
-  -- **type** Type can be one of: `bytea`, `numeric`, `text`.
+  -- **type** Type can be one of: `bool`, `byte`, `bytea`, `int`, `numeric`, `text`.
 
   When Shovel sets up this integration, it will check to see if the table already exists (using the table name) and if it doesn't it will be created with the defined columns. If it does exist, Shovel will determine if there are tables defined in the configuration that are not defined in the database and each missing table will be added to the database.
 
