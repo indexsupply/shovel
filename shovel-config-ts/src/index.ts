@@ -1,6 +1,18 @@
+// string values with `$` prefix instruct shovel to read
+// the values from the evnironment at runtime
+type EnvRef = `$${string}`;
+
 type Hex = `0x${string}`;
 
-export type PGColumnType = "bool" | "byte" | "bytea" | "int" | "numeric" | "text";
+export type PGColumnType =
+  | "bigint"
+  | "bool"
+  | "byte"
+  | "bytea"
+  | "int"
+  | "numeric"
+  | "smallint"
+  | "text";
 
 export type Column = {
   name: string;
@@ -73,9 +85,9 @@ export type Event = {
 export type Source = {
   name: string;
   url: string;
-  chainId: number;
-  concurrency?: number;
-  batchSize?: number;
+  chainId: EnvRef | number;
+  concurrency?: EnvRef | number;
+  batchSize?: EnvRef | number;
 };
 
 export type SourceReference = {
@@ -92,19 +104,28 @@ export type Integration = {
   event: Event;
 };
 
+export type Dashboard = {
+  root_password: string;
+  enable_loopback_authn: EnvRef | boolean;
+  disable_authn: EnvRef | boolean;
+};
+
 export type Config = {
+  dashboard: Dashboard;
   pgURL: string;
   sources: Source[];
   integrations: Integration[];
 };
 
 export function makeConfig(args: {
+  dashboard: Dashboard;
   pgURL: string;
   sources: Source[];
   integrations: Integration[];
 }): Config {
   //TODO validation
   return {
+    dashboard: args.dashboard,
     pgURL: args.pgURL,
     sources: args.sources,
     integrations: args.integrations,
@@ -116,6 +137,7 @@ export function toJSON(c: Config, space: number = 0): string {
     typeof value === "bigint" ? value.toString() : value;
   return JSON.stringify(
     {
+      dashboard: c.dashboard,
       pg_url: c.pgURL,
       eth_sources: c.sources,
       integrations: c.integrations,
