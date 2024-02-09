@@ -105,9 +105,9 @@ export type Integration = {
 };
 
 export type Dashboard = {
-  root_password: string;
-  enable_loopback_authn: EnvRef | boolean;
-  disable_authn: EnvRef | boolean;
+  root_password?: string;
+  enable_loopback_authn?: EnvRef | boolean;
+  disable_authn?: EnvRef | boolean;
 };
 
 export type Config = {
@@ -118,14 +118,14 @@ export type Config = {
 };
 
 export function makeConfig(args: {
-  dashboard: Dashboard;
+  dashboard?: Dashboard;
   pgURL: string;
   sources: Source[];
   integrations: Integration[];
 }): Config {
   //TODO validation
   return {
-    dashboard: args.dashboard,
+    dashboard: args.dashboard || {},
     pgURL: args.pgURL,
     sources: args.sources,
     integrations: args.integrations,
