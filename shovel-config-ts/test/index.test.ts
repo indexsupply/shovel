@@ -38,6 +38,7 @@ test("makeConfig", () => {
   });
 
   expect(c).toEqual({
+    dashboard: {},
     pgURL: "",
     sources: [
       {
