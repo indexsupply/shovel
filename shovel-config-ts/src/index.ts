@@ -85,7 +85,7 @@ export type Event = {
 export type Source = {
   name: string;
   url: string;
-  chainId: EnvRef | number;
+  chain_id: EnvRef | number;
   concurrency?: EnvRef | number;
   batchSize?: EnvRef | number;
 };

@@ -14,7 +14,7 @@ test("makeConfig", () => {
   const mainnet: Source = {
     name: "mainnet",
     url: "https://ethereum.publicnode.com",
-    chainId: 1,
+    chain_id: 1,
   };
   const integrations: Integration[] = [
     {
@@ -44,7 +44,7 @@ test("makeConfig", () => {
       {
         name: "mainnet",
         url: "https://ethereum.publicnode.com",
-        chainId: 1,
+        chain_id: 1,
       },
     ],
     integrations: [
