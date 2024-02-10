@@ -279,6 +279,102 @@ And will also work on the following fields in integrations[].sources:
 - start
 - stop
 
+### Ethereum Source Performance
+
+There are 2 dependent controls for Source performance:
+
+1. The data you are indexing in your `integration`
+2. `batch_size` and `concurrency` in `eth_sources` config
+
+The more blocks we can process per RPC request (`batch_size`) the better. If you can limit your integration to using data provided by `eth_getLogs` then Shovel is able to reliably request up to 2,000 blocks worth of data in a single request. The data provided by eth_getLogs is as follows:
+
+* block_hash
+* block_num
+* tx_hash
+* tx_idx
+* log_addr
+* log_idx
+* decoded log topics and data
+
+You can further optimize the requests to `eth_getLogs` by providing a filter on `log_addr`. This will set the address filter in the `eth_getLogs` request. For example:
+
+```
+{
+  "pg_url": "...",
+  "eth_sources": [...],
+  "integrations": [{
+    ...
+    "block": [
+      {
+        "name": "log_addr",
+        "column": "log_addr",
+        "filter_op": "contains",
+        "filter_arg": [
+          "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+          "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+        ]
+      }
+    ],
+    "event": {
+      ...
+    }
+  }]
+```
+
+If, for example, you also need data from the header, such as `block_time` then Shovel will also need to download the headers for each block, along with the logs. Shovel will use JSON RPC batching, but this will be limited in comparison to eth_getLogs.
+
+### Source Performance Config Values
+
+The current version of Shovel has `batch_size` and `concurrency` values per eth source. If you have multiple integrations with varying data requirements then the eth source will be limited by the slowest integration's requirements. You can have multiple eth sources with identical urls and chain_ids but different names to workaround this.
+
+
+If you are only indexing data provided by the logs, you can safely request 2,000 blocks worth of logs in a single request.
+
+```
+  ...
+  "eth_sources": [
+    {
+      ...,
+      "batch_size": 2000,
+      "concurrency": 1
+    }
+  ],
+  ...
+}
+```
+
+You could further increase your throughput by increasing concurrency:
+
+```
+  ...
+  "eth_sources": [
+    {
+      ...,
+      "batch_size": 4000,
+      "concurrency": 2
+    }
+  ],
+  ...
+}
+```
+
+However, if you are requesting data provided by the block header or by the block bodies (ie `tx_value`) then you will need to reduce your `batch_size` to a maximum of 100
+
+```
+  ...
+  "eth_sources": [
+    {
+      ...,
+      "batch_size": 100,
+      "concurrency": 1
+    }
+  ],
+  ...
+}
+```
+
+You may see '429 too many request' errors in your logs as you are backfilling data. This is not necessarily bad since Shovel will always retry. In fact, the essence of Shovel's internal design is one big retry function. But the errors may eventually be too many to meaningfully make progress. In this case you should try reducing the `batch_size` until you no longer see high frequency errors.
+
 <hr>
 
 ## Table
@@ -734,119 +830,7 @@ Shovel's main thing is a task. Tasks are derived from Shovel's configuration. Sh
 
 <hr>
 
-## Performance
-
-There are 2 independent things to consider for Shovel performance:
-
-1. Reading data from the Eth Source
-2. Writing data to Postgres.
-
-### Source Performance
-
-There are 2 dependent controls for Source performance:
-
-1. The data you are indexing in your `integration`
-2. `batch_size` and `concurrency` in `eth_sources` config
-
-The more blocks we can process per RPC request (`batch_size`) the better. If you can limit your integration to using data provided by `eth_getLogs` then Shovel is able to request up to 10,000 blocks worth of data in a single request. The data provided by eth_getLogs is as follows:
-
-* block_hash
-* block_num
-* tx_hash
-* tx_idx
-* log_addr
-* log_idx
-* decoded log topics and data
-
-You can further optimize the requests to `eth_getLogs` by providing a filter on `log_addr`. This will set the address filter in the `eth_getLogs` request. For example:
-
-```
-{
-  "pg_url": "...",
-  "eth_sources": [...],
-  "integrations": [{
-    ...
-    "block": [
-      {
-        "name": "log_addr",
-        "column": "log_addr",
-        "filter_op": "contains",
-        "filter_arg": [
-          "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
-          "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
-        ]
-      }
-    ],
-    "event": {
-      ...
-    }
-  }]
-```
-
-If, for example, you also need data from the header, such as `block_time` then Shovel will also need to download the headers for each block, along with the logs. Shovel will use JSON RPC batching, but this will be limited in comparison to eth_getLogs.
-
-### Source Performance Config Values
-
-The current version of Shovel has `batch_size` and `concurrency` values per eth source. If you have multiple integrations with varying data requirements then the eth source will be limited by the slowest integration's requirements. You can have multiple eth sources with identical urls and chain_ids but different names to workaround this.
-
-
-If you are only indexing data provided by the logs, you can safely request 2,000 blocks worth of logs in a single request.
-
-```
-  ...
-  "eth_sources": [
-    {
-      ...,
-      "batch_size": 2000,
-      "concurrency": 1
-    }
-  ],
-  ...
-}
-```
-
-You could further increase your throughput by increasing concurrency:
-
-```
-  ...
-  "eth_sources": [
-    {
-      ...,
-      "batch_size": 4000,
-      "concurrency": 2
-    }
-  ],
-  ...
-}
-```
-
-However, if you are requesting data provided by the block header or by the block bodies (ie `tx_value`) then you will need to reduce your `batch_size` to a maximum of 100
-
-```
-  ...
-  "eth_sources": [
-    {
-      ...,
-      "batch_size": 100,
-      "concurrency": 1
-    }
-  ],
-  ...
-}
-```
-
-You may see '429 too many request' errors in your logs as you are backfilling data. This is not necessarily bad since Shovel will always retry. In fact, the essence of Shovel's internal design is one big retry function. But the errors may eventually be too many to meaningfully make progress. In this case you should try reducing the `batch_size` until you no longer see high frequency errors.
-
-### Postgres Performance
-
-The Eth Source performance should always be the bottleneck. If Shovel is slow because of Postgres then there is a bug to fix.
-
-However, there are some considerations to keep in mind when thinking about Postgres write performance:
-
-1. PG and Shovel should be in the same availability zone or LAN.
-2. The more indexes you add to a integration's table the slower the writes will be
-
-## Monitoring
+# Monitoring
 
 Shovel provides an unauthenticated diagnostics JSON endpoint at: `/diag` which returns:
 
