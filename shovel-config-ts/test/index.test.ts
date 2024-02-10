@@ -32,14 +32,14 @@ test("makeConfig", () => {
     },
   ];
   const c = makeConfig({
-    pgURL: "",
+    pg_url: "",
     sources: [mainnet],
     integrations: integrations,
   });
 
   expect(c).toEqual({
     dashboard: {},
-    pgURL: "",
+    pg_url: "",
     sources: [
       {
         name: "mainnet",

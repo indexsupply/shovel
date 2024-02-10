@@ -87,7 +87,7 @@ export type Source = {
   url: string;
   chain_id: EnvRef | number;
   concurrency?: EnvRef | number;
-  batchSize?: EnvRef | number;
+  batch_size?: EnvRef | number;
 };
 
 export type SourceReference = {
@@ -112,21 +112,21 @@ export type Dashboard = {
 
 export type Config = {
   dashboard: Dashboard;
-  pgURL: string;
+  pg_url: string;
   sources: Source[];
   integrations: Integration[];
 };
 
 export function makeConfig(args: {
   dashboard?: Dashboard;
-  pgURL: string;
+  pg_url: string;
   sources: Source[];
   integrations: Integration[];
 }): Config {
   //TODO validation
   return {
     dashboard: args.dashboard || {},
-    pgURL: args.pgURL,
+    pg_url: args.pg_url,
     sources: args.sources,
     integrations: args.integrations,
   };
@@ -138,7 +138,7 @@ export function toJSON(c: Config, space: number = 0): string {
   return JSON.stringify(
     {
       dashboard: c.dashboard,
-      pg_url: c.pgURL,
+      pg_url: c.pg_url,
       eth_sources: c.sources,
       integrations: c.integrations,
     },
