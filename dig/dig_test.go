@@ -146,6 +146,35 @@ func n2b(x uint64) []byte {
 	return b[:]
 }
 
+func TestScan_Reset(t *testing.T) {
+	var (
+		inputSchema = tuple(sel(0, dynamic()))
+		inputData1  = hb(`
+			0000000000000000000000000000000000000000000000000000000000000020
+			0000000000000000000000000000000000000000000000000000000000000003
+			666f6f0000000000000000000000000000000000000000000000000000000000
+		`)
+		inputData2 = hb(`
+			0000000000000000000000000000000000000000000000000000000000000020
+			0000000000000000000000000000000000000000000000000000000000000000
+		`)
+	)
+	res := NewResult(inputSchema)
+	err := res.Scan(inputData1)
+	diff.Test(t, t.Fatalf, err, nil)
+	diff.Test(t, t.Errorf, res.Bytes(), [][][]byte{
+		[][]byte{
+			[]byte("foo"),
+		},
+	})
+
+	err = res.Scan(inputData2)
+	diff.Test(t, t.Fatalf, err, nil)
+	diff.Test(t, t.Errorf, res.Bytes(), [][][]byte{
+		[][]byte{[]byte(nil)},
+	})
+}
+
 func TestScan(t *testing.T) {
 	cases := []struct {
 		desc  string

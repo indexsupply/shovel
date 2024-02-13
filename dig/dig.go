@@ -240,7 +240,10 @@ func NewResult(t atype) *Result {
 // Decodes the ABI input data according to r's type
 // that was specified in [NewResult]
 func (r *Result) Scan(input []byte) error {
-	r.n = 0 //reset
+	//reset
+	r.n = 0
+	clear(r.singleton)
+
 	if err := scan(r.singleton, r, input, r.t); err != nil {
 		return err
 	}
