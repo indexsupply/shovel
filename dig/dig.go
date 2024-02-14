@@ -683,8 +683,6 @@ func (ig Integration) Filter() glf.Filter {
 	return *glf.New(fields, addrs, [][]string{{eth.EncodeHex(ig.sighash)}})
 }
 
-func (ig Integration) Events(context.Context) [][]byte { return [][]byte{} }
-
 func (ig Integration) Delete(ctx context.Context, pg wpg.Conn, n uint64) error {
 	const q = `
 		delete from %s

@@ -87,10 +87,6 @@ func (dest *testDestination) Delete(_ context.Context, pg wpg.Conn, n uint64) er
 	return nil
 }
 
-func (dest *testDestination) Events(_ context.Context) [][]byte {
-	return nil
-}
-
 func (dest *testDestination) Filter() glf.Filter {
 	return glf.Filter{UseBlocks: true, UseLogs: true}
 }
