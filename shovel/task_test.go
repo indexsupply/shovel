@@ -91,10 +91,6 @@ func (dest *testDestination) Filter() glf.Filter {
 	return glf.Filter{UseBlocks: true, UseLogs: true}
 }
 
-func (dest *testDestination) Name() string {
-	return dest.name
-}
-
 type testGeth struct {
 	blocks []eth.Block
 }

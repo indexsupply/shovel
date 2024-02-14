@@ -36,7 +36,6 @@ type Source interface {
 }
 
 type Destination interface {
-	Name() string
 	Insert(context.Context, *sync.Mutex, wpg.Conn, []eth.Block) (int64, error)
 	Delete(context.Context, wpg.Conn, uint64) error
 	Filter() glf.Filter
