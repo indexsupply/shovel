@@ -1,7 +1,10 @@
 // index for context values
 package wctx
 
-import "context"
+import (
+	"context"
+	"sync/atomic"
+)
 
 type key int
 
@@ -10,6 +13,7 @@ const (
 	igNameKey  key = 2
 	srcNameKey key = 3
 	versionKey key = 4
+	counterKey key = 5
 )
 
 func WithChainID(ctx context.Context, id uint64) context.Context {
@@ -46,4 +50,24 @@ func WithVersion(ctx context.Context, v string) context.Context {
 func Version(ctx context.Context) string {
 	v, _ := ctx.Value(versionKey).(string)
 	return v
+}
+
+func WithCounter(ctx context.Context, c *uint64) context.Context {
+	return context.WithValue(ctx, counterKey, c)
+}
+
+func CounterAdd(ctx context.Context, n uint64) uint64 {
+	cptr, ok := ctx.Value(counterKey).(*uint64)
+	if !ok {
+		return 0
+	}
+	return atomic.AddUint64(cptr, n)
+}
+
+func Counter(ctx context.Context) uint64 {
+	cptr, ok := ctx.Value(counterKey).(*uint64)
+	if !ok {
+		return 0
+	}
+	return *cptr
 }

@@ -20,6 +20,7 @@ import (
 
 	"github.com/indexsupply/x/eth"
 	"github.com/indexsupply/x/shovel/glf"
+	"github.com/indexsupply/x/wctx"
 
 	"github.com/goccy/go-json"
 	"github.com/klauspost/compress/gzhttp"
@@ -75,7 +76,7 @@ type request struct {
 	Params  []any  `json:"params"`
 }
 
-func (c *Client) do(dest, req any) error {
+func (c *Client) do(ctx context.Context, dest, req any) error {
 	var (
 		eg   errgroup.Group
 		r, w = io.Pipe()
@@ -115,6 +116,7 @@ func (c *Client) do(dest, req any) error {
 	if err := json.NewDecoder(c.debug(resp.Body)).Decode(dest); err != nil {
 		return fmt.Errorf("unable to json decode: %w", err)
 	}
+	wctx.CounterAdd(ctx, 1)
 	return nil
 }
 
@@ -249,7 +251,7 @@ func (c *Client) httpPoll(ctx context.Context) {
 	)
 	defer ticker.Stop()
 	for range ticker.C {
-		err := c.do(&hresp, request{
+		err := c.do(ctx, &hresp, request{
 			ID:      "1",
 			Version: "2.0",
 			Method:  "eth_getBlockByNumber",
@@ -281,7 +283,7 @@ func (c *Client) httpPoll(ctx context.Context) {
 // When n is 0, Latest always fetches the latest block
 // rather than using the cached value,
 // bypassing the caching mechanism.
-func (c *Client) Latest(n uint64) (uint64, []byte, error) {
+func (c *Client) Latest(ctx context.Context, n uint64) (uint64, []byte, error) {
 	c.lcache.once.Do(func() {
 		switch {
 		case len(c.wsurl) > 0:
@@ -297,7 +299,7 @@ func (c *Client) Latest(n uint64) (uint64, []byte, error) {
 	}
 
 	hresp := headerResp{}
-	err := c.do(&hresp, request{
+	err := c.do(ctx, &hresp, request{
 		ID:      "1",
 		Version: "2.0",
 		Method:  "eth_getBlockByNumber",
@@ -318,9 +320,9 @@ func (c *Client) Latest(n uint64) (uint64, []byte, error) {
 	return uint64(hresp.Number), hresp.Hash, nil
 }
 
-func (c *Client) Hash(n uint64) ([]byte, error) {
+func (c *Client) Hash(ctx context.Context, n uint64) ([]byte, error) {
 	hresp := headerResp{}
-	err := c.do(&hresp, request{
+	err := c.do(ctx, &hresp, request{
 		ID:      "1",
 		Version: "2.0",
 		Method:  "eth_getBlockByNumber",
@@ -345,19 +347,23 @@ type (
 	txmap    map[key]*eth.Tx
 )
 
-func (c *Client) Get(filter *glf.Filter, start, limit uint64) ([]eth.Block, error) {
+func (c *Client) Get(
+	ctx context.Context,
+	filter *glf.Filter,
+	start, limit uint64,
+) ([]eth.Block, error) {
 	var (
 		blocks []eth.Block
 		err    error
 	)
 	switch {
 	case filter.UseBlocks:
-		blocks, err = c.bcache.get(start, limit, c.blocks)
+		blocks, err = c.bcache.get(ctx, start, limit, c.blocks)
 		if err != nil {
 			return nil, fmt.Errorf("getting blocks: %w", err)
 		}
 	case filter.UseHeaders:
-		blocks, err = c.hcache.get(start, limit, c.headers)
+		blocks, err = c.hcache.get(ctx, start, limit, c.headers)
 		if err != nil {
 			return nil, fmt.Errorf("getting blocks: %w", err)
 		}
@@ -383,11 +389,11 @@ func (c *Client) Get(filter *glf.Filter, start, limit uint64) ([]eth.Block, erro
 
 	switch {
 	case filter.UseReceipts:
-		if err := c.receipts(bm, tm, start, limit); err != nil {
+		if err := c.receipts(ctx, bm, tm, start, limit); err != nil {
 			return nil, fmt.Errorf("getting receipts: %w", err)
 		}
 	case filter.UseLogs:
-		if err := c.logs(filter, bm, tm, start, limit); err != nil {
+		if err := c.logs(ctx, filter, bm, tm, start, limit); err != nil {
 			return nil, fmt.Errorf("getting logs: %w", err)
 		}
 	}
@@ -410,7 +416,7 @@ type cache struct {
 	segments map[key]*segment
 }
 
-type getter func(start, limit uint64) ([]eth.Block, error)
+type getter func(ctx context.Context, start, limit uint64) ([]eth.Block, error)
 
 func (c *cache) prune() {
 	const size = 5
@@ -429,7 +435,7 @@ func (c *cache) prune() {
 	}
 }
 
-func (c *cache) get(start, limit uint64, f getter) ([]eth.Block, error) {
+func (c *cache) get(ctx context.Context, start, limit uint64, f getter) ([]eth.Block, error) {
 	c.Lock()
 	if c.segments == nil {
 		c.segments = make(map[key]*segment)
@@ -448,7 +454,7 @@ func (c *cache) get(start, limit uint64, f getter) ([]eth.Block, error) {
 		return seg.d, nil
 	}
 
-	blocks, err := f(start, limit)
+	blocks, err := f(ctx, start, limit)
 	if err != nil {
 		return nil, fmt.Errorf("cache get: %w", err)
 	}
@@ -458,7 +464,7 @@ func (c *cache) get(start, limit uint64, f getter) ([]eth.Block, error) {
 	return seg.d, nil
 }
 
-func (c *Client) blocks(start, limit uint64) ([]eth.Block, error) {
+func (c *Client) blocks(ctx context.Context, start, limit uint64) ([]eth.Block, error) {
 	var (
 		reqs   = make([]request, limit)
 		resps  = make([]blockResp, limit)
@@ -473,7 +479,7 @@ func (c *Client) blocks(start, limit uint64) ([]eth.Block, error) {
 		}
 		resps[i].Block = &blocks[i]
 	}
-	err := c.do(&resps, reqs)
+	err := c.do(ctx, &resps, reqs)
 	if err != nil {
 		return nil, fmt.Errorf("requesting blocks: %w", err)
 	}
@@ -528,7 +534,7 @@ type headerResp struct {
 	*eth.Header `json:"result"`
 }
 
-func (c *Client) headers(start, limit uint64) ([]eth.Block, error) {
+func (c *Client) headers(ctx context.Context, start, limit uint64) ([]eth.Block, error) {
 	var (
 		t0     = time.Now()
 		reqs   = make([]request, limit)
@@ -544,7 +550,7 @@ func (c *Client) headers(start, limit uint64) ([]eth.Block, error) {
 		}
 		resps[i].Header = &blocks[i].Header
 	}
-	err := c.do(&resps, reqs)
+	err := c.do(ctx, &resps, reqs)
 	if err != nil {
 		return nil, fmt.Errorf("requesting headers: %w", err)
 	}
@@ -580,7 +586,7 @@ type receiptResp struct {
 	Result []receiptResult `json:"result"`
 }
 
-func (c *Client) receipts(bm blockmap, tm txmap, start, limit uint64) error {
+func (c *Client) receipts(ctx context.Context, bm blockmap, tm txmap, start, limit uint64) error {
 	var (
 		reqs  = make([]request, limit)
 		resps = make([]receiptResp, limit)
@@ -593,7 +599,7 @@ func (c *Client) receipts(bm blockmap, tm txmap, start, limit uint64) error {
 			Params:  []any{eth.EncodeUint64(start + i)},
 		}
 	}
-	err := c.do(&resps, reqs)
+	err := c.do(ctx, &resps, reqs)
 	if err != nil {
 		return fmt.Errorf("requesting receipts: %w", err)
 	}
@@ -652,7 +658,7 @@ type logResp struct {
 	Result []logResult `json:"result"`
 }
 
-func (c *Client) logs(filter *glf.Filter, bm blockmap, tm txmap, start, limit uint64) error {
+func (c *Client) logs(ctx context.Context, filter *glf.Filter, bm blockmap, tm txmap, start, limit uint64) error {
 	var (
 		t0 = time.Now()
 		lf = struct {
@@ -668,7 +674,7 @@ func (c *Client) logs(filter *glf.Filter, bm blockmap, tm txmap, start, limit ui
 		}
 		lresp = logResp{}
 	)
-	err := c.do(&lresp, request{
+	err := c.do(ctx, &lresp, request{
 		ID:      "1",
 		Version: "2.0",
 		Method:  "eth_getLogs",

@@ -1,6 +1,7 @@
 package jrpc2
 
 import (
+	"context"
 	_ "embed"
 	"errors"
 	"fmt"
@@ -27,7 +28,7 @@ type testGetter struct {
 	callCount int
 }
 
-func (tg *testGetter) get(start, limit uint64) ([]eth.Block, error) {
+func (tg *testGetter) get(ctx context.Context, start, limit uint64) ([]eth.Block, error) {
 	tg.callCount++
 
 	var res []eth.Block
@@ -38,16 +39,17 @@ func (tg *testGetter) get(start, limit uint64) ([]eth.Block, error) {
 }
 
 func TestCache_Prune(t *testing.T) {
+	ctx := context.Background()
 	tg := testGetter{}
 	c := cache{}
-	blocks, err := c.get(1, 1, tg.get)
+	blocks, err := c.get(ctx, 1, 1, tg.get)
 	diff.Test(t, t.Fatalf, nil, err)
 	diff.Test(t, t.Errorf, 1, len(blocks))
 	diff.Test(t, t.Errorf, 1, tg.callCount)
 	diff.Test(t, t.Errorf, 1, len(c.segments))
 
 	for i := uint64(0); i < 9; i++ {
-		blocks, err := c.get(2+i, 1, tg.get)
+		blocks, err := c.get(ctx, 2+i, 1, tg.get)
 		diff.Test(t, t.Fatalf, nil, err)
 		diff.Test(t, t.Errorf, 1, len(blocks))
 	}
@@ -108,20 +110,21 @@ func TestLatest_Cached(t *testing.T) {
 		counter++
 	}))
 	defer ts.Close()
+	ctx := context.Background()
 	c := New(ts.URL).WithMaxReads(1)
 
-	n, h, err := c.Latest(0)
+	n, h, err := c.Latest(ctx, 0)
 	diff.Test(t, t.Errorf, nil, err)
 	diff.Test(t, t.Errorf, counter, 1)
 	diff.Test(t, t.Errorf, n, uint64(18000000))
 	diff.Test(t, t.Errorf, eth.EncodeHex(h), "0x95b198e154acbfc64109dfd22d8224fe927fd8dfdedfae01587674482ba4baf3")
 
-	n, _, err = c.Latest(18000000 - 1)
+	n, _, err = c.Latest(ctx, 18000000-1)
 	diff.Test(t, t.Errorf, nil, err)
 	diff.Test(t, t.Errorf, counter, 1)
 	diff.Test(t, t.Errorf, n, uint64(18000000))
 
-	n, h, err = c.Latest(18000000)
+	n, h, err = c.Latest(ctx, 18000000)
 	diff.Test(t, t.Errorf, nil, err)
 	diff.Test(t, t.Errorf, counter, 2)
 	diff.Test(t, t.Errorf, n, uint64(18000001))
@@ -210,8 +213,9 @@ func TestValidate_Blocks(t *testing.T) {
 	}))
 	defer ts.Close()
 	var (
+		ctx    = context.Background()
 		c      = New(ts.URL)
-		_, err = c.Get(&glf.Filter{UseBlocks: true}, 18000000, 2)
+		_, err = c.Get(ctx, &glf.Filter{UseBlocks: true}, 18000000, 2)
 	)
 	want := "getting blocks: cache get: blocks: rpc response contains invalid data. requested last: 18000001 got: 18000002"
 	diff.Test(t, t.Fatalf, false, err == nil)
@@ -244,8 +248,9 @@ func TestValidate_Logs(t *testing.T) {
 	}))
 	defer ts.Close()
 	var (
+		ctx    = context.Background()
 		c      = New(ts.URL)
-		_, err = c.Get(&glf.Filter{UseLogs: true}, 18000000, 2)
+		_, err = c.Get(ctx, &glf.Filter{UseLogs: true}, 18000000, 2)
 	)
 	want := "getting logs: block not found"
 	diff.Test(t, t.Fatalf, false, err == nil)
@@ -271,16 +276,18 @@ func TestError(t *testing.T) {
 	defer ts.Close()
 
 	var (
+		ctx    = context.Background()
 		c      = New(ts.URL)
 		want   = "getting blocks: cache get: rpc=eth_getBlockByNumber code=-32012 msg=credits"
-		_, got = c.Get(&glf.Filter{UseBlocks: true}, 1000001, 1)
+		_, got = c.Get(ctx, &glf.Filter{UseBlocks: true}, 1000001, 1)
 	)
 	diff.Test(t, t.Errorf, want, got.Error())
 }
 
 func TestGet(t *testing.T) {
+	ctx := context.Background()
 	const start, limit = 10, 5
-	blocks, err := New("").Get(&glf.Filter{}, start, limit)
+	blocks, err := New("").Get(ctx, &glf.Filter{}, start, limit)
 	diff.Test(t, t.Fatalf, nil, err)
 	diff.Test(t, t.Fatalf, len(blocks), limit)
 	diff.Test(t, t.Fatalf, blocks[0].Num(), uint64(10))
@@ -305,12 +312,13 @@ func TestGet_Cached(t *testing.T) {
 	}))
 	defer ts.Close()
 
+	ctx := context.Background()
 	c := New(ts.URL)
-	blocks, err := c.Get(&glf.Filter{UseBlocks: true, UseLogs: true}, 18000000, 1)
+	blocks, err := c.Get(ctx, &glf.Filter{UseBlocks: true, UseLogs: true}, 18000000, 1)
 	diff.Test(t, t.Errorf, nil, err)
 	diff.Test(t, t.Errorf, len(blocks[0].Txs[0].Logs), 1)
 
-	blocks, err = c.Get(&glf.Filter{UseBlocks: true, UseLogs: true}, 18000000, 1)
+	blocks, err = c.Get(ctx, &glf.Filter{UseBlocks: true, UseLogs: true}, 18000000, 1)
 	diff.Test(t, t.Errorf, nil, err)
 	diff.Test(t, t.Errorf, len(blocks[0].Txs[0].Logs), 1)
 }
@@ -330,8 +338,9 @@ func TestNoLogs(t *testing.T) {
 	}))
 	defer ts.Close()
 
+	ctx := context.Background()
 	c := New(ts.URL)
-	blocks, err := c.Get(&glf.Filter{UseBlocks: true, UseLogs: true}, 1000001, 1)
+	blocks, err := c.Get(ctx, &glf.Filter{UseBlocks: true, UseLogs: true}, 1000001, 1)
 	diff.Test(t, t.Errorf, nil, err)
 
 	b := blocks[0]
@@ -356,8 +365,9 @@ func TestLatest(t *testing.T) {
 	}))
 	defer ts.Close()
 
+	ctx := context.Background()
 	c := New(ts.URL)
-	blocks, err := c.Get(&glf.Filter{UseBlocks: true, UseLogs: true}, 18000000, 1)
+	blocks, err := c.Get(ctx, &glf.Filter{UseBlocks: true, UseLogs: true}, 18000000, 1)
 	diff.Test(t, t.Errorf, nil, err)
 
 	b := blocks[0]

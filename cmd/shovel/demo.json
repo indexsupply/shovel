@@ -1,13 +1,13 @@
 {
     "pg_url": "postgres:///shovel",
     "eth_sources": [
-        {"name": "mainnet", "chain_id": 1, "url": "https://1.rlps.indexsupply.net"}
+        {"name": "mainnet", "chain_id": 1, "url": "https://ethereum.publicnode.com"}
     ],
     "integrations": [
 		{
 			"name": "usdc-transfer",
 			"enabled": true,
-			"sources": [{"name": "mainnet"}, {"name": "base"}],
+			"sources": [{"name": "mainnet"}],
 			"table": {
 				"name": "usdc",
 				"columns": [

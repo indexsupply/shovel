@@ -871,6 +871,12 @@ Latency is measured in milliseconds.
 
 **v=d80f** This is the git commit that was used to build the binary. You can see this commit in the https://github.com/indexsupply/code repo by the following command
 
+**nblocks=1** The number of blocks that were processed in a processing loop. If you are backfilling then this value will be min(batch_size/concurrency, num_blocks_behind). Otherwise, during incremental processing, it should be 1.
+
+**nrpc=2** The number of JSON RPC requests that were made during a processing loop. In most cases the value will be 2. 1 to find out about the latest block and another to get the logs.
+
+**nrows=0** The number of rows inserted into Postgres during the processing loop. Some blocks won't match your integrations and the value will be 0. Otherwise it will often correspond to the number of transactions of events that were matched during a processing loop.
+
 ```
 git show d80f --stat
 commit d80f21e11cfc68df06b74cb44c9f1f6b2b172165 (tag: v1.0beta)
