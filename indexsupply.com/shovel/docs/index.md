@@ -626,6 +626,10 @@ Using `filter_ref` creates a dependency between the integration being filtered a
 
 A common BTREE index is automatically created for the reference table's column. This ensures that filter checks can happen as quickly as possible. The index is named `shovel_%s` where `%s` is the name of the referenced column.
 
+### Multiple Filters
+
+An integration can have multiple filters. Evaluation order is unspecified. An event, or transaction, is saved if one of the filters evaluates to `true`. In other words, the filters are evaluated and the results are combined using an `OR` operation.
+
 ### Filter Examples
 
 <details>
