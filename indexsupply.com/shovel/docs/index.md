@@ -624,7 +624,7 @@ The filter is built from the following fields:
 
 Using `filter_ref` creates a dependency between the integration being filtered and the referenced integration. Shovel ensures that the referenced integration runs before the dependent integration.
 
-A common BTREE index is automatically created for the reference table's column. This ensures that filter checks can happen as quickly as possible. The indexed is named `shovel_%s` where `%s` is the name of the referenced column.
+A common BTREE index is automatically created for the reference table's column. This ensures that filter checks can happen as quickly as possible. The index is named `shovel_%s` where `%s` is the name of the referenced column.
 
 ### Filter Examples
 
