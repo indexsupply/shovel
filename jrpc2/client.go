@@ -31,7 +31,8 @@ import (
 
 func New(url string) *Client {
 	return &Client{
-		d: strings.Contains(url, "debug"),
+		d:       strings.Contains(url, "debug"),
+		nocache: strings.Contains(url, "nocache"),
 		hc: &http.Client{
 			Timeout:   10 * time.Second,
 			Transport: gzhttp.Transport(http.DefaultTransport),
@@ -42,10 +43,11 @@ func New(url string) *Client {
 }
 
 type Client struct {
-	d     bool
-	hc    *http.Client
-	url   string
-	wsurl string
+	nocache bool
+	d       bool
+	hc      *http.Client
+	url     string
+	wsurl   string
 
 	lcache NumHash
 	bcache cache
@@ -358,12 +360,12 @@ func (c *Client) Get(
 	)
 	switch {
 	case filter.UseBlocks:
-		blocks, err = c.bcache.get(ctx, start, limit, c.blocks)
+		blocks, err = c.bcache.get(c.nocache, ctx, start, limit, c.blocks)
 		if err != nil {
 			return nil, fmt.Errorf("getting blocks: %w", err)
 		}
 	case filter.UseHeaders:
-		blocks, err = c.hcache.get(ctx, start, limit, c.headers)
+		blocks, err = c.hcache.get(c.nocache, ctx, start, limit, c.headers)
 		if err != nil {
 			return nil, fmt.Errorf("getting blocks: %w", err)
 		}
@@ -435,7 +437,10 @@ func (c *cache) prune() {
 	}
 }
 
-func (c *cache) get(ctx context.Context, start, limit uint64, f getter) ([]eth.Block, error) {
+func (c *cache) get(nocache bool, ctx context.Context, start, limit uint64, f getter) ([]eth.Block, error) {
+	if nocache {
+		return f(ctx, start, limit)
+	}
 	c.Lock()
 	if c.segments == nil {
 		c.segments = make(map[key]*segment)

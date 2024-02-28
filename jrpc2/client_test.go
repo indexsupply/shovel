@@ -42,14 +42,14 @@ func TestCache_Prune(t *testing.T) {
 	ctx := context.Background()
 	tg := testGetter{}
 	c := cache{}
-	blocks, err := c.get(ctx, 1, 1, tg.get)
+	blocks, err := c.get(false, ctx, 1, 1, tg.get)
 	diff.Test(t, t.Fatalf, nil, err)
 	diff.Test(t, t.Errorf, 1, len(blocks))
 	diff.Test(t, t.Errorf, 1, tg.callCount)
 	diff.Test(t, t.Errorf, 1, len(c.segments))
 
 	for i := uint64(0); i < 9; i++ {
-		blocks, err := c.get(ctx, 2+i, 1, tg.get)
+		blocks, err := c.get(false, ctx, 2+i, 1, tg.get)
 		diff.Test(t, t.Fatalf, nil, err)
 		diff.Test(t, t.Errorf, 1, len(blocks))
 	}
