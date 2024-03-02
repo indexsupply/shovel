@@ -28,6 +28,7 @@
   "author": "Ryan Smith <r@32k.io>",
   "devDependencies": {
     "@types/bun": "^1.0.5",
-    "bun-plugin-dts": "^0.2.1"
+    "bun-plugin-dts": "^0.2.1",
+    "jsr": "^0.9.0"
   }
 }
