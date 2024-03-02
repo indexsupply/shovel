@@ -346,7 +346,6 @@ type key struct {
 
 type (
 	blockmap map[uint64]*eth.Block
-	txmap    map[key]*eth.Tx
 )
 
 func (c *Client) Get(
@@ -379,23 +378,18 @@ func (c *Client) Get(
 		}
 	}
 
-	bm, tm := make(blockmap), make(txmap)
+	bm := make(blockmap)
 	for i := range blocks {
 		bm[blocks[i].Num()] = &blocks[i]
-		for j := range blocks[i].Txs {
-			t := &blocks[i].Txs[j]
-			k := key{blocks[i].Num(), uint64(t.Idx)}
-			tm[k] = t
-		}
 	}
 
 	switch {
 	case filter.UseReceipts:
-		if err := c.receipts(ctx, bm, tm, start, limit); err != nil {
+		if err := c.receipts(ctx, bm, start, limit); err != nil {
 			return nil, fmt.Errorf("getting receipts: %w", err)
 		}
 	case filter.UseLogs:
-		if err := c.logs(ctx, filter, bm, tm, start, limit); err != nil {
+		if err := c.logs(ctx, filter, bm, start, limit); err != nil {
 			return nil, fmt.Errorf("getting logs: %w", err)
 		}
 	}
@@ -591,7 +585,7 @@ type receiptResp struct {
 	Result []receiptResult `json:"result"`
 }
 
-func (c *Client) receipts(ctx context.Context, bm blockmap, tm txmap, start, limit uint64) error {
+func (c *Client) receipts(ctx context.Context, bm blockmap, start, limit uint64) error {
 	var (
 		reqs  = make([]request, limit)
 		resps = make([]receiptResp, limit)
@@ -624,17 +618,7 @@ func (c *Client) receipts(ctx context.Context, bm blockmap, tm txmap, start, lim
 		}
 		b.Header.Hash.Write(resps[i].Result[0].BlockHash)
 		for j := range resps[i].Result {
-			k := key{b.Num(), uint64(resps[i].Result[j].TxIdx)}
-			if tx, ok := tm[k]; ok {
-				tx.Status.Write(byte(resps[i].Result[j].Status))
-				tx.GasUsed = resps[i].Result[j].GasUsed
-				tx.Logs = make([]eth.Log, len(resps[i].Result[j].Logs))
-				copy(tx.Logs, resps[i].Result[j].Logs)
-				continue
-			}
-
-			tx := eth.Tx{}
-			tx.Idx = resps[i].Result[j].TxIdx
+			tx := b.Tx(uint64(resps[i].Result[j].TxIdx))
 			tx.PrecompHash.Write(resps[i].Result[j].TxHash)
 			tx.Type.Write(byte(resps[i].Result[j].TxType))
 			tx.From.Write(resps[i].Result[j].TxFrom)
@@ -643,7 +627,6 @@ func (c *Client) receipts(ctx context.Context, bm blockmap, tm txmap, start, lim
 			tx.GasUsed = resps[i].Result[j].GasUsed
 			tx.Logs = make([]eth.Log, len(resps[i].Result[j].Logs))
 			copy(tx.Logs, resps[i].Result[j].Logs)
-			b.Txs = append(b.Txs, tx)
 		}
 	}
 	return nil
@@ -663,7 +646,7 @@ type logResp struct {
 	Result []logResult `json:"result"`
 }
 
-func (c *Client) logs(ctx context.Context, filter *glf.Filter, bm blockmap, tm txmap, start, limit uint64) error {
+func (c *Client) logs(ctx context.Context, filter *glf.Filter, bm blockmap, start, limit uint64) error {
 	var (
 		t0 = time.Now()
 		lf = struct {
@@ -700,35 +683,18 @@ func (c *Client) logs(ctx context.Context, filter *glf.Filter, bm blockmap, tm t
 		}
 		logsByTx[k] = []logResult{lresp.Result[i]}
 	}
+
 	for k, logs := range logsByTx {
 		b, ok := bm[k.a]
 		if !ok {
 			return fmt.Errorf("block not found")
 		}
 		b.Header.Hash.Write(logs[0].BlockHash)
-
-		if tx, ok := tm[k]; ok {
-			for i := range logs {
-				var found bool
-				for j := range tx.Logs {
-					if tx.Logs[j].Idx == logs[i].Log.Idx {
-						found = true
-					}
-				}
-				if !found {
-					tx.Logs = append(tx.Logs, *logs[i].Log)
-				}
-			}
-			continue
-		}
-		tx := eth.Tx{}
-		tx.Idx = eth.Uint64(k.b)
+		tx := b.Tx(k.b)
 		tx.PrecompHash.Write(logs[0].TxHash)
-		tx.Logs = make([]eth.Log, 0, len(logs))
 		for i := range logs {
 			tx.Logs.Add(logs[i].Log)
 		}
-		b.Txs = append(b.Txs, tx)
 	}
 	slog.Debug("http get logs",
 		"start", start,
