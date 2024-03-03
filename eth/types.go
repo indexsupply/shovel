@@ -116,6 +116,8 @@ func (hb *Bytes) Write(p []byte) (int, error) {
 }
 
 type Block struct {
+	sync.Mutex
+
 	Header
 	Txs Txs `json:"transactions"`
 }
@@ -130,6 +132,18 @@ func (b Block) String() string {
 		b.Header.Parent,
 		b.Header.Hash,
 	)
+}
+
+func (b *Block) Tx(idx uint64) *Tx {
+	b.Lock()
+	defer b.Unlock()
+	for i := range b.Txs {
+		if uint64(b.Txs[i].Idx) == idx {
+			return &b.Txs[i]
+		}
+	}
+	b.Txs = append(b.Txs, Tx{Idx: Uint64(idx)})
+	return &b.Txs[len(b.Txs)-1]
 }
 
 type Log struct {
@@ -158,6 +172,12 @@ func (l *Log) UnmarshalRLP(b []byte) {
 type Logs []Log
 
 func (ls *Logs) Add(other *Log) {
+	for i := range *ls {
+		if (*ls)[i].Idx == other.Idx {
+			return
+		}
+	}
+
 	l := Log{}
 	l.Idx = other.Idx
 	l.Address.Write(other.Address)

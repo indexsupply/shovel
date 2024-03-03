@@ -12,10 +12,13 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/indexsupply/x/eth"
 	"github.com/indexsupply/x/shovel/glf"
+	"golang.org/x/sync/errgroup"
 	"kr.dev/diff"
 )
 
@@ -298,29 +301,59 @@ func TestGet(t *testing.T) {
 }
 
 func TestGet_Cached(t *testing.T) {
+	// reqCount is for testing concurrency.
+	// We want to recreate a scenario where
+	// 2 go routines attempt to call Get with
+	// identical request parameters. One
+	// routine will call eth_getBlockByNumber to
+	// download the header and the other routine will
+	// use the cached header. Once the header has been
+	// downloaded, both routines will download logs.
+	// Our test ensures that concurrent go routines
+	// don't add duplicate tx/log data to the shared
+	// block header.
+	var reqCount uint64
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, err := io.ReadAll(r.Body)
 		diff.Test(t, t.Fatalf, nil, err)
 		switch {
 		case strings.Contains(string(body), "eth_getBlockByNumber"):
+			atomic.AddUint64(&reqCount, 1)
 			_, err := w.Write([]byte(block18000000JSON))
 			diff.Test(t, t.Fatalf, nil, err)
 		case strings.Contains(string(body), "eth_getLogs"):
+			for ; reqCount == 0; time.Sleep(time.Second) {
+			}
 			_, err := w.Write([]byte(logs18000000JSON))
 			diff.Test(t, t.Fatalf, nil, err)
 		}
 	}))
 	defer ts.Close()
-
-	ctx := context.Background()
-	c := New(ts.URL)
-	blocks, err := c.Get(ctx, &glf.Filter{UseBlocks: true, UseLogs: true}, 18000000, 1)
-	diff.Test(t, t.Errorf, nil, err)
-	diff.Test(t, t.Errorf, len(blocks[0].Txs[0].Logs), 1)
-
-	blocks, err = c.Get(ctx, &glf.Filter{UseBlocks: true, UseLogs: true}, 18000000, 1)
-	diff.Test(t, t.Errorf, nil, err)
-	diff.Test(t, t.Errorf, len(blocks[0].Txs[0].Logs), 1)
+	var (
+		ctx    = context.Background()
+		c      = New(ts.URL)
+		findTx = func(b eth.Block, idx uint64) (eth.Tx, error) {
+			for i := range b.Txs {
+				if b.Txs[i].Idx == eth.Uint64(idx) {
+					return b.Txs[i], nil
+				}
+			}
+			return eth.Tx{}, fmt.Errorf("no tx at idx %d", idx)
+		}
+		getcall = func() error {
+			blocks, err := c.Get(ctx, &glf.Filter{UseHeaders: true, UseLogs: true}, 18000000, 1)
+			diff.Test(t, t.Errorf, nil, err)
+			diff.Test(t, t.Errorf, len(blocks[0].Txs), 65)
+			tx, err := findTx(blocks[0], 0)
+			diff.Test(t, t.Errorf, nil, err)
+			diff.Test(t, t.Errorf, len(tx.Logs), 1)
+			return nil
+		}
+	)
+	eg := errgroup.Group{}
+	eg.Go(getcall)
+	eg.Go(getcall)
+	eg.Wait()
 }
 
 func TestNoLogs(t *testing.T) {
