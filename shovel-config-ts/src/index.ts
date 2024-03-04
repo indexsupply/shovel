@@ -92,7 +92,7 @@ export type Source = {
 
 export type SourceReference = {
   name: string;
-  start: bigint;
+  start: EnvRef | bigint;
 };
 
 export type Integration = {
