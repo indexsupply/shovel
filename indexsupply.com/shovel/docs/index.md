@@ -379,7 +379,7 @@ You may see '429 too many request' errors in your logs as you are backfilling da
 
 ## Table
 
-Each integration contains a `table` object. It is possible for many integrations to write to the same table even if they have unique sets of columns. On startup, Shovel will create the table if it doesn't exist (using the name) and then add missing columns.
+An integration must contains a `table` object. It is possible for many integrations to write to the same table. Each `integration` object must provide a complete `table` object. If integrations with disjoint columns share a table the table is created with a union of the columns.
 
 ```
 {
@@ -394,18 +394,16 @@ Each integration contains a `table` object. It is possible for many integrations
 }
 ```
 
-- **name** Name of postgres table that the integration will write to. Multiple integrations can write to a single integration. See `columns` for more detail on table sharing.
+- **name** Postgres table name.
 
-- **columns** Array of columns that will be written to by the integration. Each column requires a name and a key.
+- **columns** Array of columns that will be written to by the integration. Each column requires a name and a type.
 
-  -- **name** Can be anything that is a valid postgres column name
-  -- **type** Type can be one of: `bool`, `byte`, `bytea`, `int`, `numeric`, `text`.
+  -- **name** Postgres column name
+  -- **type** Can be one of: `bool`, `byte`, `bytea`, `int`, `numeric`, `text`.
 
-  When Shovel sets up this integration, it will check to see if the table already exists (using the table name) and if it doesn't it will be created with the defined columns. If it does exist, Shovel will determine if there are tables defined in the configuration that are not defined in the database and each missing table will be added to the database.
+    Shovel will not set default values for new columns. This means table modification are cheap and the table may contain null values.
 
-  Shovel will not set default values for new columns. This means that the table modification will not be expensive but does mean that the table may contain null values for newly added columns.
-
-  The following columns are required and will be added if they are not defined in the config:
+    The following columns are required and will be added if they are not defined in the config:
 
     ```
     [
