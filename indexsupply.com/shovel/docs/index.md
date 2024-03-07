@@ -407,7 +407,7 @@ An integration must contains a `table` object. It is possible for many integrati
 
     ```
     [
-      {"name": "intg_name", "type": "text"},
+      {"name": "ig_name",   "type": "text"},
       {"name": "src_name",  "type": "text"},
       {"name": "block_num", "type": "numeric"},
       {"name": "tx_idx",    "type": "numeric"}
