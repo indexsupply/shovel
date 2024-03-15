@@ -1,3 +1,8 @@
+/**
+ * This module contains functions to script the creation of a Shovel Config
+ * @module
+ */
+
 // string values with `$` prefix instruct shovel to read
 // the values from the evnironment at runtime
 type EnvRef = `$${string}`;
@@ -132,6 +137,11 @@ export function makeConfig(args: {
   };
 }
 
+/** @returns a stringified JSON representation of the Config.
+ * Handles bigint serialization. Passes through the `space` parameter to `JSON.stringify`.
+ * @param c - the Config to serialize
+ * @param space - the number of spaces to use for indentation
+ */
 export function toJSON(c: Config, space: number = 0): string {
   const bigintjson = (_key: any, value: any) =>
     typeof value === "bigint" ? value.toString() : value;
