@@ -174,8 +174,6 @@ These logs indicate that Shovel has initialized and is beginning to index data.
 
 Since the Shovel JSON config contains a declarative description of all the data that you are indexing, it can become large and repetitive. If you would like an easier way to manage this config, you can use the TypeScript package which includes type definitions for the config structure. This will allow you to use loops, variables, and everything else that comes with a programming language to easily create and manage your Shovel config.
 
-You can even use packages like Viem to build your integrations using the text representation of an event signature instead of the more verbose JSON definition.
-
 NPM package: https://npmjs.com/package/@indexsupply/shovel-config
 
 TS docs: https://jsr.io/@indexsupply/shovel-config
