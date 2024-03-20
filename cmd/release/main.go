@@ -95,6 +95,7 @@ func build(tag, goos, goarch, binPath, cmdPath string) error {
 	c.Env = append(os.Environ(),
 		fmt.Sprintf("GOOS=%s", goos),
 		fmt.Sprintf("GOARCH=%s", goarch),
+		fmt.Sprintf("CGO_ENABLED=0"),
 	)
 	err := c.Run()
 	if err != nil {
