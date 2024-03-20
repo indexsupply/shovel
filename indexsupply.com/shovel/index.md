@@ -14,7 +14,7 @@ Own your blockchain data without vendor lock-in.
 - Stay in sync with the latest blocks across many chains
 - Concurrently backfill data
 
-Learn more in the [docs](/shovel/docs).
+Learn more in the **[docs](/shovel/docs).**
 
 ## Checkout this Demo
 

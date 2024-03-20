@@ -1,15 +1,28 @@
 <title>Index Supply</title>
 
-# Index Supply, Co.
+# Index Supply
 
-We build open source tools and host services for developers who want an open, simple, reliable, and no-nonsense experience for Ethereum app development.
+We are expert engineers who build Ethereum indexing solutions <br> for teams who demand simple, fast, and reliable access to onchain data.
 
-We are part of [0xPARC](https://0xparc.org). More thoughts on funding and vision [here](https://github.com/orgs/indexsupply/discussions/130).
+Customer <a href="/customer-case-studies">case studies</a>:
 
-## [Shovel](/shovel)
+<a href="/customer-case-studies">
 
-An open source Ethereum to Postgres indexer
+<div class="logos">
 
-## [Block API](/)
+<div><img src="https://indexsupply.com/images/daimo.png" /></div>
+<div><img src="https://indexsupply.com/images/lattice.png" /></div>
+<div><img src="https://indexsupply.com/images/mememarket.png" /></div>
+<div><img src="https://indexsupply.com/images/mintfun.png" /></div>
 
-_Coming soon._ A hosted node API designed for Indexing and optimized for cost and speed.
+</div>
+</a>
+
+What we offer:
+
+- Open source Ethereum/Postgres indexer: **[Shovel](/shovel)**
+- Engineering services for custom indexing
+- Premium, on-call support for Shovel
+
+Email <a href="mailto:info@indexsupply.com">info@indexsupply.com</a> to get started
+
