@@ -20,8 +20,8 @@ Customer <a href="/customer-case-studies">case studies</a>:
 
 What we offer:
 
-- Open source Ethereum/Postgres indexer: **[Shovel](/shovel)**
 - Engineering services for custom indexing
+- Ethereum to Postgres indexer: **[Shovel](/shovel)**
 - Premium, on-call support for Shovel
 
 Email <a href="mailto:info@indexsupply.com">info@indexsupply.com</a> to get started
