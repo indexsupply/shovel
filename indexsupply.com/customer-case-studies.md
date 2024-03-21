@@ -13,6 +13,14 @@ We continue to collaborate over group chat to diagnose any production incidents 
 <hr>
 
 <div class="logos">
+<img src="https://indexsupply.com/images/family.png" />
+</div>
+
+We setup custom tuned Geth nodes on EC2 to initialize Family's Mongo database. Running nodes on EC2 provided significantly improved latencies and higher throughput when compared to using a 3rd party hosted node at a fraction of the cost.
+
+<hr>
+
+<div class="logos">
 <img src="https://indexsupply.com/images/lattice.png" />
 </div>
 
