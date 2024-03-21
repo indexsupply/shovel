@@ -15,13 +15,13 @@ Customer <a href="/customer-case-studies">case studies</a>:
 
 <div class="logos">
 
-<div><img src="https://indexsupply.com/images/daimo.png" /></div>
-<div><img src="https://indexsupply.com/images/family.png" /></div>
-<div><img src="https://indexsupply.com/images/lattice.png" /></div>
+<div><img height="41" width="105" src="https://indexsupply.com/images/daimo.png" /></div>
+<div><img height="41" width="105" src="https://indexsupply.com/images/family.png" /></div>
+<div><img height="41" width="105" src="https://indexsupply.com/images/lattice.png" /></div>
 </div>
 <div class="logos">
-<div><img src="https://indexsupply.com/images/mememarket.png" /></div>
-<div><img src="https://indexsupply.com/images/mintfun.png" /></div>
+<div><img height="41" width="105" src="https://indexsupply.com/images/mememarket.png" /></div>
+<div><img height="41" width="105" src="https://indexsupply.com/images/mintfun.png" /></div>
 </div>
 
 </a>
