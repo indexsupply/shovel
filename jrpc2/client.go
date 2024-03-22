@@ -49,6 +49,8 @@ type Client struct {
 	url     string
 	wsurl   string
 
+	pollDuration time.Duration
+
 	lcache NumHash
 	bcache cache
 	hcache cache
@@ -56,6 +58,11 @@ type Client struct {
 
 func (c *Client) WithMaxReads(n int) *Client {
 	c.lcache.maxreads = n
+	return c
+}
+
+func (c *Client) WithPollDuration(d time.Duration) *Client {
+	c.pollDuration = d
 	return c
 }
 
@@ -248,7 +255,7 @@ func (c *Client) wsListen(ctx context.Context) {
 
 func (c *Client) httpPoll(ctx context.Context) {
 	var (
-		ticker = time.NewTicker(time.Second)
+		ticker = time.NewTicker(c.pollDuration)
 		hresp  = headerResp{}
 	)
 	defer ticker.Stop()
