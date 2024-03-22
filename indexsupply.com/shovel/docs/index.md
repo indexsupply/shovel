@@ -288,6 +288,7 @@ Ethereum sources are defined at the top level configuration object and then refe
       "chain_id": 0,
       "url": "",
       "ws_url": "",
+      "poll_duration": "500ms",
       "batch_size": 1,
       "concurrency": 1
     }
@@ -312,6 +313,7 @@ Ethereum sources are defined at the top level configuration object and then refe
 - **chain_id** There isn't a whole lot that depends on this value at the moment (ie no crypto functions) but it will end up in the integrations tables.
 - **url** A URL that points to a HTTP JSON RPC API. This can be a local {G,R}eth node or a Quicknode.
 - **ws_url** An optional URL that points to a Websocket JSON RPC API. If this URL is set Shovel will use the websocket to get the _latest_ block instead of calling `eth_getBlockByNumber`. If the websocket fails for any reason Shovel will fallback on the HTTP based API.
+- **poll_duration** The amount of time to wait before checking the source for a new block. A lower value (eg 100ms) will increase the total number of requests that Shove will make to your node. This may count against your rate limit. A higher value will reduce the number of requests made. The default is `1s`.
 - **batch_size** The maximum number of batched requests to make to the JSON RPC API. This can speed up backfill operations but will potentially use a lot of API credits if you are running on a hosted node.
 - **concurrency** The maximum number of concurrent threads to run within a task. This value relates to `batch_size` in that for each task, the `batch_size` is partitioned amongst `concurrency` threads.
 
@@ -341,6 +343,7 @@ Environment interpolation will work on the following fields in eth_sources:
 - name
 - chain_id
 - url
+- poll_duration
 - concurrency
 - batch_size
 

@@ -91,6 +91,12 @@ func WithRange(start, stop uint64) Option {
 	}
 }
 
+func WithPollDuration(d time.Duration) Option {
+	return func(t *Task) {
+		t.pollDuration = d
+	}
+}
+
 func WithConcurrency(concurrency, batchSize int) Option {
 	return func(t *Task) {
 		if concurrency > 0 {
@@ -123,10 +129,11 @@ func NewDestination(ig config.Integration) (Destination, error) {
 
 func NewTask(opts ...Option) (*Task, error) {
 	t := &Task{
-		ctx:         context.Background(),
-		batchSize:   1,
-		concurrency: 1,
-		destFactory: NewDestination,
+		ctx:          context.Background(),
+		pollDuration: time.Second,
+		batchSize:    1,
+		concurrency:  1,
+		destFactory:  NewDestination,
 	}
 	for _, opt := range opts {
 		opt(t)
@@ -165,10 +172,11 @@ type Task struct {
 	ctx context.Context
 	pgp *pgxpool.Pool
 
-	lockid      int64
-	batchSize   int
-	concurrency int
-	start, stop uint64
+	lockid       int64
+	pollDuration time.Duration
+	batchSize    int
+	concurrency  int
+	start, stop  uint64
 
 	filter glf.Filter
 
@@ -668,7 +676,7 @@ func (tm *Manager) runTask(t *Task) {
 				slog.InfoContext(t.ctx, "done")
 				return
 			case errors.Is(err, ErrNothingNew):
-				time.Sleep(time.Second / 4)
+				time.Sleep(t.pollDuration)
 			case err != nil:
 				time.Sleep(time.Second)
 				slog.ErrorContext(t.ctx, "converge", "error", err, "ig_name", t.destConfig.Name)
@@ -737,7 +745,7 @@ func loadTasks(ctx context.Context, pgp *pgxpool.Pool, c config.Root) ([]*Task, 
 	}
 	var sources = map[string]Source{}
 	for _, sc := range scByName {
-		sources[sc.Name] = jrpc2.New(sc.URL).WithWSURL(sc.WSURL)
+		sources[sc.Name] = jrpc2.New(sc.URL).WithWSURL(sc.WSURL).WithPollDuration(sc.PollDuration)
 	}
 	var tasks []*Task
 	for _, ig := range allIntegrations {
@@ -759,6 +767,7 @@ func loadTasks(ctx context.Context, pgp *pgxpool.Pool, c config.Root) ([]*Task, 
 				WithContext(ctx),
 				WithPG(pgp),
 				WithRange(scRef.Start, scRef.Stop),
+				WithPollDuration(sc.PollDuration),
 				WithConcurrency(sc.Concurrency, sc.BatchSize),
 				WithSrcName(sc.Name),
 				WithChainID(sc.ChainID),

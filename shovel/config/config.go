@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"slices"
+	"time"
 
 	"github.com/indexsupply/x/dig"
 	"github.com/indexsupply/x/wos"
@@ -323,26 +324,28 @@ type Dashboard struct {
 }
 
 type Source struct {
-	Name        string
-	ChainID     uint64
-	URL         string
-	WSURL       string
-	Start       uint64
-	Stop        uint64
-	Concurrency int
-	BatchSize   int
+	Name         string
+	ChainID      uint64
+	URL          string
+	WSURL        string
+	Start        uint64
+	Stop         uint64
+	PollDuration time.Duration
+	Concurrency  int
+	BatchSize    int
 }
 
 func (s *Source) UnmarshalJSON(d []byte) error {
 	x := struct {
-		Name        wos.EnvString `json:"name"`
-		ChainID     wos.EnvUint64 `json:"chain_id"`
-		URL         wos.EnvString `json:"url"`
-		WSURL       wos.EnvString `json:"ws_url"`
-		Start       wos.EnvUint64 `json:"start"`
-		Stop        wos.EnvUint64 `json:"stop"`
-		Concurrency wos.EnvInt    `json:"concurrency"`
-		BatchSize   wos.EnvInt    `json:"batch_size"`
+		Name         wos.EnvString `json:"name"`
+		ChainID      wos.EnvUint64 `json:"chain_id"`
+		URL          wos.EnvString `json:"url"`
+		WSURL        wos.EnvString `json:"ws_url"`
+		Start        wos.EnvUint64 `json:"start"`
+		Stop         wos.EnvUint64 `json:"stop"`
+		PollDuration wos.EnvString `json:"poll_duration"`
+		Concurrency  wos.EnvInt    `json:"concurrency"`
+		BatchSize    wos.EnvInt    `json:"batch_size"`
 	}{}
 	if err := json.Unmarshal(d, &x); err != nil {
 		return err
@@ -355,6 +358,17 @@ func (s *Source) UnmarshalJSON(d []byte) error {
 	s.Stop = uint64(x.Stop)
 	s.Concurrency = int(x.Concurrency)
 	s.BatchSize = int(x.BatchSize)
+
+	s.PollDuration = time.Second
+	if len(x.PollDuration) > 0 {
+		var err error
+		s.PollDuration, err = time.ParseDuration(string(x.PollDuration))
+		if err != nil {
+			const tag = "unable to parse poll_duration value: %s"
+			return fmt.Errorf(tag, string(x.PollDuration))
+		}
+	}
+
 	return nil
 }
 
