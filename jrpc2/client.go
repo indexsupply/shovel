@@ -37,8 +37,9 @@ func New(url string) *Client {
 			Timeout:   10 * time.Second,
 			Transport: gzhttp.Transport(http.DefaultTransport),
 		},
-		url:    url,
-		lcache: NumHash{maxreads: 20},
+		pollDuration: time.Second,
+		url:          url,
+		lcache:       NumHash{maxreads: 20},
 	}
 }
 
