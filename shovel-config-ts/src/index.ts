@@ -91,6 +91,7 @@ export type Source = {
   name: string;
   url: string;
   chain_id: EnvRef | number;
+  poll_duration: EnvRef | string;
   concurrency?: EnvRef | number;
   batch_size?: EnvRef | number;
 };
