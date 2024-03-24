@@ -34,3 +34,6 @@ What we offer:
 
 Email <a href="mailto:info@indexsupply.com">info@indexsupply.com</a> to get started
 
+Read the latest [company update](/update-1)
+
+Shovel [1.0 release!](/shovel/1.0)

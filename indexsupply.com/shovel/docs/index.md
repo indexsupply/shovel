@@ -39,11 +39,11 @@ You can also browse [Examples](#examples) to find one that does what you need.
 
 ## Versions
 
-Latest stable version is: **1.0beta**
+Latest stable version is: **1.0**
 
 ```
-https://indexsupply.net/bin/1.0beta/darwin/arm64/shovel
-https://indexsupply.net/bin/1.0beta/linux/amd64/shovel
+https://indexsupply.net/bin/1.0/darwin/arm64/shovel
+https://indexsupply.net/bin/1.0/linux/amd64/shovel
 ```
 
 Latest version on main:
@@ -76,13 +76,13 @@ If you are running a Mac and would like a nice way to setup Postgres, checkout: 
 To install Shovel, you can build from source (see [build from source](#build-from-source)) or you can download the binaries
 
 ```
-curl -LO https://indexsupply.net/bin/1.0beta/darwin/arm64/shovel
+curl -LO https://indexsupply.net/bin/1.0/darwin/arm64/shovel
 chmod +x shovel
 ```
 
 For Linux
 ```
-curl -LO https://indexsupply.net/bin/1.0beta/linux/amd64/shovel
+curl -LO https://indexsupply.net/bin/1.0/linux/amd64/shovel
 chmod +x shovel
 ```
 
@@ -90,7 +90,7 @@ After downloading the binaries we can now run the version command
 
 ```
 ./shovel -version
-v1.0beta d80f
+v1.0 7602
 ```
 
 The first part of this command prints a version string (which is also a git tag) and the first two bytes of the latest commit that was used to build the binaries.
@@ -1332,5 +1332,6 @@ Indexes:
 ```
 </details>
 
-You've reached the end. Thank you for reading.
 <hr>
+
+You've reached the end. Thank you for reading.
