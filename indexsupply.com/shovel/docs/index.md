@@ -154,19 +154,25 @@ Let's run this config and see what happens
 
 ```
 ./shovel -config config.json
-p=16009 v=d80f bf=0 n=0 msg=prune-ig
-p=16009 v=d80f bf=0 n=0 msg=prune-task
-p=16009 v=d80f chain=00001 bf=0 integrations=1 msg=new-task
-p=16009 v=d80f chain=00001 bf=1 integrations=1 msg=new-task
-p=16009 v=d80f chain=08453 bf=0 integrations=1 msg=new-task
-p=16009 v=d80f chain=08453 bf=1 integrations=1 msg=new-task
-p=16009 v=d80f chain=08453 bf=1 msg=done
-p=16009 v=d80f chain=08453 bf=0 n=6904763 msg=converge
-p=16009 v=d80f chain=08453 bf=0 n=6904764 msg=converge
-p=16009 v=d80f chain=00001 bf=0 n=18622553 msg=converge
+p=8232 v=7602 chain=00001 src=mainnet dest=usdc-transfer msg=new-task
+p=8232 v=7602 chain=08453 src=base dest=usdc-transfer msg=new-task
+p=8232 v=7602 n=0 msg=prune-task
+p=8232 v=7602 chain=00001 num=19515851 msg=start at latest
+p=8232 v=7602 chain=08453 num=12316626 msg=start at latest
+p=8232 v=7602 chain=00001 src=mainnet dst=usdc-transfer n=19515851 h=f5878692 nrows=0 nrpc=4 nblocks=1 elapsed=1.410290458s msg=converge
+p=8232 v=7602 chain=08453 src=base dst=usdc-transfer n=12316626 h=7d6bcffa nrows=1 nrpc=4 nblocks=1 elapsed=1.555755s msg=converge
+p=8232 v=7602 chain=08453 src=base dst=usdc-transfer n=12316627 h=c1e7d431 nrows=3 nrpc=2 nblocks=1 elapsed=292.192958ms msg=converge
+p=8232 v=7602 chain=08453 src=base dst=usdc-transfer n=12316628 h=8f257b22 nrows=2 nrpc=2 nblocks=1 elapsed=350.890166ms msg=converge
+p=8232 v=7602 chain=08453 src=base dst=usdc-transfer n=12316629 h=257a79f5 nrows=0 nrpc=2 nblocks=1 elapsed=290.85075ms msg=converge
+p=8232 v=7602 chain=08453 src=base dst=usdc-transfer n=12316630 h=5878d5ad nrows=1 nrpc=2 nblocks=1 elapsed=375.884666ms msg=converge
+p=8232 v=7602 chain=08453 src=base dst=usdc-transfer n=12316631 h=4388c05a nrows=4 nrpc=2 nblocks=1 elapsed=288.755125ms msg=converge
+p=8232 v=7602 chain=08453 src=base dst=usdc-transfer n=12316632 h=4faeaadb nrows=6 nrpc=2 nblocks=1 elapsed=274.551083ms msg=converge
+p=8232 v=7602 chain=08453 src=base dst=usdc-transfer n=12316633 h=6207463b nrows=7 nrpc=2 nblocks=1 elapsed=287.200542ms msg=converge
+p=8232 v=7602 chain=00001 src=mainnet dst=usdc-transfer n=19515852 h=1c3b5de9 nrows=0 nrpc=2 nblocks=1 elapsed=364.504708ms msg=converge
+p=8232 v=7602 chain=08453 src=base dst=usdc-transfer n=12316634 h=be6c2c0a nrows=6 nrpc=2 nblocks=1 elapsed=463.80825ms msg=converge
 ```
 
-These logs indicate that Shovel has initialized and is beginning to index data.
+These logs indicate that Shovel has initialized and is beginning to index data. Congratulations. Smoke 'em if you got 'em.
 
 <hr>
 
