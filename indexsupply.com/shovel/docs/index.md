@@ -14,7 +14,7 @@ To do this, you will create a JSON config file defining the events and block dat
 ```
 {
   "pg_url": "postgres:///shovel",
-  "eth_sources": [{"name": "m", "chain_id": 1, "url": "https://1.rlps.indexsupply.net"}],
+  "eth_sources": [{"name": "m", "chain_id": 1, "url": "https://ethereum-rpc.publicnode.com"}],
   "integrations": [{
     "name": "small",
     "enabled": true,
@@ -107,8 +107,8 @@ Now let's create a Shovel config file. You can copy the following contents into 
 {
   "pg_url": "postgres:///shovel",
   "eth_sources": [
-    {"name": "mainnet", "chain_id": 1, "url": "https://1.rlps.indexsupply.net"},
-    {"name": "base", "chain_id": 8453, "url": "https://8453.rlps.indexsupply.net"}
+    {"name": "mainnet", "chain_id": 1, "url": "https://ethereum-rpc.publicnode.com"},
+    {"name": "base", "chain_id": 8453, "url": "https://base-rpc.publicnode.com"}
   ],
   "integrations": [{
     "name": "usdc-transfer",
@@ -200,7 +200,7 @@ const table: Table = {
 const mainnet: Source = {
   name: "mainnet",
   chain_id: 1,
-  url: "https://ethereum.publicnode.com",
+  url: "https://ethereum-rpc.publicnode.com",
 };
 
 let integrations: Integration[] = [
@@ -606,7 +606,7 @@ This config uses the contains filter operation on the tx_input to index transact
 {
   "pg_url": "postgres:///shovel",
   "eth_sources": [
-    {"name": "mainnet", "chain_id": 1, "url": "https://1.rlps.indexsupply.net"}
+    {"name": "mainnet", "chain_id": 1, "url": "https://ethereum-rpc.publicnode.com"}
   ],
   "integrations": [{
     "name": "specific-tx",
@@ -1037,7 +1037,7 @@ Authentication can be disabled entirely via:
     {
       "name": "mainnet",
       "chain_id": 1,
-      "url": "https://1.rlps.indexsupply.net"
+      "url": "https://ethereum-rpc.publicnode.com"
     }
   ],
   "integrations": [
@@ -1097,7 +1097,7 @@ Indexes:
     {
       "name": "fast",
       "chain_id": 1,
-      "url": "https://1.rlps.indexsupply.net",
+      "url": "https://ethereum-rpc.publicnode.com",
       "concurrency": 10,
       "batch_size": 100
     }
@@ -1121,8 +1121,8 @@ Indexes:
 {
   "pg_url": "postgres:///shovel",
   "eth_sources": [
-    {"name": "mainnet", "chain_id": 1, "url": "https://1.rlps.indexsupply.net"},
-    {"name": "goerli",  "chain_id": 5, "url": "https://5.rlps.indexsupply.net"}
+    {"name": "mainnet", "chain_id": 1, "url": "https://ethereum-rpc.publicnode.com"},
+    {"name": "goerli",  "chain_id": 11155111, "url": "https://ethereum-sepolia-rpc.publicnode.com"}
   ],
   "integrations": [
     {
@@ -1196,7 +1196,7 @@ Indexes:
     {
       "name": "mainnet",
       "chain_id": 1,
-      "url": "https://1.rlps.indexsupply.net"
+      "url": "https://ethereum-rpc.publicnode.com"
     }
   ],
   "integrations": [

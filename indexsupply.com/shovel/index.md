@@ -31,8 +31,8 @@ Shovel is configured using declarative JSON that maps the data you care about on
 {
   "pg_url": "postgres:///shovel",
   "eth_sources": [
-    {"name": "mainnet", "chain_id": 1, "url": "https://1.rlps.indexsupply.net"},
-    {"name": "goerli",  "chain_id": 5, "url": "https://5.rlps.indexsupply.net"}
+    {"name": "mainnet", "chain_id": 1, "url": "https://ethereum-rpc.publicnode.com"},
+    {"name": "sepolia",  "chain_id": 11155111, "url": "https://ethereum-sepolia-rpc.publicnode.com"}
   ],
   "integrations": [
     {
