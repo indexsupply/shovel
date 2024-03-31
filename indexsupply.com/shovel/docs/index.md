@@ -1,39 +1,73 @@
 <title>Shovel Docs</title>
 
-Shovel's main thing is indexing Transactions and Events.
+Shovel is program that indexes data from an Ethereum node into a Postgres database. It uses standard JSON RPC APIs provided by all Ethereum nodes (ie Geth,Reth) and hosted nodes (ie Alchemy, Quicknode). It indexes blocks, transactions, and decoded event logs. Shovel uses a declarative JSON config to determine what data should be saved in Postgres.
 
-To do this, you will create a JSON config file defining the events and block data that you want to save along with the Postgres table that will store the saved data. With this file, you can start indexing by running Shovel:
+The Shovel config contains a database URL, an Ethereum node URL, and an array of Integrations that contain a mapping of Ethereum data to Postgres tables.
+
+<details>
+<summary>
+Here is a basic example of a config that saves ERC20 transfers
+</summary>
+
+```
+{
+  "pg_url": "postgres:///shovel",
+  "eth_sources": [
+    {
+      "name": "mainnet",
+      "chain_id": 1,
+      "url": "https://ethereum-rpc.publicnode.com"
+    }
+  ],
+  "integrations": [{
+    "name": "erc20_transfers",
+    "enabled": true,
+    "sources": [{"name": "mainnet"}],
+    "table": {
+      "name": "erc20_transfers",
+      "columns": [
+        {"name": "block_num", "type": "numeric"},
+        {"name": "tx_hash",   "type": "bytea"},
+        {"name": "from",      "type": "bytea"},
+        {"name": "to",        "type": "bytea"},
+        {"name": "value",     "type": "bytea"},
+      ]
+    },
+    "block": [
+      {"name": "block_num", "column": "block_num"},
+      {"name": "tx_hash",   "column": "tx_hash"}
+    ],
+    "event": {
+      "name": "Transfer",
+      "type": "event",
+      "anonymous": false,
+      "inputs": [
+        {"indexed": true,  "name": "from",  "type": "address", "column": "from"},
+        {"indexed": true,  "name": "to",    "type": "address", "column": "to"},
+        {"indexed": false, "name": "value", "type": "uint256", "column": "value"}
+      ]
+    }
+  }]
+}
+```
+</details>
+
+In the example config you will notice that we define a PG table named `erc20_transfers` with 5 columns. Shovel will create this table on startup. We specify 2 fields that we want to save from the block and transaction data and we provide the Transfer event from the ERC20 ABI JSON. The Transfer event ABI snippet has an additional key on the input objects named `column`. The `column` field indicates that we want to save the data from this input and references a column named previously defined in `table`.
+
+We can run this config with:
 
 ```
 ./shovel -config config.json
 ```
 
-<details>
-<summary>Here is the smallest possible config file</summary>
+This concludes the basic introduction to Shovel. Please read the rest of this page for a comprehensive understanding of Shovel or browse these common topics:
 
-```
-{
-  "pg_url": "postgres:///shovel",
-  "eth_sources": [{"name": "m", "chain_id": 1, "url": "https://ethereum-rpc.publicnode.com"}],
-  "integrations": [{
-    "name": "small",
-    "enabled": true,
-    "sources": [{"name": "m"}],
-    "table": {"name": "small", "columns": []},
-    "block": [],
-    "event": {}
-  }]
-}
-```
-_This config file works because there are required columns that are added to the table and to the block object array by default._
-</details>
+- Index data from multiple chains: [Ethereum Sources](#ethereum-sources)
+- Index additional Block/Transaction data: [Block](#block)
+- Define and Filter indexed data based on the decoded logs: [Event](#event)
+- And some basic [examples](#examples)
 
-It's likely that you will want to index actual data. To do that, you'll need to fill in the `block` and `event` fields in the config object. See the following sections for instructions on how to do that:
-
-1. [Event](#event)
-2. [Block](#block)
-
-You can also browse [Examples](#examples) to find one that does what you need.
+Best of luck and feel free to reach out to [support@indexsupply.com](mailto:support@indexsupply.com) with any questions.
 
 <hr>
 
