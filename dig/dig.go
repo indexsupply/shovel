@@ -957,7 +957,7 @@ func (ig Integration) processLog(rows [][]any, lwc *logWithCtx, pgmut *sync.Mute
 
 func dbtype(abitype string, d []byte) any {
 	switch {
-	case strings.HasPrefix(abitype, "uint"):
+	case strings.HasPrefix(abitype, "uint"), strings.HasPrefix(abitype, "int"):
 		var x uint256.Int
 		x.SetBytes(d)
 		return x.Dec()
