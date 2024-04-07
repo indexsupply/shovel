@@ -239,10 +239,10 @@ func (h *Handler) PushUpdates() error {
 func (h *Handler) template(local bool, name string) (*template.Template, error) {
 	if local {
 		b, err := os.ReadFile(fmt.Sprintf("./shovel/web/%s.html", name))
-		if err != nil {
-			return nil, fmt.Errorf("reading %s: %w", name, err)
+		if err == nil {
+			return template.New(name).Parse(string(b))
 		}
-		return template.New(name).Parse(string(b))
+		slog.Info("using pre-compiled html templates")
 	}
 	t, ok := h.templates[name]
 	if ok {
