@@ -105,6 +105,7 @@ func render(f *os.File) ([]byte, error) {
 			extension.GFM,
 		),
 		goldmark.WithParserOptions(
+			parser.WithAttribute(),
 			parser.WithAutoHeadingID(),
 		),
 	)

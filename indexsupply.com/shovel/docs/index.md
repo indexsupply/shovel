@@ -95,11 +95,11 @@ The following resources are automatically deployed on a main commit:
   `linux/amd64`, `linux/arm64`
 - This web site https://indexsupply.com
 
-### v1.2 2024/04/09 91da
+### v1.2 2024/04/09 91da {#changelog-v1.2}
 
 - shovel integration table config exposes field for adding a db index
 
-### v1.1 2024/04/07 e1f2
+### v1.1 2024/04/07 e1f2 {#changelog-v1.1}
 
 - fix dashboard access via localhost
 - add abi support for int types (prev. version had uint support only)
