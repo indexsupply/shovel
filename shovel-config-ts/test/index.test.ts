@@ -10,6 +10,7 @@ test("makeConfig", () => {
       { name: "to", type: "bytea" },
       { name: "value", type: "numeric" },
     ],
+    index: [["from desc"]],
   };
   const mainnet: Source = {
     name: "mainnet",
@@ -59,6 +60,7 @@ test("makeConfig", () => {
         ],
         table: {
           name: "transfers",
+          index: [["from desc"]],
           columns: [
             {
               name: "from",

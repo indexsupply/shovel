@@ -24,9 +24,17 @@ export type Column = {
   type: PGColumnType;
 };
 
+/**
+ * An IndexStatement is an array of strings. Each
+ * string reprsents a column name and may be followed
+ * by ASC or DESC to specify the index sort order.
+ */
+export type IndexStatment = string[];
+
 export type Table = {
   name: string;
   columns: Column[];
+  index?: IndexStatment[];
 };
 
 export type FilterOp = "contains" | "!contains";
@@ -91,7 +99,7 @@ export type Source = {
   name: string;
   url: string;
   chain_id: EnvRef | number;
-  poll_duration: EnvRef | string;
+  poll_duration?: EnvRef | string;
   concurrency?: EnvRef | number;
   batch_size?: EnvRef | number;
 };
