@@ -32,11 +32,13 @@ func TestDDL(t *testing.T) {
 					{Name: "a", Type: "int"},
 					{Name: "b", Type: "int"},
 				},
+				Index:  [][]string{{"a asc", "b desc"}},
 				Unique: [][]string{{"a", "b"}},
 			},
 			[]string{
 				"create table if not exists foo(a int, b int)",
 				"create unique index if not exists u_foo on foo (a, b)",
+				"create index if not exists shovel_a_asc_b_desc on foo (a asc, b desc)",
 			},
 		},
 	}

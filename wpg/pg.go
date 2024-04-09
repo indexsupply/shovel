@@ -95,9 +95,16 @@ func (t Table) DDL() []string {
 	}
 
 	for _, cols := range t.Index {
+		var indexName string
+		for i := range cols {
+			indexName += strings.ReplaceAll(cols[i], " ", "_")
+			if i+1 != len(cols) {
+				indexName += "_"
+			}
+		}
 		createIndex := fmt.Sprintf(
 			"create index if not exists shovel_%s on %s (",
-			strings.Join(cols, "_"),
+			indexName,
 			t.Name,
 		)
 		for i, cname := range cols {
