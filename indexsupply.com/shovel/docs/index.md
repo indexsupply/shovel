@@ -73,11 +73,11 @@ Best of luck and feel free to reach out to [support@indexsupply.com](mailto:supp
 
 ## Changelog
 
-Latest stable version is: **1.1**
+Latest stable version is: **1.2**
 
 ```
-https://indexsupply.net/bin/1.1/darwin/arm64/shovel
-https://indexsupply.net/bin/1.1/linux/amd64/shovel
+https://indexsupply.net/bin/1.2/darwin/arm64/shovel
+https://indexsupply.net/bin/1.2/linux/amd64/shovel
 ```
 
 Latest version on main:
@@ -94,6 +94,10 @@ The following resources are automatically deployed on a main commit:
 - Docker https://hub.docker.com/r/indexsupply/shovel
   `linux/amd64`, `linux/arm64`
 - This web site https://indexsupply.com
+
+### v1.2 2024/04/09 91da
+
+- shovel integration table config exposes field for adding a db index
 
 ### v1.1 2024/04/07 e1f2
 
@@ -115,13 +119,13 @@ If you are running a Mac and would like a nice way to setup Postgres, checkout: 
 To install Shovel, you can build from source (see [build from source](#build-from-source)) or you can download the binaries
 
 ```
-curl -LO https://indexsupply.net/bin/1.1/darwin/arm64/shovel
+curl -LO https://indexsupply.net/bin/1.2/darwin/arm64/shovel
 chmod +x shovel
 ```
 
 For Linux
 ```
-curl -LO https://indexsupply.net/bin/1.1/linux/amd64/shovel
+curl -LO https://indexsupply.net/bin/1.2/linux/amd64/shovel
 chmod +x shovel
 ```
 
@@ -129,7 +133,7 @@ After downloading the binaries we can now run the version command
 
 ```
 ./shovel -version
-v1.1 e1f2
+v1.2 91da
 ```
 
 The first part of this command prints a version string (which is also a git tag) and the first two bytes of the latest commit that was used to build the binaries.
@@ -498,7 +502,7 @@ You may see '429 too many request' errors in your logs as you are backfilling da
 
 ## Table
 
-An integration must contains a `table` object. It is possible for many integrations to write to the same table. Each `integration` object must provide a complete `table` object. If integrations with disjoint columns share a table the table is created with a union of the columns.
+An integration must contain a `table` object. It is possible for many integrations to write to the same table. If integrations with disjoint columns share a table the table is created with a union of the columns.
 
 ```
 {
@@ -506,7 +510,8 @@ An integration must contains a `table` object. It is possible for many integrati
     "table": {
       "name": "",
       "columns": [{"name": "", "type": ""}],
-      "unique": [""],
+      "index": [[""]],
+      "unique": [[""]],
       "disable_unique": false
     }
   }]
@@ -549,7 +554,9 @@ An integration must contains a `table` object. It is possible for many integrati
     ]
     ```
 
-- **unique** List of strings representing column names that should be combined into a unique index. Each column name in this array must be represented in the integration's `columns` field.
+- **index** Array of an array of strings representing column names that should be used in creating a B-Tree index. Each column name in this array must be represented in the table's `columns` field. A column name may be suffixed with `ASC` or `DESC` to specify a sort order for the index.
+
+- **unique** Array of an array of strings representing column names that should be combined into a unique index. Each column name in this array must be represented in the table's `columns` field.
 
   The name of the index will be `u_` followed by the column names joined with an `_`. For example: `u_chain_id_block_num`
 
