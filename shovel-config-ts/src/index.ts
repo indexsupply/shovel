@@ -67,6 +67,11 @@ export type BlockDataOptions =
   | "log_idx"
   | "log_addr";
 
+/**
+ * BlockData represents non-event data to index. Shovel can index
+ * block, receipt, transaction, and log data in addition to abi
+ * decoded event log data.
+ */
 export type BlockData = {
   name: BlockDataOptions;
 
@@ -76,6 +81,16 @@ export type BlockData = {
   filter_ref?: FilterReference;
 };
 
+/**
+ * EventInput is a superset of the ABI JSON defintion for event
+ * inputs. The additions to the standard are column, filter_op,
+ * filter_arg, and filter_ref.
+ *
+ * These additions are instruction for Shovel so that it can map the
+ * event data to your PG table.
+ *
+ * If column is omitted, then the event input field will not be saved.
+ */
 export type EventInput = {
   readonly indexed?: boolean;
   readonly name: string;
