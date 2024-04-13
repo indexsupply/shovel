@@ -73,11 +73,11 @@ Best of luck and feel free to reach out to [support@indexsupply.com](mailto:supp
 
 ## Changelog
 
-Latest stable version is: **1.2**
+Latest stable version is: **1.3**
 
 ```
-https://indexsupply.net/bin/1.2/darwin/arm64/shovel
-https://indexsupply.net/bin/1.2/linux/amd64/shovel
+https://indexsupply.net/bin/1.3/darwin/arm64/shovel
+https://indexsupply.net/bin/1.3/linux/amd64/shovel
 ```
 
 Latest version on main:
@@ -94,6 +94,12 @@ The following resources are automatically deployed on a main commit:
 - Docker https://hub.docker.com/r/indexsupply/shovel
   `linux/amd64`, `linux/arm64`
 - This web site https://indexsupply.com
+
+### v1.3 {#changelog-v1.3}
+
+`8E73 2024-04-13`
+
+- expose `/metrics` endpoint for Prometheus monitoring
 
 ### v1.2 {#changelog-v1.2}
 
@@ -123,13 +129,13 @@ If you are running a Mac and would like a nice way to setup Postgres, checkout: 
 To install Shovel, you can build from source (see [build from source](#build-from-source)) or you can download the binaries
 
 ```
-curl -LO https://indexsupply.net/bin/1.2/darwin/arm64/shovel
+curl -LO https://indexsupply.net/bin/1.3/darwin/arm64/shovel
 chmod +x shovel
 ```
 
 For Linux
 ```
-curl -LO https://indexsupply.net/bin/1.2/linux/amd64/shovel
+curl -LO https://indexsupply.net/bin/1.3/linux/amd64/shovel
 chmod +x shovel
 ```
 
@@ -137,7 +143,7 @@ After downloading the binaries we can now run the version command
 
 ```
 ./shovel -version
-v1.2 91da
+v1.3 8e73
 ```
 
 The first part of this command prints a version string (which is also a git tag) and the first two bytes of the latest commit that was used to build the binaries.
