@@ -137,6 +137,7 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", wh.Index)
 	mux.HandleFunc("/diag", wh.Diag)
+	mux.HandleFunc("/metrics", wh.Prom)
 	mux.HandleFunc("/login", wh.Login)
 	mux.Handle("/task-updates", wh.Authn(wh.Updates))
 	mux.Handle("/add-source", wh.Authn(wh.AddSource))

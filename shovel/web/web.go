@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -64,6 +65,10 @@ type Handler struct {
 
 	sess     session.Config
 	password []byte
+
+	// global rate limit for diag requests
+	diagLastReqMut sync.Mutex
+	diagLastReq    time.Time
 }
 
 func New(mgr *shovel.Manager, conf *config.Root, pgp *pgxpool.Pool) *Handler {
@@ -169,7 +174,102 @@ type DiagResult struct {
 	PGError   string `json:"pg_error"`
 }
 
+func (h *Handler) Prom(w http.ResponseWriter, r *http.Request) {
+	h.diagLastReqMut.Lock()
+	if time.Since(h.diagLastReq) < time.Second {
+		h.diagLastReqMut.Unlock()
+		slog.InfoContext(r.Context(), "rate limiting metrics")
+		fmt.Fprintf(w, "too many diag requests")
+		return
+	}
+	h.diagLastReq = time.Now()
+	h.diagLastReqMut.Unlock()
+
+	checkPG := func(srcName string) []string {
+		var (
+			res    []string
+			start  = time.Now()
+			latest uint64
+			nerr   int
+		)
+		const q = `
+			select num
+			from shovel.task_updates
+			where src_name = $1
+			order by num desc
+			limit 1
+		`
+		err := h.pgp.QueryRow(r.Context(), q, srcName).Scan(&latest)
+		if err != nil {
+			nerr++
+		}
+		res = append(res, "# HELP shovel_latest_block_local last block processed")
+		res = append(res, "# TYPE shovel_latest_block_local gauge")
+		res = append(res, fmt.Sprintf(`shovel_latest_block_local{src="%s"} %d`, srcName, latest))
+
+		res = append(res, "# HELP shovel_pg_ping number of ms to make basic status query")
+		res = append(res, "# TYPE shovel_pg_ping gauge")
+		res = append(res, fmt.Sprintf(`shovel_pg_ping %d`, uint64(time.Since(start)/time.Millisecond)))
+
+		res = append(res, "# HELP shovel_pg_ping_error number of errors in making basic status query")
+		res = append(res, "# TYPE shovel_pg_ping_error gauge")
+		res = append(res, fmt.Sprintf(`shovel_pg_ping_error %d`, nerr))
+		return res
+	}
+	checkSrc := func(sname string, src shovel.Source) []string {
+		var (
+			start = time.Now()
+			res   []string
+			nerr  int
+		)
+		n, _, err := src.Latest(r.Context(), 0)
+		if err != nil {
+			nerr++
+		}
+
+		res = append(res, "# HELP shovel_latest_block_remote latest block height from rpc api")
+		res = append(res, "# TYPE shovel_latest_block_remote gauge")
+		res = append(res, fmt.Sprintf(`shovel_latest_block_remote{src="%s"} %d`, sname, n))
+
+		res = append(res, "# HELP shovel_rpc_ping number of ms to make a basic http request to rpc api")
+		res = append(res, "# TYPE shovel_rpc_ping gauge")
+		res = append(res, fmt.Sprintf(`shovel_rpc_ping{src="%s"} %d`, sname, uint64(time.Since(start)/time.Millisecond)))
+
+		res = append(res, "# HELP shovel_rpc_ping_error number of errors in making basic rpc api request")
+		res = append(res, "# TYPE shovel_rpc_ping_error gauge")
+		res = append(res, fmt.Sprintf(`shovel_rpc_ping_error{src="%s"} %d`, sname, nerr))
+		return res
+	}
+
+	scs, err := h.conf.AllSources(r.Context(), h.pgp)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	var res []string
+	for _, sc := range scs {
+		src := jrpc2.New(sc.URL)
+		for _, line := range checkPG(sc.Name) {
+			res = append(res, line)
+		}
+		for _, line := range checkSrc(sc.Name, src) {
+			res = append(res, line)
+		}
+	}
+	fmt.Fprintf(w, strings.Join(res, "\n"))
+}
+
 func (h *Handler) Diag(w http.ResponseWriter, r *http.Request) {
+	h.diagLastReqMut.Lock()
+	if time.Since(h.diagLastReq) < time.Second {
+		h.diagLastReqMut.Unlock()
+		slog.InfoContext(r.Context(), "rate limiting metrics")
+		fmt.Fprintf(w, "too many diag requests")
+		return
+	}
+	h.diagLastReq = time.Now()
+	h.diagLastReqMut.Unlock()
+
 	var (
 		res []DiagResult
 		ctx = r.Context()

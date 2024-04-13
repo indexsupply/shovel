@@ -962,7 +962,7 @@ Shovel's main thing is a task. Tasks are derived from Shovel's configuration. Sh
 
 <hr>
 
-# Monitoring
+## Monitoring
 
 Shovel provides an unauthenticated diagnostics JSON endpoint at: `/diag` which returns:
 
@@ -991,7 +991,43 @@ Shovel provides an unauthenticated diagnostics JSON endpoint at: `/diag` which r
 
 This endpoint will iterate through all the [eth sources](#ethereum-sources) and query for the latest block on both the eth source and the `shovel.task_updates` table.
 
+This endpoint is rate limited to 1 request per second.
+
 Latency is measured in milliseconds.
+
+### Prometheus
+
+Shovel also exposes a `/metrics` endponit that prints the following Prometheus metrics:
+
+```
+# HELP shovel_latest_block_local last block processed
+# TYPE shovel_latest_block_local gauge
+shovel_latest_block_local{src="mainnet"} 19648035
+
+# HELP shovel_pg_ping number of ms to make basic status query
+# TYPE shovel_pg_ping gauge
+shovel_pg_ping 0
+
+# HELP shovel_pg_ping_error number of errors in making basic status query
+# TYPE shovel_pg_ping_error gauge
+shovel_pg_ping_error 0
+
+# HELP shovel_latest_block_remote latest block height from rpc api
+# TYPE shovel_latest_block_remote gauge
+shovel_latest_block_remote{src="mainnet"} 19648035
+
+# HELP shovel_rpc_ping number of ms to make a basic http request to rpc api
+# TYPE shovel_rpc_ping gauge
+shovel_rpc_ping{src="mainnet"} 127
+
+# HELP shovel_rpc_ping_error number of errors in making basic rpc api request
+# TYPE shovel_rpc_ping_error gauge
+shovel_rpc_ping_error{src="mainnet"} 0
+```
+
+This endpoint will iterate through all the [eth sources](#ethereum-sources) and query for the latest block on both the eth source and the `shovel.task_updates` table. Each source will use a separate Prometheus label.
+
+This endpoint is rate limited to 1 request per second.
 
 <hr>
 
