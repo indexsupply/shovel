@@ -1,0 +1,7 @@
+Here are set of commonly used commands for this project:
+
+bun run build
+bun link @indexsupply/shovel-config
+
+npm publish
+bunx jsr publish
