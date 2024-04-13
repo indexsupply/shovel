@@ -80,6 +80,11 @@ export type EventInput = {
   readonly indexed?: boolean;
   readonly name: string;
   readonly type: string;
+  /**
+   * internalType is not used by shovel
+   * but is specified for easy copy/paste.
+   */
+  readonly internalType?: string;
   readonly components?: EventInput[];
 
   column?: string;
