@@ -1,6 +1,6 @@
 <title>Shovel Docs</title>
 
-Shovel is program that indexes data from an Ethereum node into a Postgres database. It uses standard JSON RPC APIs provided by all Ethereum nodes (ie Geth,Reth) and hosted nodes (ie Alchemy, Quicknode). It indexes blocks, transactions, and decoded event logs. Shovel uses a declarative JSON config to determine what data should be saved in Postgres.
+Shovel is a program that indexes data from an Ethereum node into a Postgres database. It uses standard JSON RPC APIs provided by all Ethereum nodes (ie Geth,Reth) and hosted nodes (ie Alchemy, Quicknode). It indexes blocks, transactions, and decoded event logs. Shovel uses a declarative JSON config to determine what data should be saved in Postgres.
 
 The Shovel config contains a database URL, an Ethereum node URL, and an array of Integrations that contain a mapping of Ethereum data to Postgres tables.
 
