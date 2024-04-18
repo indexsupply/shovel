@@ -961,7 +961,7 @@ func dbtype(abitype string, d []byte) any {
 		var x uint256.Int
 		x.SetBytes(d)
 		return x.Dec()
-	case abitype == "address":
+	case strings.HasPrefix(abitype, "address"):
 		if len(d) == 32 {
 			return d[12:]
 		}
