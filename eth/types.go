@@ -308,6 +308,14 @@ func (txs *Txs) UnmarshalRLP(bodies, receipts []byte) {
 	}
 }
 
+type TraceAction struct {
+	Idx      uint64
+	From     Bytes       `json:"from"`
+	CallType string      `json:"callType"`
+	To       Bytes       `json:"to"`
+	Value    uint256.Int `json:"value"`
+}
+
 type Tx struct {
 	Receipt
 	Idx      Uint64      `json:"transactionIndex"`
@@ -323,6 +331,8 @@ type Tx struct {
 	V        uint256.Int `json:"v"`
 	R        uint256.Int `json:"r"`
 	S        uint256.Int `json:"s"`
+
+	TraceActions []TraceAction
 
 	// EIP-2930
 	AccessList AccessTuples `json:"-"` // TODO

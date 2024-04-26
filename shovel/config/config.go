@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/indexsupply/x/dig"
@@ -262,6 +263,7 @@ func AddUniqueIndex(table *wpg.Table) {
 		"tx_idx",
 		"log_idx",
 		"abi_idx",
+		"trace_action_idx",
 	}
 	var uidx []string
 	for i := range possible {
@@ -444,6 +446,11 @@ func (ig *Integration) AddRequiredFields() {
 	for _, inp := range ig.Event.Selected() {
 		if !inp.Indexed {
 			add("abi_idx", "int2")
+		}
+	}
+	for _, bd := range ig.Block {
+		if strings.HasPrefix(bd.Name, "trace_") {
+			add("trace_action_idx", "int2")
 		}
 	}
 }
