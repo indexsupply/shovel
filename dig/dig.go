@@ -386,51 +386,91 @@ type Filter struct {
 }
 
 func (f Filter) Accept(ctx context.Context, pgmut *sync.Mutex, pg wpg.Conn, d any) (bool, error) {
-	var val []byte
+	if len(f.Arg) == 0 {
+		return true, nil
+	}
+	switch v := d.(type) {
+	case eth.Bytes:
+		d = []byte(v)
+	case eth.Uint64:
+		d = uint64(v)
+	}
 	switch v := d.(type) {
 	case []byte:
-		val = []byte(v)
-	case eth.Bytes:
-		val = []byte(v)
-	default:
-		return true, nil
-	}
-
-	switch {
-	case strings.HasSuffix(f.Op, "contains"):
-		var res bool
 		switch {
-		case len(f.Ref.Table) > 0:
-			q := fmt.Sprintf(
-				`select true from %s where %s = $1`,
-				f.Ref.Table,
-				f.Ref.Column,
-			)
-			pgmut.Lock()
-			defer pgmut.Unlock()
-			err := pg.QueryRow(ctx, q, val).Scan(&res)
+		case strings.HasSuffix(f.Op, "contains"):
+			var res bool
 			switch {
-			case errors.Is(err, pgx.ErrNoRows):
-				res = false
-			case err != nil:
-				const tag = "filter using reference (%s %s): %w"
-				return false, fmt.Errorf(tag, f.Ref.Table, f.Ref.Column, err)
-			}
-		default:
-			for i := range f.Arg {
-				if bytes.Contains(val, eth.DecodeHex(f.Arg[i])) {
-					res = true
-					break
+			case len(f.Ref.Table) > 0:
+				q := fmt.Sprintf(
+					`select true from %s where %s = $1`,
+					f.Ref.Table,
+					f.Ref.Column,
+				)
+				pgmut.Lock()
+				defer pgmut.Unlock()
+				err := pg.QueryRow(ctx, q, v).Scan(&res)
+				switch {
+				case errors.Is(err, pgx.ErrNoRows):
+					res = false
+				case err != nil:
+					const tag = "filter using reference (%s %s): %w"
+					return false, fmt.Errorf(tag, f.Ref.Table, f.Ref.Column, err)
+				}
+			default:
+				for i := range f.Arg {
+					if bytes.Contains(v, eth.DecodeHex(f.Arg[i])) {
+						res = true
+						break
+					}
 				}
 			}
+			if strings.HasPrefix(f.Op, "!") {
+				return !res, nil
+			}
+			return res, nil
+		default:
+			return true, nil
 		}
-		if strings.HasPrefix(f.Op, "!") {
-			return !res, nil
+	case string:
+		switch f.Op {
+		case "eq":
+			return v == f.Arg[0], nil
+		case "ne":
+			return v != f.Arg[0], nil
 		}
-		return res, nil
-	default:
-		return true, nil
+	case uint64:
+		i, err := strconv.ParseUint(f.Arg[0], 10, 64)
+		if err != nil {
+			return false, fmt.Errorf("unable to convert filter arg to int: %q", f.Arg[0])
+		}
+		switch f.Op {
+		case "eq":
+			return v == i, nil
+		case "ne":
+			return v != i, nil
+		case "gt":
+			return v > i, nil
+		case "lt":
+			return v < i, nil
+		}
+	case *uint256.Int:
+		i := &uint256.Int{}
+		if err := i.SetFromDecimal(f.Arg[0]); err != nil {
+			return false, fmt.Errorf("unable to convert filter arg dec to uint256: %q", f.Arg[0])
+		}
+		switch f.Op {
+		case "eq":
+			return v.Cmp(i) == 0, nil
+		case "ne":
+			return v.Cmp(i) != 0, nil
+		case "gt":
+			return v.Cmp(i) == 1, nil
+		case "lt":
+			return v.Cmp(i) == -1, nil
+		}
 	}
+	return true, nil
 }
 
 func parseArray(elm atype, s string) atype {

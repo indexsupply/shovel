@@ -1,15 +1,36 @@
 package dig
 
 import (
+	"context"
+	"database/sql"
 	"encoding/hex"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 
+	"blake.io/pqx/pqxtest"
+	"github.com/holiman/uint256"
 	"github.com/indexsupply/x/bint"
+	"github.com/indexsupply/x/eth"
+	"github.com/indexsupply/x/tc"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5/stdlib"
 
 	"kr.dev/diff"
 )
+
+func TestMain(m *testing.M) {
+	sql.Register("postgres", stdlib.GetDefaultDriver())
+	pqxtest.TestMain(m)
+}
+
+func testpg(t *testing.T) *pgxpool.Pool {
+	pqxtest.CreateDB(t, "")
+	pg, err := pgxpool.New(context.Background(), pqxtest.DSNForTest(t))
+	tc.NoErr(t, err)
+	return pg
+}
 
 func TestHasStatic(t *testing.T) {
 	cases := []struct {
@@ -367,4 +388,49 @@ func TestNumIndexed(t *testing.T) {
 		},
 	}
 	diff.Test(t, t.Errorf, 3, event.numIndexed())
+}
+
+func TestFilter(t *testing.T) {
+	dec2uint256 := func(s string) *uint256.Int {
+		i, _ := uint256.FromDecimal(s)
+		return i
+	}
+	pg := testpg(t)
+	mt := new(sync.Mutex)
+	cases := []struct {
+		f    Filter
+		d    any
+		want bool
+	}{
+		{
+			Filter{Op: "gt", Arg: []string{"1"}},
+			eth.Uint64(0),
+			false,
+		},
+		{
+			Filter{Op: "gt", Arg: []string{"1"}},
+			eth.Uint64(2),
+			true,
+		},
+		{
+			Filter{Op: "eq", Arg: []string{"340282366920938463463374607431768211456"}},
+			dec2uint256("340282366920938463463374607431768211456"),
+			true,
+		},
+		{
+			Filter{Op: "eq", Arg: []string{"foo"}},
+			"foo",
+			true,
+		},
+		{
+			Filter{Op: "ne", Arg: []string{"bar"}},
+			"foo",
+			true,
+		},
+	}
+	for _, c := range cases {
+		got, err := c.f.Accept(context.Background(), mt, pg, c.d)
+		tc.NoErr(t, err)
+		tc.WantGot(t, c.want, got)
+	}
 }
