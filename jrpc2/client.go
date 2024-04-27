@@ -750,10 +750,15 @@ func (c *Client) traces(ctx context.Context, bm blockmap, start, limit uint64) e
 		if len(res.Result) == 0 {
 			return fmt.Errorf("no rpc error but empty result")
 		}
+		block, ok := bm[res.Result[0].BlockNum]
+		if !ok {
+			return fmt.Errorf("missing block in block map")
+		}
+		block.Header.Hash.Write(res.Result[0].BlockHash)
 
 		var tracesByTx = map[key][]traceBlockResult{}
 		for i := range res.Result {
-			k := key{uint64(res.Result[i].BlockNum), uint64(res.Result[i].TxIdx)}
+			k := key{block.Num(), uint64(res.Result[i].TxIdx)}
 			if traces, ok := tracesByTx[k]; ok {
 				tracesByTx[k] = append(traces, res.Result[i])
 				continue
@@ -761,17 +766,13 @@ func (c *Client) traces(ctx context.Context, bm blockmap, start, limit uint64) e
 			tracesByTx[k] = []traceBlockResult{res.Result[i]}
 		}
 		for k, traces := range tracesByTx {
-			b, ok := bm[k.a]
-			if !ok {
-				return fmt.Errorf("block not found")
-			}
-			b.Header.Hash.Write(res.Result[0].BlockHash)
-			tx := b.Tx(k.b)
+			tx := block.Tx(k.b)
 			tx.PrecompHash.Write(traces[0].TxHash)
+			tx.TraceActions = make([]eth.TraceAction, len(traces))
 			for i := range traces {
 				ta := traces[i].Action
 				ta.Idx = uint64(i)
-				tx.TraceActions = append(tx.TraceActions, ta)
+				tx.TraceActions[i] = ta
 			}
 		}
 	}
