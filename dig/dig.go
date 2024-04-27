@@ -821,7 +821,7 @@ func (lwc *logWithCtx) get(name string) any {
 	case "tx_to":
 		return lwc.t.To.Bytes()
 	case "tx_value":
-		return lwc.t.Value.Dec()
+		return &lwc.t.Value
 	case "tx_input":
 		return lwc.t.Data.Bytes()
 	case "tx_type":
@@ -960,7 +960,7 @@ func dbtype(abitype string, d []byte) any {
 	case strings.HasPrefix(abitype, "uint"), strings.HasPrefix(abitype, "int"):
 		var x uint256.Int
 		x.SetBytes(d)
-		return x.Dec()
+		return &x
 	case strings.HasPrefix(abitype, "address"):
 		if len(d) == 32 {
 			return d[12:]
