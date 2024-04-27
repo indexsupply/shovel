@@ -337,6 +337,12 @@ func TestDBType(t *testing.T) {
 			false,
 			reflect.Bool,
 		},
+		{
+			"bool",
+			hb("0000000000000000000000000000000000000000000000000000000000000001"),
+			true,
+			reflect.Bool,
+		},
 	}
 	for _, tc := range cases {
 		got := dbtype(tc.abitype, tc.input)

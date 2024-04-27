@@ -1056,9 +1056,10 @@ func dbtype(abitype string, d []byte) any {
 		}
 		return d
 	case abitype == "bool":
-		var x uint256.Int
-		x.SetBytes32(d)
-		return x.Dec() == "1"
+		if len(d) == 32 {
+			return d[31] == 0x01
+		}
+		return false
 	case abitype == "string":
 		return string(d)
 	default:
