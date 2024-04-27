@@ -4,6 +4,7 @@ package jrpc2
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"io"
@@ -28,6 +29,12 @@ import (
 	"nhooyr.io/websocket"
 	"nhooyr.io/websocket/wsjson"
 )
+
+func randbytes() []byte {
+	b := make([]byte, 10)
+	rand.Read(b)
+	return b
+}
 
 func New(url string) *Client {
 	return &Client{
@@ -310,7 +317,7 @@ func (c *Client) Latest(ctx context.Context, n uint64) (uint64, []byte, error) {
 
 	hresp := headerResp{}
 	err := c.do(ctx, &hresp, request{
-		ID:      "1",
+		ID:      fmt.Sprintf("latest-%d-%x", n, randbytes()),
 		Version: "2.0",
 		Method:  "eth_getBlockByNumber",
 		Params:  []any{"latest", false},
@@ -333,7 +340,7 @@ func (c *Client) Latest(ctx context.Context, n uint64) (uint64, []byte, error) {
 func (c *Client) Hash(ctx context.Context, n uint64) ([]byte, error) {
 	hresp := headerResp{}
 	err := c.do(ctx, &hresp, request{
-		ID:      "1",
+		ID:      fmt.Sprintf("hash-%d-%x", n, randbytes()),
 		Version: "2.0",
 		Method:  "eth_getBlockByNumber",
 		Params:  []any{"0x" + strconv.FormatUint(n, 16), true},
@@ -374,7 +381,7 @@ func (c *Client) Get(
 	case filter.UseHeaders:
 		blocks, err = c.hcache.get(c.nocache, ctx, start, limit, c.headers)
 		if err != nil {
-			return nil, fmt.Errorf("getting blocks: %w", err)
+			return nil, fmt.Errorf("getting headers: %w", err)
 		}
 	default:
 		for i := uint64(0); i < limit; i++ {
@@ -483,7 +490,7 @@ func (c *Client) blocks(ctx context.Context, start, limit uint64) ([]eth.Block, 
 	)
 	for i := uint64(0); i < limit; i++ {
 		reqs[i] = request{
-			ID:      "1",
+			ID:      fmt.Sprintf("blocks-%d-%d-%x", start, limit, randbytes()),
 			Version: "2.0",
 			Method:  "eth_getBlockByNumber",
 			Params:  []any{eth.EncodeUint64(start + i), true},
@@ -554,7 +561,7 @@ func (c *Client) headers(ctx context.Context, start, limit uint64) ([]eth.Block,
 	)
 	for i := uint64(0); i < limit; i++ {
 		reqs[i] = request{
-			ID:      "1",
+			ID:      fmt.Sprintf("headers-%d-%d-%x", start, limit, randbytes()),
 			Version: "2.0",
 			Method:  "eth_getBlockByNumber",
 			Params:  []any{eth.EncodeUint64(start + i), false},
@@ -604,7 +611,7 @@ func (c *Client) receipts(ctx context.Context, bm blockmap, start, limit uint64)
 	)
 	for i := uint64(0); i < limit; i++ {
 		reqs[i] = request{
-			ID:      "1",
+			ID:      fmt.Sprintf("receipts-%d-%d-%x", start, limit, randbytes()),
 			Version: "2.0",
 			Method:  "eth_getBlockReceipts",
 			Params:  []any{eth.EncodeUint64(start + i)},
@@ -675,7 +682,7 @@ func (c *Client) logs(ctx context.Context, filter *glf.Filter, bm blockmap, star
 		lresp = logResp{}
 	)
 	err := c.do(ctx, &lresp, request{
-		ID:      "1",
+		ID:      fmt.Sprintf("logs-%d-%d-%x", start, limit, randbytes()),
 		Version: "2.0",
 		Method:  "eth_getLogs",
 		Params:  []any{lf},
@@ -734,7 +741,7 @@ func (c *Client) traces(ctx context.Context, bm blockmap, start, limit uint64) e
 	for i := uint64(0); i < limit; i++ {
 		res := traceBlockResp{}
 		req := request{
-			ID:      "1",
+			ID:      fmt.Sprintf("traces-%d-%d-%x", start, limit, randbytes()),
 			Version: "2.0",
 			Method:  "trace_block",
 			Params:  []any{eth.EncodeUint64(start + i)},
