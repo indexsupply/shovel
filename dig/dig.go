@@ -970,7 +970,7 @@ func (ig Integration) processLog(rows [][]any, lwc *logWithCtx, pgmut *sync.Mute
 			for j, def := range ig.coldefs {
 				switch {
 				case def.Input.Indexed:
-					d := lwc.l.Topics[ictr]
+					d := dbtype(def.Input.Type, lwc.l.Topics[ictr])
 					accept, err := def.Input.Accept(lwc.ctx, pgmut, pg, d)
 					if err != nil {
 						return nil, fmt.Errorf("checking filter: %w", err)
@@ -978,7 +978,7 @@ func (ig Integration) processLog(rows [][]any, lwc *logWithCtx, pgmut *sync.Mute
 					if !accept {
 						return rows, nil
 					}
-					row[j] = dbtype(def.Input.Type, d)
+					row[j] = d
 					ictr++
 				case !def.BlockData.Empty():
 					var d any
@@ -997,7 +997,7 @@ func (ig Integration) processLog(rows [][]any, lwc *logWithCtx, pgmut *sync.Mute
 					}
 					row[j] = d
 				default:
-					d := ig.resultCache.At(i)[actr]
+					d := dbtype(def.Input.Type, ig.resultCache.At(i)[actr])
 					accept, err := def.Input.Accept(lwc.ctx, pgmut, pg, d)
 					if err != nil {
 						return nil, fmt.Errorf("checking filter: %w", err)
@@ -1005,7 +1005,7 @@ func (ig Integration) processLog(rows [][]any, lwc *logWithCtx, pgmut *sync.Mute
 					if !accept {
 						return rows, nil
 					}
-					row[j] = dbtype(def.Input.Type, d)
+					row[j] = d
 					actr++
 				}
 			}
