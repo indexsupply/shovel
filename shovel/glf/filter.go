@@ -9,6 +9,7 @@ type Filter struct {
 	UseBlocks   bool
 	UseReceipts bool
 	UseLogs     bool
+	UseTraces   bool
 
 	addresses []string
 	topics    [][]string
@@ -23,6 +24,10 @@ func New(needs, addresses []string, topics [][]string) *Filter {
 	if any(needs, difference(log, block)) {
 		f.UseLogs = true
 		needs = difference(needs, log)
+	}
+	if any(needs, difference(trace, block)) {
+		f.UseTraces = true
+		needs = difference(needs, trace)
 	}
 	if any(needs, difference(block, header)) {
 		f.UseBlocks = true
@@ -42,11 +47,12 @@ func (f *Filter) Topics() [][]string  { return f.topics }
 
 func (f *Filter) String() string {
 	return fmt.Sprintf(
-		"headers=%t blocks=%t receipts=%t logs=%t addrs=%d topics=%d",
+		"headers=%t blocks=%t receipts=%t logs=%t trace=%t addrs=%d topics=%d",
 		f.UseHeaders,
 		f.UseBlocks,
 		f.UseReceipts,
 		f.UseLogs,
+		f.UseTraces,
 		len(f.addresses),
 		len(f.topics),
 	)
@@ -122,5 +128,11 @@ var (
 		"tx_idx",
 		"log_addr",
 		"log_idx",
+	}
+	trace = []string{
+		"trace_action_call_type",
+		"trace_action_from",
+		"trace_action_to",
+		"trace_action_value",
 	}
 )

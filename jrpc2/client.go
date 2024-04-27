@@ -400,6 +400,10 @@ func (c *Client) Get(
 		if err := c.logs(ctx, filter, bm, start, limit); err != nil {
 			return nil, fmt.Errorf("getting logs: %w", err)
 		}
+	case filter.UseTraces:
+		if err := c.traces(ctx, bm, start, limit); err != nil {
+			return nil, fmt.Errorf("getting traces: %w", err)
+		}
 	}
 	return blocks, validate("Get", start, limit, blocks)
 }
@@ -705,6 +709,73 @@ func (c *Client) logs(ctx context.Context, filter *glf.Filter, bm blockmap, star
 		}
 	}
 	slog.Debug("http get logs",
+		"start", start,
+		"limit", limit,
+		"latency", time.Since(t0),
+	)
+	return nil
+}
+
+type traceBlockResult struct {
+	BlockHash eth.Bytes       `json:"blockHash"`
+	BlockNum  uint64          `json:"blockNumber"`
+	TxHash    eth.Bytes       `json:"transactionHash"`
+	TxIdx     uint64          `json:"transactionPosition"`
+	Action    eth.TraceAction `json:"action"`
+}
+
+type traceBlockResp struct {
+	Error  `json:"error"`
+	Result []traceBlockResult `json:"result"`
+}
+
+func (c *Client) traces(ctx context.Context, bm blockmap, start, limit uint64) error {
+	t0 := time.Now()
+	for i := uint64(0); i < limit; i++ {
+		res := traceBlockResp{}
+		req := request{
+			ID:      "1",
+			Version: "2.0",
+			Method:  "trace_block",
+			Params:  []any{eth.EncodeUint64(start + i)},
+		}
+		err := c.do(ctx, &res, req)
+		if err != nil {
+			return fmt.Errorf("requesting traces: %w", err)
+		}
+		if res.Error.Exists() {
+			const tag = "trace_block"
+			return fmt.Errorf("rpc=%s %w", tag, res.Error)
+		}
+		if len(res.Result) == 0 {
+			return fmt.Errorf("no rpc error but empty result")
+		}
+
+		var tracesByTx = map[key][]traceBlockResult{}
+		for i := range res.Result {
+			k := key{uint64(res.Result[i].BlockNum), uint64(res.Result[i].TxIdx)}
+			if traces, ok := tracesByTx[k]; ok {
+				tracesByTx[k] = append(traces, res.Result[i])
+				continue
+			}
+			tracesByTx[k] = []traceBlockResult{res.Result[i]}
+		}
+		for k, traces := range tracesByTx {
+			b, ok := bm[k.a]
+			if !ok {
+				return fmt.Errorf("block not found")
+			}
+			b.Header.Hash.Write(res.Result[0].BlockHash)
+			tx := b.Tx(k.b)
+			tx.PrecompHash.Write(traces[0].TxHash)
+			for i := range traces {
+				ta := traces[i].Action
+				ta.Idx = uint64(i)
+				tx.TraceActions = append(tx.TraceActions, ta)
+			}
+		}
+	}
+	slog.Debug("http get traces",
 		"start", start,
 		"limit", limit,
 		"latency", time.Since(t0),

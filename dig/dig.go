@@ -647,14 +647,24 @@ type Integration struct {
 	Columns []string
 	coldefs []coldef
 
-	numIndexed    int
-	numSelected   int
-	numBDSelected int
-	numNotify     int
+	indexing         indexingOP
+	numIndexed       int
+	numSelected      int
+	numBDSelected    int
+	numTraceSelected int
+	numNotify        int
 
 	resultCache *Result
 	sighash     []byte
 }
+
+type indexingOP byte
+
+const (
+	indexTx indexingOP = iota
+	indexTrace
+	indexLog
+)
 
 func New(name string, ev Event, bd []BlockData, table wpg.Table, notif Notification) (Integration, error) {
 	ig := Integration{
@@ -670,7 +680,20 @@ func New(name string, ev Event, bd []BlockData, table wpg.Table, notif Notificat
 		sighash:     ev.SignatureHash(),
 	}
 	ig.setCols()
+	ig.setIndexing()
 	return ig, nil
+}
+
+func (ig *Integration) setIndexing() {
+	if ig.numBDSelected > 0 {
+		ig.indexing = indexTx
+	}
+	if ig.numSelected > 0 {
+		ig.indexing = indexLog
+	}
+	if ig.numTraceSelected > 0 {
+		ig.indexing = indexTrace
+	}
 }
 
 func (ig *Integration) setCols() {
@@ -701,6 +724,9 @@ func (ig *Integration) setCols() {
 			Notify:    slices.Contains(ig.Notification.Columns, c.Name),
 		})
 		ig.numBDSelected++
+		if strings.HasPrefix(c.Name, "trace_") {
+			ig.numTraceSelected++
+		}
 	}
 }
 
@@ -750,18 +776,30 @@ func (ig Integration) Insert(ctx context.Context, pgmut *sync.Mutex, pg wpg.Conn
 		lwc.b = &blocks[bidx]
 		for tidx := range blocks[bidx].Txs {
 			lwc.t = &lwc.b.Txs[tidx]
-			rows, skip, err = ig.processTx(rows, lwc, pgmut, pg)
-			if err != nil {
-				return 0, fmt.Errorf("processing tx: %w", err)
-			}
-			if skip {
-				continue
-			}
-			for lidx := range blocks[bidx].Txs[tidx].Logs {
-				lwc.l = &lwc.t.Logs[lidx]
-				rows, err = ig.processLog(rows, lwc, pgmut, pg)
+			switch ig.indexing {
+			case indexTx:
+				rows, skip, err = ig.processTx(rows, lwc, pgmut, pg)
 				if err != nil {
-					return 0, fmt.Errorf("processing log: %w", err)
+					return 0, fmt.Errorf("processing tx: %w", err)
+				}
+				if skip {
+					continue
+				}
+			case indexTrace:
+				for taidx := range blocks[bidx].Txs[tidx].TraceActions {
+					lwc.ta = &lwc.t.TraceActions[taidx]
+					rows, _, err = ig.processTx(rows, lwc, pgmut, pg)
+					if err != nil {
+						return 0, fmt.Errorf("processing log: %w", err)
+					}
+				}
+			case indexLog:
+				for lidx := range blocks[bidx].Txs[tidx].Logs {
+					lwc.l = &lwc.t.Logs[lidx]
+					rows, err = ig.processLog(rows, lwc, pgmut, pg)
+					if err != nil {
+						return 0, fmt.Errorf("processing log: %w", err)
+					}
 				}
 			}
 		}
@@ -831,6 +869,7 @@ type logWithCtx struct {
 	b   *eth.Block
 	t   *eth.Tx
 	l   *eth.Log
+	ta  *eth.TraceAction
 }
 
 func (lwc *logWithCtx) get(name string) any {
@@ -872,6 +911,16 @@ func (lwc *logWithCtx) get(name string) any {
 		return lwc.l.Idx
 	case "log_addr":
 		return lwc.l.Address.Bytes()
+	case "trace_action_call_type":
+		return lwc.ta.CallType
+	case "trace_action_idx":
+		return lwc.ta.Idx
+	case "trace_action_from":
+		return lwc.ta.From.Bytes()
+	case "trace_action_to":
+		return lwc.ta.To.Bytes()
+	case "trace_action_value":
+		return lwc.ta.Value.Dec()
 	default:
 		return nil
 	}
