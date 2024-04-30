@@ -1145,6 +1145,10 @@ shovel_rpc_ping{src="mainnet"} 127
 # HELP shovel_rpc_ping_error number of errors in making basic rpc api request
 # TYPE shovel_rpc_ping_error gauge
 shovel_rpc_ping_error{src="mainnet"} 0
+
+# HELP shovel_delta number of blocks between the source and the shovel database
+# TYPE shovel_delta gauge
+shovel_delta{src="mainnet"} 0
 ```
 
 This endpoint will iterate through all the [eth sources](#ethereum-sources) and query for the latest block on both the eth source and the `shovel.task_updates` table. Each source will use a separate Prometheus label.
