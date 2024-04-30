@@ -331,8 +331,11 @@ A single Shovel process can connect to many Ethereum sources. Each Ethereum sour
 1. eth_getBlockByNumber
 2. eth_getLogs
 3. eth_getBlockReceipts
+4. trace_block
 
-Shovel will choose the RPC method based on what data the integration requires. The fastest way to index data is to only use data found in the eth_getLogs response. Specifically: `block_hash`, `block_num`, `tx_hash`, `tx_idx`, `log_addr`, `log_idx`, and log topics and events.
+Shovel will choose the RPC method based on what data the integration requires. The fastest way to index data is to only use data found in the eth_getLogs response. Specifically: `block_hash`, `block_num`, `tx_hash`, `tx_idx`, `log_addr`, `log_idx`, and log topics and events. The slowest way to index data is to use `trace_block`.
+
+See [Block Data Fields](#block-data-fields) for a table outlining the data that you can index and its required API.
 
 Upon startup, Shovel will use `eth_getBlockByNumber` to find the latest block. It will then compare the response with its latest block in Postgres to figure out where to begin. While indexing data, Shovel will make batched calls to `eth_getBlockByNumber`, batched calls to `eth_getBlockReceipts`, and single calls to `eth_getLogs` depending on the configured `batch_size` and the RPC methods required to index the data.
 
@@ -620,9 +623,9 @@ NOTIFY mainnet-foo '$block_num,$a,$b'
 
 ## Block Data
 
-In addition to log/event indexing, Shovel can also index block, transaction, receipt, and log data. It's possible to index log/event data and block data or just block data.
+In addition to log/event indexing, Shovel can also index block, transaction, receipt, logs, and traces. It's possible to index log/event data and block data or just block data.
 
-If an integration defines a `block` object and not a `event` object then Shovel will not take the time to read or decode the log data.
+If an integration defines a `block` object and not a `event` object then Shovel will not take the time to read or decode the log data. Similarly, if and only if a `block` objects contains `trace_*` fields, then Shovel will download data from the `trace_block` endpoint.
 
 Here is a config snippet outlining how to index block data
 
@@ -649,26 +652,92 @@ Here is a config snippet outlining how to index block data
 
 ### Block Data Fields
 
-| Field Name  | Eth Type        | Postgres Type    |
-|-------------|-----------------|------------------|
-| chain_id    | int             | int              |
-| block_num   | numeric         | numeric          |
-| block_hash  | bytea           | bytea            |
-| block_time  | int (unix time) | int (unix time)  |
-| tx_hash     | bytes32         | bytea            |
-| tx_idx      | int             | int              |
-| tx_signer   | address         | bytea            |
-| tx_to       | address         | bytea            |
-| tx_value    | uint256         | numeric          |
-| tx_input    | bytes           | bytea            |
-| tx_type     | byte            | int              |
-| log_idx     | int             | int              |
-| log_addr    | address         | bytea            |
+| Field Name  | Eth Type        | Postgres Type    | Eth API          |
+|-------------|-----------------|------------------|------------------|
+| chain_id    | int             | int              | `n/a`            |
+| block_num   | numeric         | numeric          | `l, r, h, b, t`  |
+| block_hash  | bytea           | bytea            | `l, r, h, b, t`  |
+| block_time  | int             | int              | `h, b`           |
+| tx_hash     | bytes32         | bytea            | `l, r, h, b, t`  |
+| tx_idx      | int             | int              | `l, r, h, b, t`  |
+| tx_signer   | address         | bytea            | `r, b`           |
+| tx_to       | address         | bytea            | `r, b`           |
+| tx_value    | uint256         | numeric          | `r, b`           |
+| tx_input    | bytes           | bytea            | `r, b`           |
+| tx_type     | byte            | int              | `r, b`           |
+| tx_status   | byte            | int              | `r`              |
+| log_idx     | int             | int              | `l, r`           |
+| log_addr    | address         | bytea            | `l, r`           |
+| trace_action_call_type | string  | text          | `t`              |
+| trace_action_idx       | int     |int            | `t`              |
+| trace_action_from      | address | bytea         | `t`              |
+| trace_action_to        | address | bytea         | `t`              |
+| trace_action_value     | uint256 | numeric       | `t`              |
+
+The Eth API can be one of:
+
+- `l`: eth_getLogs
+- `r`: eth_getBlockReceipts
+- `h`: eth_getBlockByNumber(no txs)
+- `b`: eth_getBlockByNumber(txs)
+- `t`: trace_block
+
+Shovel will optimize its Eth API choice based on the data that your integration requires. Integrations that only require data from `eth_getLogs` will be the most performant since `eth_getLogs` can filter and batch in ways that the other Eth APIs cannot. Whereas `eth_getBlockReceipts` and `trace_block` are extremely slow. Keep in mind that integrations are run independently so that you can partition your workload accordingly.
 
 ### Block Data Examples
 
 <details>
-<summary>Example: Index transactions that call a specific function</summary>
+<summary>Index Internal Eth Transfers via Traces</summary>
+
+```
+{
+    "pg_url": "postgres:///shovel",
+    "eth_sources": [{"name": "mainnet", "chain_id": 1, "url": "XXX"}],
+    "integrations": [
+        {
+            "name": "internal-eth-transfers",
+            "enabled": true,
+            "sources": [{"name": "mainnet", "start": 19737332, "stop": 19737333}],
+            "table": {
+                "name": "internal_eth_transfers",
+                "columns": [
+                    {"name": "block_hash", "type": "bytea"},
+                    {"name": "block_num", "type": "numeric"},
+                    {"name": "tx_hash", "type": "bytea"},
+                    {"name": "tx_idx", "type": "int"},
+                    {"name": "call_type", "type": "text"},
+                    {"name": "from", "type": "bytea"},
+                    {"name": "to", "type": "bytea"},
+                    {"name": "value", "type": "numeric"}
+                ]
+            },
+            "block": [
+                {"name": "block_hash", "column": "block_hash"},
+                {"name": "block_num", "column": "block_num"},
+                {"name": "tx_hash", "column": "tx_hash"},
+                {
+                    "name": "trace_action_call_type",
+                    "column": "call_type",
+                    "filter_op": "eq",
+                    "filter_arg": ["call"]
+                },
+                {"name": "trace_action_from", "column": "from"},
+                {"name": "trace_action_to", "column": "to"},
+                {
+                    "name": "trace_action_value",
+                    "column": "value",
+                    "filter_op": "gt",
+                    "filter_arg": ["0"]
+                }
+            ]
+        }
+    ]
+}
+```
+</details>
+
+<details>
+<summary>Index transactions that call a specific function</summary>
 
 This config uses the contains filter operation on the tx_input to index transactions that call the `mint(uint256)` function.
 
