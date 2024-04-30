@@ -433,6 +433,16 @@ func TestFilter(t *testing.T) {
 			"foo",
 			true,
 		},
+		{
+			Filter{Op: "contains", Arg: []string{"foo", "bar"}},
+			"baz",
+			false,
+		},
+		{
+			Filter{Op: "contains", Arg: []string{"foo", "bar"}},
+			"bar",
+			true,
+		},
 	}
 	for _, c := range cases {
 		got, err := c.f.Accept(context.Background(), mt, pg, c.d)

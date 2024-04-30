@@ -429,11 +429,27 @@ func (f Filter) Accept(ctx context.Context, pgmut *sync.Mutex, pg wpg.Conn, d an
 				return !res, nil
 			}
 			return res, nil
+		case f.Op == "eq" || f.Op == "ne":
+			var res bool
+			for i := range f.Arg {
+				if bytes.Contains(v, eth.DecodeHex(f.Arg[i])) {
+					res = true
+					break
+				}
+			}
+			if f.Op == "ne" {
+				return !res, nil
+			}
+			return res, nil
 		default:
 			return true, nil
 		}
 	case string:
 		switch f.Op {
+		case "contains":
+			return slices.Contains(f.Arg, v), nil
+		case "!contains":
+			return !slices.Contains(f.Arg, v), nil
 		case "eq":
 			return v == f.Arg[0], nil
 		case "ne":
