@@ -618,9 +618,9 @@ NOTIFY mainnet-foo '$block_num,$a,$b'
 
 <hr>
 
-## Block
+## Block Data
 
-In addition to log/event indexing, Shovel can also index standard block, transaction, receipt, and log data. It's possible to index log/event data and block data or just block data.
+In addition to log/event indexing, Shovel can also index block, transaction, receipt, and log data. It's possible to index log/event data and block data or just block data.
 
 If an integration defines a `block` object and not a `event` object then Shovel will not take the time to read or decode the log data.
 
@@ -641,23 +641,31 @@ Here is a config snippet outlining how to index block data
 }
 ```
 
-- **name** The name of the block field to index. Possible values include:
-  - `chain_id int`
-  - `block_num  numeric` - `block_hash bytea`
-  - `block_time int (unix time)`
-  - `tx_hash   bytea`
-  - `tx_idx    int`
-  - `tx_signer bytea`
-  - `tx_to     bytea`
-  - `tx_value  bytea`
-  - `tx_input  bytea`
-  - `tx_type   int`
-  - `log_idx   int`
-  - `log_addr  bytea`
-- **column** The name of the corresponding column in the table definition.
+- **name** Name of block field. See [Block Data Fields](#block-data-fields) for possible values.
+- **column** Reference to name of column in the integration's table.
 - **filter_op** See [filters](#filters) for available operations and usage.
 - **filter_arg** See [filters](#filters) for available operations and usage.
 - **filter_ref** See [filters](#filters) for available operations and usage.
+
+### Block Data Fields
+
+| Field Name  | Eth Type        | Postgres Type    |
+|-------------|-----------------|------------------|
+| chain_id    | int             | int              |
+| block_num   | numeric         | numeric          |
+| block_hash  | bytea           | bytea            |
+| block_time  | int (unix time) | int (unix time)  |
+| tx_hash     | bytes32         | bytea            |
+| tx_idx      | int             | int              |
+| tx_signer   | address         | bytea            |
+| tx_to       | address         | bytea            |
+| tx_value    | uint256         | numeric          |
+| tx_input    | bytes           | bytea            |
+| tx_type     | byte            | int              |
+| log_idx     | int             | int              |
+| log_addr    | address         | bytea            |
+
+### Block Data Examples
 
 <details>
 <summary>Example: Index transactions that call a specific function</summary>
@@ -693,7 +701,7 @@ This config uses the contains filter operation on the tx_input to index transact
 
 <hr>
 
-## Event
+## Event Data
 
 The event config object is used for decoding logs/events. By adding an annotated ABI snippet to the event config, Shovel will match relevant logs, decode the logs using our optimized ABI decoder, and save the decoded result into your integration's table.
 

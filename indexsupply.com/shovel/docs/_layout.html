@@ -75,6 +75,22 @@
 		summary h2 {
 			display: inline;
 		}
+		table {
+			width: 100%;
+			border-collapse: collapse;
+		}
+		th, td {
+			border: 0.5px solid black;
+			padding: 8px;
+			text-align: left;
+		}
+		th {
+			background-color: whitesmoke;
+			color: white;
+		}
+		tr:nth-child(even) {
+			background-color: whitesmoke;
+		}
 		@media (prefers-color-scheme: dark) {
 			body {
 				background-color: rgb(40,40,41);
@@ -84,6 +100,8 @@
 			a:visited {color: rgb(220,220,220);}
 			img { background-color: whitesmoke;}
         	pre {background-color: #202020;}
+			th {background-color: #202020;}
+			tr:nth-child(even) {background-color: #202020;}
 		}
 		@media only screen and (max-width: 700px) {
 			nav {position: static;}

@@ -101,6 +101,7 @@ func render(f *os.File) ([]byte, error) {
 			ghtml.WithXHTML(),
 		),
 		goldmark.WithExtensions(
+			extension.Table,
 			extension.Typographer,
 			extension.GFM,
 		),
