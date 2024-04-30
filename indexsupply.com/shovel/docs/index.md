@@ -52,7 +52,7 @@ Here is a basic example of a config that saves ERC20 transfers
 ```
 </details>
 
-In the example config you will notice that we define a PG table named `erc20_transfers` with 5 columns. Shovel will create this table on startup. We specify 2 fields that we want to save from the block and transaction data and we provide the Transfer event from the ERC20 ABI JSON. The Transfer event ABI snippet has an additional key on the input objects named `column`. The `column` field indicates that we want to save the data from this input and references a column named previously defined in `table`.
+In the example config you will notice that we define a PG table named `erc20_transfers` with 5 columns. Shovel will create this table on startup. We specify 2 fields that we want to save from the block and transaction data and we provide the Transfer event from the ERC20 ABI JSON. The Transfer event ABI snippet has an additional key on the input objects named `column`. The `column` field indicates that we want to save the data from this input and references a column previously defined in `table`.
 
 We can run this config with:
 
@@ -742,19 +742,49 @@ The event name, and input type names can be used to construct the hashed event s
 
 ## Filters
 
-A filter provides a way to reduce the amount of data in your database. You can filter on the block level (eg `tx_input`, `log_addr`) or at the event level (custom event fields).
+A filter reduces the amount of data in your database, and in some cases, reduces the amount of data downloaded from an [Ethereum Source](#ethereum-source).
 
-The basic filter operation is to check if the incoming ethereum data contains (or doesn't contain) one or many byte arrays. You can specify the byte arrays either using a static, hex encoded json array (`filter_arg`) or you can reference annother integration's table as the source of data (`filter_ref`).
+Reducing the amount of data downloaded from the Ethereum Source is accomplished with [**eth_getLogs**](https://ethereum.org/en/developers/docs/apis/json-rpc/#eth_getlogs) and its filtering system. This API allows users to filter logs based on: block range, contract address, and topics. For example, if you are indexing USDC transfers, Shovel's filters would supply eth_getLogs with a filter such that Shovel would only download logs related to USDC transfers.
 
-The filter is built from the following fields:
+For all other data: blocks, transactions, receipts, and traces; Shovel will download the complete objects and then, with the use of filters, remove the objects that don't match the criteria.
 
-- **filter_op** Must be either `contains` or `!contains`
-- **filter_arg** Must be an array of hex encoded (0x prefixed) bytes. Not required if using `filter_ref`. Use `filter_arg` when you want to filter on a set of static data.
-- **filter_ref** Not required if using `filter_arg`. Use `filter_ref` if you want to filter based on dynamic data that has been created by other integrations. For example, this is useful for indexing events from factory created contracts.
+### Filter Fields
+
+The following are a list of filter fields that can be embedded in a `block` or `event` item.
+
+- **filter_op** Must be: `contains` or `!contains` when using `filter_ref` or can be: `contains`, `!contains`, `eq`, `ne`, `gt`, or `lt` when using `filter_arg`.
+- **filter_arg** Not required when using `filter_ref`. Use `filter_arg` when you want to filter on static data. Must be an array of strings.
+- **filter_ref** Not required when using `filter_arg`. Use `filter_ref` if you want to filter based on dynamic data that has been created by other integrations. For example, this is useful for indexing events from factory created contracts.
     - **integration** Must be the name of an integration. This reference is used to determine the table name used for the filter data.
-    - **column** Must be the name of a column defined in the integration's table.
+    - **column** Must be a column name defined in the integration's table.
 
-**Filter References and Integration Dependencies**
+### Filter Operations
+
+Here are the available filter operations. The `filter_op` and `filter_arg` are to be used inside the `event.inputs[]` or `block[]` object. The `input` is the data from the Ethereum Source that is to be tested.
+
+    filter_op: contains, !contains
+        input: binary data
+        filter_arg: json array of hex encoded, 0x-prefixed bytes
+
+        input: string
+        filter_arg: json array of utf8 encoded strings
+
+    filter_op: eq, ne
+        input: binary data
+        filter_arg: json array of hex encoded, 0x-prefixed bytes
+
+        input: string
+        filter_arg: json array of utf8 encoded strings
+
+        input: int/uint
+        filter_arg: json array of a single 256bit number encoded as decimal
+
+    filter_op: lt, gt
+        input: int/uint
+        filter_arg: json array of a single 256bit number encoded as decimal
+
+
+### Filter References and Integration Dependencies
 
 Using `filter_ref` creates a dependency between the integration being filtered and the referenced integration. Shovel ensures that the referenced integration runs before the dependent integration.
 
