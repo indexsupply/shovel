@@ -238,7 +238,7 @@ func (t *Task) Delete(pg wpg.Conn, n uint64) error {
 		and ig_name = $2
 		and num >= $3
 	`
-	_, err := pg.Exec(t.ctx, q, t.srcName, t.destConfig.Name, n)
+	cmd, err := pg.Exec(t.ctx, q, t.srcName, t.destConfig.Name, n)
 	if err != nil {
 		return fmt.Errorf("deleting block from task table: %w", err)
 	}
@@ -246,6 +246,10 @@ func (t *Task) Delete(pg wpg.Conn, n uint64) error {
 	if err != nil {
 		return fmt.Errorf("deleting block: %w", err)
 	}
+	slog.InfoContext(t.ctx, "task-delete",
+		"n", n,
+		"task_updates", cmd.RowsAffected(),
+	)
 	return nil
 }
 
