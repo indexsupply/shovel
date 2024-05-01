@@ -664,16 +664,16 @@ Here is a config snippet outlining how to index block data
 | Field Name  | Eth Type        | Postgres Type    | Eth API          |
 |-------------|-----------------|------------------|------------------|
 | chain_id    | int             | int              | `n/a`            |
-| block_num   | numeric         | numeric          | `l, r, h, b, t`  |
-| block_hash  | bytea           | bytea            | `l, r, h, b, t`  |
+| block_num   | numeric         | numeric          | `l, h, b, r, t`  |
+| block_hash  | bytea           | bytea            | `l, h, b, r, t`  |
 | block_time  | int             | int              | `h, b`           |
-| tx_hash     | bytes32         | bytea            | `l, r, h, b, t`  |
-| tx_idx      | int             | int              | `l, r, h, b, t`  |
-| tx_signer   | address         | bytea            | `r, b`           |
-| tx_to       | address         | bytea            | `r, b`           |
-| tx_value    | uint256         | numeric          | `r, b`           |
-| tx_input    | bytes           | bytea            | `r, b`           |
-| tx_type     | byte            | int              | `r, b`           |
+| tx_hash     | bytes32         | bytea            | `l, h, b, r, t`  |
+| tx_idx      | int             | int              | `l, h, b, r, t`  |
+| tx_signer   | address         | bytea            | `b, r`           |
+| tx_to       | address         | bytea            | `b, r`           |
+| tx_value    | uint256         | numeric          | `b, r`           |
+| tx_input    | bytes           | bytea            | `b, r`           |
+| tx_type     | byte            | int              | `b, r`           |
 | tx_status   | byte            | int              | `r`              |
 | log_idx     | int             | int              | `l, r`           |
 | log_addr    | address         | bytea            | `l, r`           |
@@ -683,12 +683,12 @@ Here is a config snippet outlining how to index block data
 | trace_action_to        | address | bytea         | `t`              |
 | trace_action_value     | uint256 | numeric       | `t`              |
 
-The Eth API can be one of:
+The Eth API can be one of (in asc order of perf cost):
 
 - `l`: eth_getLogs
-- `r`: eth_getBlockReceipts
 - `h`: eth_getBlockByNumber(no txs)
 - `b`: eth_getBlockByNumber(txs)
+- `r`: eth_getBlockReceipts
 - `t`: trace_block
 
 Shovel will optimize its Eth API choice based on the data that your integration requires. Integrations that only require data from `eth_getLogs` will be the most performant since `eth_getLogs` can filter and batch in ways that the other Eth APIs cannot. Whereas `eth_getBlockReceipts` and `trace_block` are extremely slow. Keep in mind that integrations are run independently so that you can partition your workload accordingly.
