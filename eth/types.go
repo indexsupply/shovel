@@ -135,8 +135,6 @@ func (b Block) String() string {
 }
 
 func (b *Block) Tx(idx uint64) *Tx {
-	b.Lock()
-	defer b.Unlock()
 	for i := range b.Txs {
 		if uint64(b.Txs[i].Idx) == idx {
 			return &b.Txs[i]

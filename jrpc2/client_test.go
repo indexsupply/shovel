@@ -352,21 +352,24 @@ func TestGet_Cached(t *testing.T) {
 	var (
 		ctx    = context.Background()
 		c      = New(ts.URL)
-		findTx = func(b eth.Block, idx uint64) (eth.Tx, error) {
+		findTx = func(b *eth.Block, idx uint64) (*eth.Tx, error) {
 			for i := range b.Txs {
 				if b.Txs[i].Idx == eth.Uint64(idx) {
-					return b.Txs[i], nil
+					return &b.Txs[i], nil
 				}
 			}
-			return eth.Tx{}, fmt.Errorf("no tx at idx %d", idx)
+			return nil, fmt.Errorf("no tx at idx %d", idx)
 		}
 		getcall = func() error {
 			blocks, err := c.Get(ctx, &glf.Filter{UseHeaders: true, UseLogs: true}, 18000000, 1)
 			diff.Test(t, t.Errorf, nil, err)
+
+			blocks[0].Lock()
 			diff.Test(t, t.Errorf, len(blocks[0].Txs), 65)
-			tx, err := findTx(blocks[0], 0)
+			tx, err := findTx(&blocks[0], 0)
 			diff.Test(t, t.Errorf, nil, err)
 			diff.Test(t, t.Errorf, len(tx.Logs), 1)
+			blocks[0].Unlock()
 			return nil
 		}
 	)
