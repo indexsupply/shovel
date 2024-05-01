@@ -4,8 +4,8 @@ Shovel v1.5 is available. Read the [announcement][1].
 
 ```
 curl -LO https://indexsupply.net/bin/1.5/darwin/arm64/shovel --silent
-r@m4 ~ % chmod +x shovel
-r@m4 ~ % ./shovel -version
+chmod +x shovel
+./shovel -version
 v1.5 4ee1
 ```
 
@@ -13,7 +13,7 @@ To install the latest on main:
 
 ```
 curl -LO https://indexsupply.net/bin/main/darwin/arm64/shovel --silent
-r@m4 ~ % chmod +x shovel
+chmod +x shovel
 ```
 
 [Company Update][2]
