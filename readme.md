@@ -1,12 +1,12 @@
 # Index Supply, Co.
 
-Shovel v1.4 is available. Read the [announcement][1].
+Shovel v1.5 is available. Read the [announcement][1].
 
 ```
-curl -LO https://indexsupply.net/bin/1.4/darwin/arm64/shovel --silent
+curl -LO https://indexsupply.net/bin/1.5/darwin/arm64/shovel --silent
 r@m4 ~ % chmod +x shovel
 r@m4 ~ % ./shovel -version
-v1.4 2f76
+v1.5 4ee1
 ```
 
 To install the latest on main:

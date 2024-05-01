@@ -73,11 +73,11 @@ Best of luck and feel free to reach out to [support@indexsupply.com](mailto:supp
 
 ## Changelog
 
-Latest stable version is: **1.4**
+Latest stable version is: **1.5**
 
 ```
-https://indexsupply.net/bin/1.4/darwin/arm64/shovel
-https://indexsupply.net/bin/1.4/linux/amd64/shovel
+https://indexsupply.net/bin/1.5/darwin/arm64/shovel
+https://indexsupply.net/bin/1.5/linux/amd64/shovel
 ```
 
 Latest version on main:
@@ -94,6 +94,12 @@ The following resources are automatically deployed on a main commit:
 - Docker https://hub.docker.com/r/indexsupply/shovel
   `linux/amd64`, `linux/arm64`
 - This web site https://indexsupply.com
+
+### v1.5 {#changelog-v1.5}
+
+`4EE1 2024-05-01`
+
+- bugfix: reorg may halt progress until restart. [mote details](https://github.com/indexsupply/code/commit/4ee10c4789af31a054f96f968ed038db3aa3501f)
 
 ### v1.4 {#changelog-v1.4}
 
