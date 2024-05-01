@@ -18,6 +18,7 @@ import (
 
 	"github.com/indexsupply/x/eth"
 	"github.com/indexsupply/x/shovel/glf"
+	"github.com/indexsupply/x/tc"
 	"golang.org/x/sync/errgroup"
 	"kr.dev/diff"
 )
@@ -44,7 +45,7 @@ func (tg *testGetter) get(ctx context.Context, start, limit uint64) ([]eth.Block
 func TestCache_Prune(t *testing.T) {
 	ctx := context.Background()
 	tg := testGetter{}
-	c := cache{}
+	c := cache{maxreads: 2}
 	blocks, err := c.get(false, ctx, 1, 1, tg.get)
 	diff.Test(t, t.Fatalf, nil, err)
 	diff.Test(t, t.Errorf, 1, len(blocks))
@@ -74,6 +75,25 @@ func TestCache_Prune(t *testing.T) {
 		eth.Block{Header: eth.Header{Number: 9}},
 		eth.Block{Header: eth.Header{Number: 10}},
 	})
+}
+
+func TestCache_MaxReads(t *testing.T) {
+	var (
+		ctx = context.Background()
+		tg  = testGetter{}
+		c   = cache{maxreads: 2}
+	)
+	_, err := c.get(false, ctx, 1, 1, tg.get)
+	tc.NoErr(t, err)
+	tc.WantGot(t, 1, tg.callCount)
+
+	_, err = c.get(false, ctx, 1, 1, tg.get)
+	tc.NoErr(t, err)
+	tc.WantGot(t, 1, tg.callCount)
+
+	_, err = c.get(false, ctx, 1, 1, tg.get)
+	tc.NoErr(t, err)
+	tc.WantGot(t, 2, tg.callCount)
 }
 
 var (
@@ -354,6 +374,39 @@ func TestGet_Cached(t *testing.T) {
 	eg.Go(getcall)
 	eg.Go(getcall)
 	eg.Wait()
+}
+
+// Test that a block cache removes its segments after
+// they've been read N times. Once N is reached, subsequent
+// calls to Get should make new requests.
+func TestGet_Cached_Pruned(t *testing.T) {
+	var n int32
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		diff.Test(t, t.Fatalf, nil, err)
+		switch {
+		case strings.Contains(string(body), "eth_getBlockByNumber"):
+			atomic.AddInt32(&n, 1)
+			_, err := w.Write([]byte(block18000000JSON))
+			diff.Test(t, t.Fatalf, nil, err)
+		}
+	}))
+	defer ts.Close()
+	var (
+		ctx = context.Background()
+		c   = New(ts.URL).WithMaxReads(2)
+	)
+	_, err := c.Get(ctx, &glf.Filter{UseHeaders: true}, 18000000, 1)
+	diff.Test(t, t.Errorf, nil, err)
+	diff.Test(t, t.Errorf, n, int32(1))
+	_, err = c.Get(ctx, &glf.Filter{UseHeaders: true}, 18000000, 1)
+	diff.Test(t, t.Errorf, nil, err)
+	diff.Test(t, t.Errorf, n, int32(1))
+
+	//maxreads should have been reached with last 2 calls
+	_, err = c.Get(ctx, &glf.Filter{UseHeaders: true}, 18000000, 1)
+	diff.Test(t, t.Errorf, nil, err)
+	diff.Test(t, t.Errorf, n, int32(2))
 }
 
 func TestNoLogs(t *testing.T) {

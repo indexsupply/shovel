@@ -749,7 +749,10 @@ func loadTasks(ctx context.Context, pgp *pgxpool.Pool, c config.Root) ([]*Task, 
 	}
 	var sources = map[string]Source{}
 	for _, sc := range scByName {
-		sources[sc.Name] = jrpc2.New(sc.URL).WithWSURL(sc.WSURL).WithPollDuration(sc.PollDuration)
+		sources[sc.Name] = jrpc2.New(sc.URL).
+			WithWSURL(sc.WSURL).
+			WithPollDuration(sc.PollDuration).
+			WithMaxReads(len(allIntegrations))
 	}
 	var tasks []*Task
 	for _, ig := range allIntegrations {

@@ -47,6 +47,8 @@ func New(url string) *Client {
 		pollDuration: time.Second,
 		url:          url,
 		lcache:       NumHash{maxreads: 20},
+		bcache:       cache{maxreads: 20},
+		hcache:       cache{maxreads: 20},
 	}
 }
 
@@ -66,6 +68,8 @@ type Client struct {
 
 func (c *Client) WithMaxReads(n int) *Client {
 	c.lcache.maxreads = n
+	c.bcache.maxreads = n
+	c.hcache.maxreads = n
 	return c
 }
 
@@ -368,6 +372,16 @@ func (c *Client) Get(
 	filter *glf.Filter,
 	start, limit uint64,
 ) ([]eth.Block, error) {
+	t0 := time.Now()
+	defer func() {
+		slog.DebugContext(ctx,
+			"jrpc2-get",
+			"start", start,
+			"limit", limit,
+			"filter", filter,
+			"elapsed", time.Since(t0),
+		)
+	}()
 	var (
 		blocks []eth.Block
 		err    error
@@ -422,18 +436,28 @@ type blockResp struct {
 
 type segment struct {
 	sync.Mutex
-	done bool
-	d    []eth.Block
+	nreads int
+	done   bool
+	d      []eth.Block
 }
 
 type cache struct {
 	sync.Mutex
+	maxreads int
 	segments map[key]*segment
 }
 
 type getter func(ctx context.Context, start, limit uint64) ([]eth.Block, error)
 
-func (c *cache) prune() {
+func (c *cache) pruneMaxRead() {
+	for k, v := range c.segments {
+		if v.nreads >= c.maxreads {
+			delete(c.segments, k)
+		}
+	}
+}
+
+func (c *cache) pruneSegments() {
 	const size = 5
 	if len(c.segments) <= size {
 		return
@@ -458,16 +482,18 @@ func (c *cache) get(nocache bool, ctx context.Context, start, limit uint64, f ge
 	if c.segments == nil {
 		c.segments = make(map[key]*segment)
 	}
+	c.pruneMaxRead()
 	seg, ok := c.segments[key{start, limit}]
 	if !ok {
 		seg = &segment{}
 		c.segments[key{start, limit}] = seg
 	}
-	c.prune()
+	c.pruneSegments()
 	c.Unlock()
 
 	seg.Lock()
 	defer seg.Unlock()
+	seg.nreads++
 	if seg.done {
 		return seg.d, nil
 	}
@@ -484,6 +510,7 @@ func (c *cache) get(nocache bool, ctx context.Context, start, limit uint64, f ge
 
 func (c *Client) blocks(ctx context.Context, start, limit uint64) ([]eth.Block, error) {
 	var (
+		t0     = time.Now()
 		reqs   = make([]request, limit)
 		resps  = make([]blockResp, limit)
 		blocks = make([]eth.Block, limit)
@@ -507,6 +534,11 @@ func (c *Client) blocks(ctx context.Context, start, limit uint64) ([]eth.Block, 
 			return nil, fmt.Errorf("rpc=%s %w", tag, resps[i].Error)
 		}
 	}
+	slog.Debug("http get blocks",
+		"start", start,
+		"limit", limit,
+		"latency", time.Since(t0),
+	)
 	return blocks, validate("blocks", start, limit, blocks)
 }
 

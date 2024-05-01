@@ -1,7 +1,7 @@
 // eth_getLogs filter
 package glf
 
-import "fmt"
+import "strings"
 
 type Filter struct {
 	needs       []string
@@ -46,16 +46,23 @@ func (f *Filter) Addresses() []string { return f.addresses }
 func (f *Filter) Topics() [][]string  { return f.topics }
 
 func (f *Filter) String() string {
-	return fmt.Sprintf(
-		"headers=%t blocks=%t receipts=%t logs=%t trace=%t addrs=%d topics=%d",
-		f.UseHeaders,
-		f.UseBlocks,
-		f.UseReceipts,
-		f.UseLogs,
-		f.UseTraces,
-		len(f.addresses),
-		len(f.topics),
-	)
+	var opts = make([]string, 0, 7)
+	if f.UseLogs {
+		opts = append(opts, "l")
+	}
+	if f.UseHeaders {
+		opts = append(opts, "h")
+	}
+	if f.UseBlocks {
+		opts = append(opts, "b")
+	}
+	if f.UseReceipts {
+		opts = append(opts, "r")
+	}
+	if f.UseTraces {
+		opts = append(opts, "t")
+	}
+	return strings.Join(opts, ",")
 }
 
 func any(a, b []string) bool {
