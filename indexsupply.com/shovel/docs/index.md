@@ -99,7 +99,7 @@ The following resources are automatically deployed on a main commit:
 
 `4EE1 2024-05-01`
 
-- bugfix: reorg may halt progress until restart. [mote details](https://github.com/indexsupply/code/commit/4ee10c4789af31a054f96f968ed038db3aa3501f)
+- bugfix: reorg may halt progress until restart. [more details](https://github.com/indexsupply/code/commit/4ee10c4789af31a054f96f968ed038db3aa3501f)
 
 ### v1.4 {#changelog-v1.4}
 
