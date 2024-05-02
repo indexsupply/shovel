@@ -106,6 +106,11 @@ func (h *Handler) Handle(ctx context.Context, r slog.Record) error {
 		*bufp = buf
 		freebuf(bufp)
 	}()
+	if len(r.Message) > 0 {
+		buf = append(buf, 'm', 's', 'g', '=')
+		buf = append(buf, []byte(r.Message)...)
+		buf = append(buf, ' ')
+	}
 	buf = append(buf, h.preformat...)
 	for _, f := range h.ctxs {
 		k, v := f(ctx)
@@ -126,12 +131,6 @@ func (h *Handler) Handle(ctx context.Context, r slog.Record) error {
 		buf = h.appendAttr(buf, h.prefix, a)
 		return true
 	})
-
-	if len(r.Message) > 0 {
-		buf = append(buf, 'm', 's', 'g', '=')
-		buf = append(buf, []byte(r.Message)...)
-	}
-
 	buf = bytes.TrimSuffix(buf, []byte(" "))
 	buf = append(buf, '\n')
 	h.mu.Lock()

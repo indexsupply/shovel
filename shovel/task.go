@@ -431,13 +431,13 @@ func (task *Task) Converge() error {
 				return fmt.Errorf("committing tx: %w", err)
 			}
 			slog.InfoContext(ctx, "converge",
-				"src", task.srcName,
-				"dst", task.destConfig.Name,
 				"n", last.num,
 				"h", fmt.Sprintf("%.4x", last.hash),
 				"nrows", last.nrows,
 				"nrpc", wctx.Counter(ctx),
 				"nblocks", delta,
+				"src", task.srcName,
+				"dst", task.destConfig.Name,
 				"elapsed", time.Since(t0),
 			)
 			return nil

@@ -37,7 +37,7 @@ func TestHandler(t *testing.T) {
 			name:  "basic",
 			attrs: []slog.Attr{slog.String("foo", "bar")},
 			msg:   "baz",
-			want:  "foo=bar msg=baz\n",
+			want:  "msg=baz foo=bar\n",
 		},
 		{
 			name: "group",
