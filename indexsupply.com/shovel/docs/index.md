@@ -341,7 +341,7 @@ Any value that is prefixed with a `$` will instruct Shovel to read from the envi
 
 ## Ethereum Sources
 
-A single Shovel process can connect to many Ethereum sources. Each Ethereum source is identified by name and is supplemented with a chain id and a URL. Shovel uses the following HTTP JSON RPC API methods:
+A single Shovel process can connect to many Ethereum Sources. Each Ethereum Source is identified by name and is supplemented with a chain id and a URL. Shovel uses the following HTTP JSON RPC API methods:
 
 1. eth_getBlockByNumber
 2. eth_getLogs
@@ -354,7 +354,7 @@ See [Block Data Fields](#block-data-fields) for a table outlining the data that 
 
 Upon startup, Shovel will use `eth_getBlockByNumber` to find the latest block. It will then compare the response with its latest block in Postgres to figure out where to begin. While indexing data, Shovel will make batched calls to `eth_getBlockByNumber`, batched calls to `eth_getBlockReceipts`, and single calls to `eth_getLogs` depending on the configured `batch_size` and the RPC methods required to index the data.
 
-Ethereum sources are defined at the top level configuration object and then referenced in each integration.
+Ethereum sources are defined in the outermost configuration object and then referenced in each integration.
 
 ```
 {
@@ -474,7 +474,7 @@ You can further optimize the requests to `eth_getLogs` by providing a filter on 
 
 If, for example, you also need data from the header, such as `block_time` then Shovel will also need to download the headers for each block, along with the logs. Shovel will use JSON RPC batching, but this will be limited in comparison to eth_getLogs.
 
-### Source Performance Config Values
+### Ethereum Source Performance Tuning
 
 The current version of Shovel has `batch_size` and `concurrency` values per eth source. If you have multiple integrations with varying data requirements then the eth source will be limited by the slowest integration's requirements. You can have multiple eth sources with identical urls and chain_ids but different names to workaround this.
 
