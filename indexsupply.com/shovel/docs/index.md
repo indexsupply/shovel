@@ -532,6 +532,12 @@ Shovel tracks the head of the chain by asking API providers for their latest blo
 
 To mitigate this problem, Shovel requests logs using a batch request that includes: `eth_getLogs` and `eth_getBlockByNumber`. Shovel tests the `eth_getBlockByNumber` response to ensure the node serving the `eth_getLogs` request has processed the requested block. This solution assumes the node provider does not separate the batch.
 
+Shovel logs an error when the node provider is unsynchronized
+
+```
+eth backend missing logs for block 1234
+```
+
 <hr>
 
 ## Table
