@@ -755,6 +755,7 @@ func (c *Client) logs(ctx context.Context, filter *glf.Filter, bm blockmap, star
 		b.Unlock()
 	}
 	slog.Debug("http get logs",
+		"nlogs", len(lresp.Result),
 		"start", start,
 		"limit", limit,
 		"latency", time.Since(t0),
