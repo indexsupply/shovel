@@ -552,7 +552,8 @@ To mitigate this problem, Shovel requests logs using a batch request that includ
 Shovel logs an error when the node provider is unsynchronized
 
 ```
-eth backend missing logs for block 1234
+eth backend missing logs for block
+msg=converge p=27182 v=7f1c- chain=00001 error=loading blocks start=19792615 lim=1: loading blocks: getting logs: eth backend missing logs for block ig_name=usdc-transfer
 ```
 
 <hr>

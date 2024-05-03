@@ -736,7 +736,7 @@ func (c *Client) logs(ctx context.Context, filter *glf.Filter, bm blockmap, star
 	)
 	switch {
 	case hresp.Header == nil:
-		return fmt.Errorf("eth backend missing logs for block %d", start)
+		return fmt.Errorf("eth backend missing logs for block")
 	case hresp.Error.Exists():
 		return fmt.Errorf("rpc=eth_getLogs/eth_getBlockByNumber %w", lresp.Error)
 	case lresp.Error.Exists():
