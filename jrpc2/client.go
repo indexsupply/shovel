@@ -729,7 +729,7 @@ func (c *Client) logs(ctx context.Context, filter *glf.Filter, bm blockmap, star
 			txIdx    = uint64(lresp.Result[i].TxIdx)
 			k        = key{blockNum, txIdx}
 		)
-		if blockNum < start || blockNum > start+limit {
+		if blockNum < start || blockNum >= start+limit {
 			const tag = "eth_getLogs out of range block. num=%d start=%d lim=%d"
 			return fmt.Errorf(tag, blockNum, start, limit)
 		}

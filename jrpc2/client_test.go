@@ -275,9 +275,9 @@ func TestValidate_Logs(t *testing.T) {
 		c      = New(ts.URL)
 		_, err = c.Get(ctx, &glf.Filter{UseLogs: true}, 18000000, 2)
 	)
-	want := "getting logs: block not found"
-	diff.Test(t, t.Fatalf, false, err == nil)
-	diff.Test(t, t.Fatalf, want, err.Error())
+	tc.WantErr(t, err)
+	want := "getting logs: eth_getLogs out of range block. num=18000002 start=18000000 lim=2"
+	tc.WantGot(t, want, err.Error())
 }
 
 func TestError(t *testing.T) {
