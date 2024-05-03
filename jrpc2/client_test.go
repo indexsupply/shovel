@@ -270,22 +270,32 @@ func TestValidate_Logs(t *testing.T) {
 		body, err := io.ReadAll(r.Body)
 		diff.Test(t, t.Fatalf, nil, err)
 		switch {
-		case methodsMatch(t, body, "eth_getLogs"):
-			_, err := w.Write([]byte(`{"result": [
-				{
-					"address": "0x0000000000000000000000000000000000000000",
-					"topics": [],
-					"blockHash": "0x95b198e154acbfc64109dfd22d8224fe927fd8dfdedfae01587674482ba4baf3",
-					"blockNumber": "0x112a880"
-				},
-				{
-					"address": "0x0000000000000000000000000000000000000000",
-					"topics": [],
-					"blockHash": "0xd5ca78be6c6b42cf929074f502cef676372c26f8d0ba389b6f9b5d612d70f815",
-					"blockNumber": "0x112a882",
-					"COMMENT": "off by one. should be 0x112a881"
+		case methodsMatch(t, body, "eth_getBlockByNumber", "eth_getLogs"):
+			_, err := w.Write([]byte(`[
+			{
+				"result": {
+					"hash": "0x95b198e154acbfc64109dfd22d8224fe927fd8dfdedfae01587674482ba4baf3",
+					"number": "0x112a880"
 				}
-			]}`))
+			},
+			{
+				"result": [
+					{
+						"address": "0x0000000000000000000000000000000000000000",
+						"topics": [],
+						"blockHash": "0x95b198e154acbfc64109dfd22d8224fe927fd8dfdedfae01587674482ba4baf3",
+						"blockNumber": "0x112a880"
+					},
+					{
+						"address": "0x0000000000000000000000000000000000000000",
+						"topics": [],
+						"blockHash": "0xd5ca78be6c6b42cf929074f502cef676372c26f8d0ba389b6f9b5d612d70f815",
+						"blockNumber": "0x112a882",
+						"COMMENT": "off by one. should be 0x112a881"
+					}
+				]
+			}
+			]`))
 			diff.Test(t, t.Fatalf, nil, err)
 		}
 	}))
@@ -297,6 +307,27 @@ func TestValidate_Logs(t *testing.T) {
 	)
 	tc.WantErr(t, err)
 	want := "getting logs: eth_getLogs out of range block. num=18000002 start=18000000 lim=2"
+	tc.WantGot(t, want, err.Error())
+}
+
+func TestValidate_Logs_NoBlocks(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		diff.Test(t, t.Fatalf, nil, err)
+		switch {
+		case methodsMatch(t, body, "eth_getBlockByNumber", "eth_getLogs"):
+			_, err := w.Write([]byte(`[{"result": null},{"result": []}]`))
+			diff.Test(t, t.Fatalf, nil, err)
+		}
+	}))
+	defer ts.Close()
+	var (
+		ctx    = context.Background()
+		c      = New(ts.URL)
+		_, err = c.Get(ctx, &glf.Filter{UseLogs: true}, 18000000, 2)
+	)
+	tc.WantErr(t, err)
+	const want = "getting logs: eth backend missing logs for block 18000000"
 	tc.WantGot(t, want, err.Error())
 }
 
@@ -361,7 +392,7 @@ func TestGet_Cached(t *testing.T) {
 			atomic.AddUint64(&reqCount, 1)
 			_, err := w.Write([]byte(block18000000JSON))
 			diff.Test(t, t.Fatalf, nil, err)
-		case methodsMatch(t, body, "eth_getLogs"):
+		case methodsMatch(t, body, "eth_getBlockByNumber", "eth_getLogs"):
 			for ; reqCount == 0; time.Sleep(time.Second) {
 			}
 			_, err := w.Write([]byte(logs18000000JSON))
@@ -440,7 +471,7 @@ func TestNoLogs(t *testing.T) {
 		case methodsMatch(t, body, "eth_getBlockByNumber"):
 			_, err := w.Write([]byte(block1000001JSON))
 			diff.Test(t, t.Fatalf, nil, err)
-		case methodsMatch(t, body, "eth_getLogs"):
+		case methodsMatch(t, body, "eth_getBlockByNumber", "eth_getLogs"):
 			_, err := w.Write([]byte(logs1000001JSON))
 			diff.Test(t, t.Fatalf, nil, err)
 		}
@@ -467,7 +498,7 @@ func TestLatest(t *testing.T) {
 		case methodsMatch(t, body, "eth_getBlockByNumber"):
 			_, err := w.Write([]byte(block18000000JSON))
 			diff.Test(t, t.Fatalf, nil, err)
-		case methodsMatch(t, body, "eth_getLogs"):
+		case methodsMatch(t, body, "eth_getBlockByNumber", "eth_getLogs"):
 			_, err := w.Write([]byte(logs18000000JSON))
 			diff.Test(t, t.Fatalf, nil, err)
 		}

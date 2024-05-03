@@ -708,19 +708,39 @@ func (c *Client) logs(ctx context.Context, filter *glf.Filter, bm blockmap, star
 			Address: filter.Addresses(),
 			Topics:  filter.Topics(),
 		}
-		lresp = logResp{}
+		resp = []any{
+			&headerResp{},
+			&logResp{},
+		}
 	)
-	err := c.do(ctx, &lresp, request{
-		ID:      fmt.Sprintf("logs-%d-%d-%x", start, limit, randbytes()),
-		Version: "2.0",
-		Method:  "eth_getLogs",
-		Params:  []any{lf},
+	err := c.do(ctx, &resp, []request{
+		request{
+			ID:      fmt.Sprintf("blocks-%d-%d-%x", start, limit, randbytes()),
+			Version: "2.0",
+			Method:  "eth_getBlockByNumber",
+			Params:  []any{"0x" + strconv.FormatUint(start, 16), false},
+		},
+		request{
+			ID:      fmt.Sprintf("logs-%d-%d-%x", start, limit, randbytes()),
+			Version: "2.0",
+			Method:  "eth_getLogs",
+			Params:  []any{lf},
+		},
 	})
 	if err != nil {
 		return fmt.Errorf("making logs request: %w", err)
 	}
-	if lresp.Error.Exists() {
-		return fmt.Errorf("rpc=%s %w", "eth_getLogs", lresp.Error)
+	var (
+		hresp = resp[0].(*headerResp)
+		lresp = resp[1].(*logResp)
+	)
+	switch {
+	case hresp.Header == nil:
+		return fmt.Errorf("eth backend missing logs for block %d", start)
+	case hresp.Error.Exists():
+		return fmt.Errorf("rpc=eth_getLogs/eth_getBlockByNumber %w", lresp.Error)
+	case lresp.Error.Exists():
+		return fmt.Errorf("rpc=eth_getLogs %w", lresp.Error)
 	}
 	var logsByTx = map[key][]logResult{}
 	for i := range lresp.Result {
