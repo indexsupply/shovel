@@ -526,6 +526,12 @@ However, if you are requesting data provided by the block header or by the block
 
 You may see '429 too many request' errors in your logs as you are backfilling data. This is not necessarily bad since Shovel will always retry. In fact, the essence of Shovel's internal design is one big retry function. But the errors may eventually be too many to meaningfully make progress. In this case you should try reducing the `batch_size` until you no longer see high frequency errors.
 
+### Unsynchronized Node Providers
+
+Shovel tracks the head of the chain by asking API providers for their latest block. If the provider responds with a block that is ahead of Shovel's latest block then Shovel will begin to index the new block. For Integrations that need logs, Shovel will immediately ask for the logs of the new block. Node providers may load balance RPC requests across a set of unsynchronized nodes. In rare cases, the `eth_getLogs` request will be routed to a node that doesn't have the latest block.
+
+To mitigate this problem, Shovel requests logs using a batch request that includes: `eth_getLogs` and `eth_getBlockByNumber`. Shovel tests the `eth_getBlockByNumber` response to ensure the node serving the `eth_getLogs` request has processed the requested block. This solution assumes the node provider does not separate the batch.
+
 <hr>
 
 ## Table
