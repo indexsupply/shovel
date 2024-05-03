@@ -3,6 +3,7 @@ package jrpc2
 import (
 	"context"
 	_ "embed"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -10,8 +11,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"slices"
 	"sort"
-	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -108,13 +109,32 @@ var (
 	logs1000001JSON string
 )
 
+func methodsMatch(t *testing.T, body []byte, want ...string) bool {
+	var req []request
+
+	if err := json.Unmarshal(body, &req); err != nil {
+		var r request
+		if err := json.Unmarshal(body, &r); err != nil {
+			t.Fatal("unable to decode json into a request or []request")
+		}
+		req = append(req, r)
+	}
+
+	var methods []string
+	for i := range req {
+		methods = append(methods, req[i].Method)
+	}
+	t.Logf("methods=%#v", methods)
+	return slices.Equal(methods, want)
+}
+
 func TestLatest_Cached(t *testing.T) {
 	var counter int
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, err := io.ReadAll(r.Body)
 		diff.Test(t, t.Fatalf, nil, err)
 		switch {
-		case strings.Contains(string(body), "eth_getBlockByNumber"):
+		case methodsMatch(t, body, "eth_getBlockByNumber"):
 			switch counter {
 			case 0:
 				_, err := w.Write([]byte(`{"result": {
@@ -215,7 +235,7 @@ func TestValidate_Blocks(t *testing.T) {
 		body, err := io.ReadAll(r.Body)
 		diff.Test(t, t.Fatalf, nil, err)
 		switch {
-		case strings.Contains(string(body), "eth_getBlockByNumber"):
+		case methodsMatch(t, body, "eth_getBlockByNumber", "eth_getBlockByNumber"):
 			_, err := w.Write([]byte(`[
 				{
 					"result": {
@@ -250,7 +270,7 @@ func TestValidate_Logs(t *testing.T) {
 		body, err := io.ReadAll(r.Body)
 		diff.Test(t, t.Fatalf, nil, err)
 		switch {
-		case strings.Contains(string(body), "eth_getLogs"):
+		case methodsMatch(t, body, "eth_getLogs"):
 			_, err := w.Write([]byte(`{"result": [
 				{
 					"address": "0x0000000000000000000000000000000000000000",
@@ -285,7 +305,7 @@ func TestError(t *testing.T) {
 		body, err := io.ReadAll(r.Body)
 		diff.Test(t, t.Fatalf, nil, err)
 		switch {
-		case strings.Contains(string(body), "eth_getBlockByNumber"):
+		case methodsMatch(t, body, "eth_getBlockByNumber"):
 			_, err := w.Write([]byte(`
 				[{
 					"jsonrpc": "2.0",
@@ -337,11 +357,11 @@ func TestGet_Cached(t *testing.T) {
 		body, err := io.ReadAll(r.Body)
 		diff.Test(t, t.Fatalf, nil, err)
 		switch {
-		case strings.Contains(string(body), "eth_getBlockByNumber"):
+		case methodsMatch(t, body, "eth_getBlockByNumber"):
 			atomic.AddUint64(&reqCount, 1)
 			_, err := w.Write([]byte(block18000000JSON))
 			diff.Test(t, t.Fatalf, nil, err)
-		case strings.Contains(string(body), "eth_getLogs"):
+		case methodsMatch(t, body, "eth_getLogs"):
 			for ; reqCount == 0; time.Sleep(time.Second) {
 			}
 			_, err := w.Write([]byte(logs18000000JSON))
@@ -388,7 +408,7 @@ func TestGet_Cached_Pruned(t *testing.T) {
 		body, err := io.ReadAll(r.Body)
 		diff.Test(t, t.Fatalf, nil, err)
 		switch {
-		case strings.Contains(string(body), "eth_getBlockByNumber"):
+		case methodsMatch(t, body, "eth_getBlockByNumber"):
 			atomic.AddInt32(&n, 1)
 			_, err := w.Write([]byte(block18000000JSON))
 			diff.Test(t, t.Fatalf, nil, err)
@@ -417,10 +437,10 @@ func TestNoLogs(t *testing.T) {
 		body, err := io.ReadAll(r.Body)
 		diff.Test(t, t.Fatalf, nil, err)
 		switch {
-		case strings.Contains(string(body), "eth_getBlockByNumber"):
+		case methodsMatch(t, body, "eth_getBlockByNumber"):
 			_, err := w.Write([]byte(block1000001JSON))
 			diff.Test(t, t.Fatalf, nil, err)
-		case strings.Contains(string(body), "eth_getLogs"):
+		case methodsMatch(t, body, "eth_getLogs"):
 			_, err := w.Write([]byte(logs1000001JSON))
 			diff.Test(t, t.Fatalf, nil, err)
 		}
@@ -444,10 +464,10 @@ func TestLatest(t *testing.T) {
 		body, err := io.ReadAll(r.Body)
 		diff.Test(t, t.Fatalf, nil, err)
 		switch {
-		case strings.Contains(string(body), "eth_getBlockByNumber"):
+		case methodsMatch(t, body, "eth_getBlockByNumber"):
 			_, err := w.Write([]byte(block18000000JSON))
 			diff.Test(t, t.Fatalf, nil, err)
-		case strings.Contains(string(body), "eth_getLogs"):
+		case methodsMatch(t, body, "eth_getLogs"):
 			_, err := w.Write([]byte(logs18000000JSON))
 			diff.Test(t, t.Fatalf, nil, err)
 		}
