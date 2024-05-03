@@ -1,6 +1,6 @@
 <title>Shovel Docs</title>
 
-Shovel is a program that indexes data from an Ethereum node into a Postgres database. It uses standard JSON RPC APIs provided by all Ethereum nodes (ie Geth,Reth) and hosted nodes (ie Alchemy, Quicknode). It indexes blocks, transactions, and decoded event logs. Shovel uses a declarative JSON config to determine what data should be saved in Postgres.
+Shovel is a program that indexes data from an Ethereum node into a Postgres database. It uses standard JSON RPC APIs provided by Ethereum nodes (ie Geth,Reth) and node providers (ie Alchemy, Quicknode). It indexes blocks, transactions, decoded event logs, and traces. Shovel uses a declarative JSON config to determine what data should be saved in Postgres.
 
 The Shovel config contains a database URL, an Ethereum node URL, and an array of Integrations that contain a mapping of Ethereum data to Postgres tables.
 
@@ -143,6 +143,7 @@ If you are running a Mac and would like a nice way to setup Postgres, checkout: 
 
 To install Shovel, you can build from source (see [build from source](#build-from-source)) or you can download the binaries
 
+For Mac
 ```
 curl -LO https://indexsupply.net/bin/1.4/darwin/arm64/shovel
 chmod +x shovel
@@ -154,8 +155,7 @@ curl -LO https://indexsupply.net/bin/1.4/linux/amd64/shovel
 chmod +x shovel
 ```
 
-After downloading the binaries we can now run the version command
-
+Test
 ```
 ./shovel -version
 v1.4 2f76
@@ -175,8 +175,16 @@ Now let's create a Shovel config file. You can copy the following contents into 
 {
   "pg_url": "postgres:///shovel",
   "eth_sources": [
-    {"name": "mainnet", "chain_id": 1, "url": "https://ethereum-rpc.publicnode.com"},
-    {"name": "base", "chain_id": 8453, "url": "https://base-rpc.publicnode.com"}
+    {
+        "name": "mainnet",
+        "chain_id": 1,
+        "url": "https://ethereum-rpc.publicnode.com"
+    },
+    {
+        "name": "base",
+        "chain_id": 8453,
+        "url": "https://base-rpc.publicnode.com"
+    }
   ],
   "integrations": [{
     "name": "usdc-transfer",
@@ -185,11 +193,11 @@ Now let's create a Shovel config file. You can copy the following contents into 
     "table": {
       "name": "usdc",
       "columns": [
-        {"name": "log_addr",  "type": "bytea"},
-        {"name": "block_time","type": "numeric"},
-        {"name": "f",         "type": "bytea"},
-        {"name": "t",         "type": "bytea"},
-        {"name": "v",         "type": "numeric"}
+        {"name": "log_addr", "type": "bytea"},
+        {"name": "block_time", "type": "numeric"},
+        {"name": "from", "type": "bytea"},
+        {"name": "to", "type": "bytea"},
+        {"name": "value", "type": "numeric"}
       ]
     },
     "block": [
@@ -209,9 +217,9 @@ Now let's create a Shovel config file. You can copy the following contents into 
       "type": "event",
       "anonymous": false,
       "inputs": [
-        {"indexed": true,  "name": "from",  "type": "address", "column": "f"},
-        {"indexed": true,  "name": "to",    "type": "address", "column": "t"},
-        {"indexed": false, "name": "value", "type": "uint256", "column": "v"}
+        {"indexed": true, "name": "from", "type": "address", "column": "from"},
+        {"indexed": true, "name": "to", "type": "address", "column": "to"},
+        {"name": "value", "type": "uint256", "column": "value"}
       ]
     }
   }]
@@ -222,25 +230,34 @@ Let's run this config and see what happens
 
 ```
 ./shovel -config config.json
-p=8232 v=7602 chain=00001 src=mainnet dest=usdc-transfer msg=new-task
-p=8232 v=7602 chain=08453 src=base dest=usdc-transfer msg=new-task
-p=8232 v=7602 n=0 msg=prune-task
-p=8232 v=7602 chain=00001 num=19515851 msg=start at latest
-p=8232 v=7602 chain=08453 num=12316626 msg=start at latest
-p=8232 v=7602 chain=00001 src=mainnet dst=usdc-transfer n=19515851 h=f5878692 nrows=0 nrpc=4 nblocks=1 elapsed=1.410290458s msg=converge
-p=8232 v=7602 chain=08453 src=base dst=usdc-transfer n=12316626 h=7d6bcffa nrows=1 nrpc=4 nblocks=1 elapsed=1.555755s msg=converge
-p=8232 v=7602 chain=08453 src=base dst=usdc-transfer n=12316627 h=c1e7d431 nrows=3 nrpc=2 nblocks=1 elapsed=292.192958ms msg=converge
-p=8232 v=7602 chain=08453 src=base dst=usdc-transfer n=12316628 h=8f257b22 nrows=2 nrpc=2 nblocks=1 elapsed=350.890166ms msg=converge
-p=8232 v=7602 chain=08453 src=base dst=usdc-transfer n=12316629 h=257a79f5 nrows=0 nrpc=2 nblocks=1 elapsed=290.85075ms msg=converge
-p=8232 v=7602 chain=08453 src=base dst=usdc-transfer n=12316630 h=5878d5ad nrows=1 nrpc=2 nblocks=1 elapsed=375.884666ms msg=converge
-p=8232 v=7602 chain=08453 src=base dst=usdc-transfer n=12316631 h=4388c05a nrows=4 nrpc=2 nblocks=1 elapsed=288.755125ms msg=converge
-p=8232 v=7602 chain=08453 src=base dst=usdc-transfer n=12316632 h=4faeaadb nrows=6 nrpc=2 nblocks=1 elapsed=274.551083ms msg=converge
-p=8232 v=7602 chain=08453 src=base dst=usdc-transfer n=12316633 h=6207463b nrows=7 nrpc=2 nblocks=1 elapsed=287.200542ms msg=converge
-p=8232 v=7602 chain=00001 src=mainnet dst=usdc-transfer n=19515852 h=1c3b5de9 nrows=0 nrpc=2 nblocks=1 elapsed=364.504708ms msg=converge
-p=8232 v=7602 chain=08453 src=base dst=usdc-transfer n=12316634 h=be6c2c0a nrows=6 nrpc=2 nblocks=1 elapsed=463.80825ms msg=converge
+msg=new-task p=27094 v=7f1c- chain=00001 src=mainnet dest=usdc-transfer
+msg=new-task p=27094 v=7f1c- chain=08453 src=base dest=usdc-transfer
+msg=prune-task p=27094 v=7f1c- n=0
+msg=start at latest p=27094 v=7f1c- chain=00001 num=19792604
+msg=start at latest p=27094 v=7f1c- chain=08453 num=13993200
+msg=converge p=27094 v=7f1c- chain=08453 n=13993200 h=15979866 nrows=7 nrpc=4 nblocks=1 src=base dst=usdc-transfer elapsed=1.184090042s
+msg=converge p=27094 v=7f1c- chain=00001 n=19792604 h=dd7f10e6 nrows=7 nrpc=4 nblocks=1 src=mainnet dst=usdc-transfer elapsed=1.200865917s
+msg=converge p=27094 v=7f1c- chain=08453 n=13993201 h=5f9c9488 nrows=0 nrpc=3 nblocks=1 src=base dst=usdc-transfer elapsed=548.780208ms
 ```
 
 These logs indicate that Shovel has initialized and is beginning to index data. Congratulations. Smoke 'em if you got 'em.
+
+### Build From Source
+
+[Install the Go toolchain](https://go.dev/doc/install)
+
+Clone the repo
+
+```
+git clone https://github.com/indexsupply/code.git shovel
+```
+
+Build
+
+```
+cd shovel
+go run ./cmd/shovel
+```
 
 <hr>
 
