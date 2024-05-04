@@ -161,10 +161,7 @@ func NewTask(opts ...Option) (*Task, error) {
 	if err != nil {
 		return nil, fmt.Errorf("setting application_name: %w", err)
 	}
-	slog.InfoContext(t.ctx, "new-task",
-		"src", t.srcName,
-		"dest", t.destConfig.Name,
-	)
+	slog.InfoContext(t.ctx, "new-task")
 	return t, nil
 }
 
@@ -400,7 +397,10 @@ func (task *Task) Converge() error {
 			targetNum = task.stop
 		}
 		if localNum > targetNum {
-			slog.ErrorContext(ctx, "ahead", "local", localNum, "remote", targetNum)
+			slog.ErrorContext(ctx, "ahead",
+				"local", localNum,
+				"remote", targetNum,
+			)
 			return ErrAhead
 		}
 		if localNum == targetNum {
@@ -410,6 +410,7 @@ func (task *Task) Converge() error {
 		if delta == 0 {
 			return ErrNothingNew
 		}
+		ctx = wctx.WithNumLimit(ctx, localNum+1, delta)
 		switch last, err := task.loadinsert(ctx, pgtx, localHash, localNum+1, delta); {
 		case errors.Is(err, ErrReorg):
 			slog.ErrorContext(ctx, "reorg",
@@ -421,7 +422,7 @@ func (task *Task) Converge() error {
 			}
 			continue
 		case err != nil:
-			return fmt.Errorf("loading blocks start=%d lim=%d: %w", localNum+1, delta, err)
+			return fmt.Errorf("loading/insert: %w", err)
 		default:
 			err := task.update(pgtx, last.num, last.hash, targetNum, targetHash, delta, last.nrows, time.Since(t0))
 			if err != nil {
@@ -436,8 +437,6 @@ func (task *Task) Converge() error {
 				"nrows", last.nrows,
 				"nrpc", wctx.Counter(ctx),
 				"nblocks", delta,
-				"src", task.srcName,
-				"dst", task.destConfig.Name,
 				"elapsed", time.Since(t0),
 			)
 			return nil
@@ -476,8 +475,10 @@ func (t *Task) loadinsert(
 			continue
 		}
 		eg.Go(func() error {
+			ctx = wctx.WithNumLimit(ctx, m, n)
 			blocks, err := t.src.Get(ctx, &t.filter, m, n)
 			if err != nil {
+				slog.ErrorContext(ctx, "loading blocks", "error", err)
 				return fmt.Errorf("loading blocks: %w", err)
 			}
 			nr, err := t.dests[i].Insert(ctx, &pgmut, pg, blocks)
@@ -507,8 +508,6 @@ func (t *Task) loadinsert(
 		return last, ErrReorg
 	}
 	slog.DebugContext(ctx, "insert",
-		"src", t.srcName,
-		"dst", t.destConfig.Name,
 		"n", last.num,
 		"h", fmt.Sprintf("%.4x", last.hash),
 		"nrows", last.nrows,
@@ -672,7 +671,7 @@ func (tm *Manager) runTask(t *Task) {
 	for {
 		select {
 		case <-tm.restart:
-			slog.Info("restart-task", "chain", t.srcChainID)
+			slog.InfoContext(t.ctx, "restart-task")
 			return
 		default:
 			switch err := t.Converge(); {
@@ -683,7 +682,7 @@ func (tm *Manager) runTask(t *Task) {
 				time.Sleep(t.pollDuration)
 			case err != nil:
 				time.Sleep(time.Second)
-				slog.ErrorContext(t.ctx, "converge", "error", err, "ig_name", t.destConfig.Name)
+				slog.ErrorContext(t.ctx, "converge-retry")
 			default:
 				go func() {
 					// try out best to deliver update
@@ -766,6 +765,7 @@ func loadTasks(ctx context.Context, pgp *pgxpool.Pool, c config.Root) ([]*Task, 
 			}
 			ctx = wctx.WithChainID(ctx, sc.ChainID)
 			ctx = wctx.WithSrcName(ctx, sc.Name)
+			ctx = wctx.WithIGName(ctx, ig.Name)
 			src, ok := sources[scRef.Name]
 			if !ok {
 				return nil, fmt.Errorf("finding source for %s", scRef.Name)

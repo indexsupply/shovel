@@ -182,16 +182,16 @@ func (nh *NumHash) update(n eth.Uint64, h []byte) {
 	nh.Hash.Write(h)
 }
 
-func (nh *NumHash) get(n uint64) (uint64, []byte, bool) {
+func (nh *NumHash) get(ctx context.Context, n uint64) (uint64, []byte, bool) {
 	nh.Lock()
 	defer nh.Unlock()
 
 	if err := nh.err; err != nil {
 		switch {
 		case errors.Is(err, net.ErrClosed), errors.Is(err, context.DeadlineExceeded):
-			slog.Debug("rpc connection reset")
+			slog.DebugContext(ctx, "rpc connection reset")
 		default:
-			slog.Debug("rpc connection error: %w", err)
+			slog.DebugContext(ctx, "rpc connection error: %w", err)
 		}
 		nh.err = nil
 		nh.once = sync.Once{}
@@ -199,12 +199,12 @@ func (nh *NumHash) get(n uint64) (uint64, []byte, bool) {
 	}
 
 	if n == 0 || uint64(nh.Num) < n {
-		slog.Debug("latest cache miss", "n", n, "latest", nh.Num)
+		slog.DebugContext(ctx, "latest cache miss", "n", n, "latest", nh.Num)
 		return 0, nil, false
 	}
 
 	if nh.nreads >= nh.maxreads {
-		slog.Debug("expiring latest cache",
+		slog.DebugContext(ctx, "expiring latest cache",
 			"n", n,
 			"latest", nh.Num,
 			"nreads", nh.nreads,
@@ -217,7 +217,7 @@ func (nh *NumHash) get(n uint64) (uint64, []byte, bool) {
 	}
 
 	nh.nreads++
-	slog.Debug("latest cache hit",
+	slog.DebugContext(ctx, "latest cache hit",
 		"n", n,
 		"latest", nh.Num,
 		"nreads", nh.nreads,
@@ -257,7 +257,7 @@ func (c *Client) wsListen(ctx context.Context) {
 			c.lcache.error(fmt.Errorf("ws read %q: %w", c.wsurl, err))
 			return
 		}
-		slog.Debug("websocket newHeads",
+		slog.DebugContext(ctx, "websocket newHeads",
 			"n", res.P.R.Num,
 			"h", fmt.Sprintf("%.4x", res.P.R.Hash),
 		)
@@ -287,7 +287,7 @@ func (c *Client) httpPoll(ctx context.Context) {
 			c.lcache.error(fmt.Errorf("rpc=%s %w", tag, hresp.Error))
 			return
 		}
-		slog.Debug("http poll",
+		slog.DebugContext(ctx, "http poll",
 			"n", hresp.Number,
 			"h", fmt.Sprintf("%.4x", hresp.Hash),
 		)
@@ -308,14 +308,14 @@ func (c *Client) Latest(ctx context.Context, n uint64) (uint64, []byte, error) {
 	c.lcache.once.Do(func() {
 		switch {
 		case len(c.wsurl) > 0:
-			slog.Debug("jrpc2 ws listening")
+			slog.DebugContext(ctx, "jrpc2 ws listening")
 			go c.wsListen(context.Background())
 		default:
-			slog.Debug("jrpc2 http polling")
+			slog.DebugContext(ctx, "jrpc2 http polling")
 			go c.httpPoll(context.Background())
 		}
 	})
-	if n, h, ok := c.lcache.get(n); ok {
+	if n, h, ok := c.lcache.get(ctx, n); ok {
 		return n, h, nil
 	}
 
@@ -333,7 +333,7 @@ func (c *Client) Latest(ctx context.Context, n uint64) (uint64, []byte, error) {
 		const tag = "eth_getBlockByNumber/latest"
 		return 0, nil, fmt.Errorf("rpc=%s %w", tag, hresp.Error)
 	}
-	slog.Debug("http get latest",
+	slog.DebugContext(ctx, "http-get-latest",
 		"n", hresp.Number,
 		"h", fmt.Sprintf("%.4x", hresp.Hash),
 	)
@@ -374,8 +374,6 @@ func (c *Client) Get(
 	defer func() {
 		slog.DebugContext(ctx,
 			"jrpc2-get",
-			"start", start,
-			"limit", limit,
 			"filter", filter,
 			"elapsed", time.Since(t0),
 		)
@@ -534,11 +532,7 @@ func (c *Client) blocks(ctx context.Context, start, limit uint64) ([]eth.Block, 
 			return nil, fmt.Errorf("rpc=%s %w", tag, resps[i].Error)
 		}
 	}
-	slog.Debug("http get blocks",
-		"start", start,
-		"limit", limit,
-		"latency", time.Since(t0),
-	)
+	slog.DebugContext(ctx, "http-get-blocks", "elapsed", time.Since(t0))
 	return blocks, validate("blocks", start, limit, blocks)
 }
 
@@ -602,11 +596,7 @@ func (c *Client) headers(ctx context.Context, start, limit uint64) ([]eth.Block,
 			return nil, fmt.Errorf("rpc=%s %w", tag, resps[i].Error)
 		}
 	}
-	slog.Debug("http get headers",
-		"start", start,
-		"limit", limit,
-		"latency", time.Since(t0),
-	)
+	slog.DebugContext(ctx, "http-get-headers", "elapsed", time.Since(t0))
 	return blocks, validate("headers", start, limit, blocks)
 }
 
@@ -774,11 +764,9 @@ func (c *Client) logs(ctx context.Context, filter *glf.Filter, bm blockmap, star
 		}
 		b.Unlock()
 	}
-	slog.Debug("http get logs",
+	slog.DebugContext(ctx, "http-get-logs",
 		"nlogs", len(lresp.Result),
-		"start", start,
-		"limit", limit,
-		"latency", time.Since(t0),
+		"elapsed", time.Since(t0),
 	)
 	return nil
 }
@@ -843,10 +831,6 @@ func (c *Client) traces(ctx context.Context, bm blockmap, start, limit uint64) e
 			}
 		}
 	}
-	slog.Debug("http get traces",
-		"start", start,
-		"limit", limit,
-		"latency", time.Since(t0),
-	)
+	slog.DebugContext(ctx, "http-get-traces", "elapsed", time.Since(t0))
 	return nil
 }

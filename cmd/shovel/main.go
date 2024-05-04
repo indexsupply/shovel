@@ -71,14 +71,27 @@ func main() {
 
 	lh := wslog.New(os.Stdout, &slog.HandlerOptions{Level: logLevel})
 	lh.RegisterContext(func(ctx context.Context) (string, any) {
-		id := wctx.ChainID(ctx)
-		if id < 1 {
+		igName := wctx.IGName(ctx)
+		if igName == "" {
 			return "", nil
 		}
-		return "chain", fmt.Sprintf("%.5d", id)
+		return "ig", igName
+	})
+	lh.RegisterContext(func(ctx context.Context) (string, any) {
+		srcName := wctx.SrcName(ctx)
+		if srcName == "" {
+			return "", nil
+		}
+		return "src", srcName
+	})
+	lh.RegisterContext(func(ctx context.Context) (string, any) {
+		num, limit := wctx.NumLimit(ctx)
+		if num == 0 || limit == 0 {
+			return "", nil
+		}
+		return "req", fmt.Sprintf("%d/%d", num, limit)
 	})
 	slog.SetDefault(slog.New(lh.WithAttrs([]slog.Attr{
-		slog.Int("p", os.Getpid()),
 		slog.String("v", Commit),
 	})))
 

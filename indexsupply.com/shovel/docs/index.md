@@ -230,14 +230,13 @@ Let's run this config and see what happens
 
 ```
 ./shovel -config config.json
-msg=new-task p=27094 v=7f1c- chain=00001 src=mainnet dest=usdc-transfer
-msg=new-task p=27094 v=7f1c- chain=08453 src=base dest=usdc-transfer
-msg=prune-task p=27094 v=7f1c- n=0
-msg=start at latest p=27094 v=7f1c- chain=00001 num=19792604
-msg=start at latest p=27094 v=7f1c- chain=08453 num=13993200
-msg=converge p=27094 v=7f1c- chain=08453 n=13993200 h=15979866 nrows=7 nrpc=4 nblocks=1 src=base dst=usdc-transfer elapsed=1.184090042s
-msg=converge p=27094 v=7f1c- chain=00001 n=19792604 h=dd7f10e6 nrows=7 nrpc=4 nblocks=1 src=mainnet dst=usdc-transfer elapsed=1.200865917s
-msg=converge p=27094 v=7f1c- chain=08453 n=13993201 h=5f9c9488 nrows=0 nrpc=3 nblocks=1 src=base dst=usdc-transfer elapsed=548.780208ms
+l=info  v=1.6 msg=new-task ig=usdc-transfer src=mainnet
+l=info  v=1.6 msg=new-task ig=usdc-transfer src=base
+l=info  v=1.6 msg=prune-task n=0
+l=info  v=1.6 msg=start at latest ig=usdc-transfer src=mainnet num=19793295
+l=info  v=1.6 msg=start at latest ig=usdc-transfer src=base num=13997369
+l=info  v=1.6 msg=converge ig=usdc-transfer src=mainnet req=19793295/1 n=19793295 h=f537a5c3 nrows=1 nrpc=4 nblocks=1 elapsed=1.117870458s
+l=info  v=1.6 msg=converge ig=usdc-transfer src=base req=13997369/1 n=13997369 h=9b4a1912 nrows=0 nrpc=4 nblocks=1 elapsed=1.160724958s
 ```
 
 These logs indicate that Shovel has initialized and is beginning to index data. Congratulations. Smoke 'em if you got 'em.
@@ -552,8 +551,7 @@ To mitigate this problem, Shovel requests logs using a batch request that includ
 Shovel logs an error when the node provider is unsynchronized
 
 ```
-eth backend missing logs for block
-msg=converge p=27182 v=7f1c- chain=00001 error=loading blocks start=19792615 lim=1: loading blocks: getting logs: eth backend missing logs for block ig_name=usdc-transfer
+l=error v=1.6 msg=loading blocks ig=usdc-transfer src=mainnet num=19793278/1 error=getting logs: eth backend missing logs for block
 ```
 
 <hr>
@@ -1196,8 +1194,6 @@ This endpoint is rate limited to 1 request per second.
 ## Logging
 
 **msg=prune-task** This indicates indicates that Shovel has pruned the task updates table (`shovel.task_updates`). Each time that a task (backfill or main) indexes a batch of blocks, the latest block number is saved in the table. This is used for unwinding blocks during a reorg. On the last couple hundred of blocks are required and so Shovel will delete all but the last couple hundred records.
-
-**p=16009** This is the local process id on the system. This can be useful when debugging process management (ie systemd) or deploys and restarts.
 
 **v=d80f** This is the git commit that was used to build the binary. You can see this commit in the https://github.com/indexsupply/code repo by the following command
 

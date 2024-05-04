@@ -9,11 +9,12 @@ import (
 type key int
 
 const (
-	chainIDKey key = 1
-	igNameKey  key = 2
-	srcNameKey key = 3
-	versionKey key = 4
-	counterKey key = 5
+	chainIDKey  key = 1
+	igNameKey   key = 2
+	srcNameKey  key = 3
+	versionKey  key = 4
+	counterKey  key = 5
+	numLimitKey key = 6
 )
 
 func WithChainID(ctx context.Context, id uint64) context.Context {
@@ -51,7 +52,6 @@ func Version(ctx context.Context) string {
 	v, _ := ctx.Value(versionKey).(string)
 	return v
 }
-
 func WithCounter(ctx context.Context, c *uint64) context.Context {
 	return context.WithValue(ctx, counterKey, c)
 }
@@ -70,4 +70,15 @@ func Counter(ctx context.Context) uint64 {
 		return 0
 	}
 	return *cptr
+}
+
+type numLimit struct{ num, limit uint64 }
+
+func WithNumLimit(ctx context.Context, n, l uint64) context.Context {
+	return context.WithValue(ctx, numLimitKey, numLimit{n, l})
+}
+
+func NumLimit(ctx context.Context) (uint64, uint64) {
+	nl, _ := ctx.Value(numLimitKey).(numLimit)
+	return nl.num, nl.limit
 }
