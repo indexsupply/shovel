@@ -41,6 +41,7 @@
 			font-size: 2em;
 			font-weight: 600;
 			margin-top: 0;
+			margin-bottom: 15px;
 			padding-top: 0;
 		}
 		h2 {
@@ -49,6 +50,13 @@
 		}
 		h3 {
 			font-weight: normal;
+		}
+		h3 code {
+			font-size: x-large;
+		}
+		h3.reference {
+			border-top: 0.5px solid black;
+			padding-top: 5px;
 		}
 		a:link {color: #24303d}
 		a:visited {color: #24303d}
@@ -91,6 +99,9 @@
 		tr:nth-child(even) {
 			background-color: whitesmoke;
 		}
+		#config-object-list li a {
+			text-decoration: none;
+		}
 		@media (prefers-color-scheme: dark) {
 			body {
 				background-color: rgb(40,40,41);
@@ -102,6 +113,7 @@
         	pre {background-color: #202020;}
 			th {background-color: #202020;}
 			tr:nth-child(even) {background-color: #202020;}
+			h3.reference { border-top: 0.5px solid whitesmoke;}
 		}
 		@media only screen and (max-width: 700px) {
 			nav {position: static;}
@@ -112,7 +124,11 @@
 <body>
 	<nav>
 		<header><h1>Shovel Docs</h1></header>
+		<span>Overview</span>
 		<ul><li><a href="#getting-started">Getting Started</a></li></ul>
+		<span>Reference</span>
+		<ul class="reference"></ul>
+		<span>Company</span>
 		<ul>
 			<li><a href="/">Index Supply Home</a></li>
 			<li><a href="/shovel">Shovel Overview</a></li>
@@ -140,7 +156,8 @@
 <script>
 document.addEventListener("DOMContentLoaded", function() {
 	let navList = document.querySelector("nav ul");
-	document.querySelectorAll("h2").forEach(h => {
+	let refNavList = document.querySelector("nav ul.reference");
+	document.querySelectorAll("h2:not(.reference)").forEach(h => {
 		let a = document.createElement("a");
 		a.appendChild(document.createTextNode(h.textContent));
 		a.href = `#${h.id}`
@@ -149,7 +166,15 @@ document.addEventListener("DOMContentLoaded", function() {
 		li.appendChild(a);
 		navList.appendChild(li);
 	});
+	document.querySelectorAll("h2.reference").forEach(h => {
+		let a = document.createElement("a");
+		a.appendChild(document.createTextNode(h.textContent));
+		a.href = `#${h.id}`
 
+		let li = document.createElement("li");
+		li.appendChild(a);
+		refNavList.appendChild(li);
+	});
 	document.querySelectorAll("h2, h3").forEach(h => {
 		const original = h.innerHTML;
 		h.addEventListener("mouseenter", e => {
