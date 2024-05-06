@@ -603,7 +603,9 @@ The complete Config reference can be found [here.](#config-object)
 
 ### Postgres
 
-Shovel connects to a single Postgres server. Shovel uses a Postgres schema named `shovel` to keep its internal bookkeeping tables. User defined tables are stored in the public schema. You can ask Shovel to print the user defined schema to `stdout` using the `--print-schema` flag. More details in [Printing the Schema](#printing-the-schema). Shovel uses a `pg_advisory_xact_lock` to ensure only a single shovel can index a particular block(s) at a time.
+Shovel connects to a single Postgres server. Shovel uses a Postgres schema named `shovel` to keep its internal bookkeeping tables. User defined tables are stored in the public schema. You can ask Shovel to print the user defined schema to `stdout` using the `--print-schema` flag. More details in [Printing the Schema](#printing-the-schema).
+
+Shovel uses a `pg_advisory_xact_lock` to ensure only a single shovel can index a particular block(s) at a time.
 
 Postgres is configured with a database URL. It will respect the SSL Mode defined in the URL. See this [link](https://www.postgresql.org/docs/current/libpq-ssl.html#LIBPQ-SSL-SSLMODE-STATEMENTS) for more details.
 
