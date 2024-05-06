@@ -589,7 +589,9 @@ This config uses the contains filter operation on the tx_input to index transact
 
 ## Config
 
-Shovel’s primary UI is the JSON Config file. In this file you specify a Postgres URL, Ethereum Sources, and Integrations (descriptions of the data to be indexed). The [TypeScript](#typescript) package may help manage complex configurations, but for simple tasks a basic JSON file will work. Certain fields within Config may contain a `$` prefixed string which instructs Shovel to read the values from the OS’s environment.
+Shovel’s primary UI is the JSON Config file. In this file you specify a Postgres URL, Ethereum Sources, and Integrations (descriptions of the data to be indexed). The [TypeScript](#typescript) package may help manage complex configurations, but for simple tasks a basic JSON file will work.
+
+Certain fields within Config may contain a `$` prefixed string which instructs Shovel to read the values from the OS’s environment. Read [Environment Variables](#config-environment-variables) for more detail.
 
 This section will summarize the top level Config objects:
 
@@ -1256,8 +1258,6 @@ Indexes:
 
 This JSON Config is the primary UI for Shovel. The Config object holds the database URL, the Ethereum URL, and a specification for all the data that you would like to index.
 
-
-
 <details>
 <summary>Here is the expanded overview of the Config object</summary>
 <div id="config-object-list">
@@ -1274,8 +1274,12 @@ This JSON Config is the primary UI for Shovel. The Config object holds the datab
 - [`integrations[]`](#config-integrations)
     - [`name`](#config-integrations-name)
     - [`enabled`](#config-integrations-enabled)
+    - [`sources`](#config-integrations-sources)
+        - [`name`](#config-integrations-sources-name)
+        - [`start`](#config-integrations-sources-start)
+        - [`stop`](#config-integrations-sources-stop)
     - [`table`](#config-integrations-table)
-        - [`name`](#config-integrations-table-)
+        - [`name`](#config-integrations-table-name)
         - [`columns[]`](#config-integrations-table-columns)
             - [`name`](#config-integrations-table-columns-name)
             - [`type`](#config-integrations-table-columns-type)
@@ -1304,6 +1308,35 @@ This JSON Config is the primary UI for Shovel. The Config object holds the datab
 
 </div>
 </details>
+
+### Environment Variables {#config-environment-variables .reference}
+
+Shovel reads certain config values from the os env when the value is a:
+ `$`-prefixed string.
+
+```
+{"pg_url": "$PG_URL", ...}
+```
+
+The following fields are able to read from the os env:
+
+- `pg_url`
+- `eth_sources.name`
+- `eth_sources.chain_id`
+- `eth_sources.url`
+- `eth_sources.ws_url`
+- `eth_sources.poll_duration`
+- `eth_sources.concurrency`
+- `eth_sources.batch_size`
+- `integrations[].sources[].name`
+- `integrations[].sources[].start`
+- `integrations[].sources[].stop`
+
+This fields contain a mix of strings and numbers. In the case of numbers, Shovel will attempt to parse the string read from the env as a decimal.
+
+If you use a `$`-prefixed string, and there is no corresponding environment variable, Shovel will exit-1 with an error messages.
+
+If you use a `$`-prefixed string as a config val for a config that isn't on the list then Shovel will silently use the `$`-prefixed string as the value. This is a bug.
 
 ### `pg_url` {#config-pg-url .reference}
 
