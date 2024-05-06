@@ -103,7 +103,7 @@ createdb shovel
 curl -LO https://raw.githubusercontent.com/indexsupply/code/main/cmd/shovel/demo.json
 
 # download shovel
-curl -LO https://indexsupply.net/bin/1.0/darwin/arm64/shovel
+curl -LO https://indexsupply.net/bin/1.6/darwin/arm64/shovel
 chmod +x shovel
 ./shovel -config demo.json
 ```

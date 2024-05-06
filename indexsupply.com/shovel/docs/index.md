@@ -61,10 +61,10 @@ brew services start postgresql@16
 createdb shovel
 
 curl -LO --silent https://raw.githubusercontent.com/indexsupply/code/main/cmd/shovel/demo.json
-curl -LO --silent https://indexsupply.net/bin/main/darwin/arm64/shovel
+curl -LO --silent https://indexsupply.net/bin/1.6/darwin/arm64/shovel
 chmod +x shovel
 
-./shovel -config config.json
+./shovel -config demo.json
 l=info  v=1.6 msg=new-task ig=usdc-transfer src=mainnet
 l=info  v=1.6 msg=new-task ig=usdc-transfer src=base
 l=info  v=1.6 msg=prune-task n=0
@@ -78,11 +78,11 @@ l=info  v=1.6 msg=converge ig=usdc-transfer src=base req=13997369/1 n=13997369 h
 
 ## Changelog
 
-Latest stable version is: **1.5**
+Latest stable version is: **1.6**
 
 ```
-https://indexsupply.net/bin/1.5/darwin/arm64/shovel
-https://indexsupply.net/bin/1.5/linux/amd64/shovel
+https://indexsupply.net/bin/1.6/darwin/arm64/shovel
+https://indexsupply.net/bin/1.6/linux/amd64/shovel
 ```
 
 Latest version on main:
@@ -99,6 +99,13 @@ The following resources are automatically deployed on a main commit:
 - Docker https://hub.docker.com/r/indexsupply/shovel
   `linux/amd64`, `linux/arm64`
 - This web site https://indexsupply.com
+
+### v1.6 {#changelog-v1.6}
+
+`582D 2024-05-06`
+
+- rewrite the docs to include more detailed desc. of config
+- handle eth api provider's [unsynchronized nodes](https://indexsupply.com/shovel/docs/#unsynchronized-ethereum-nodes) for eth_getLogs
 
 ### v1.5 {#changelog-v1.5}
 
@@ -150,20 +157,20 @@ To install Shovel, you can build from source (see [build from source](#build-fro
 
 For Mac
 ```
-curl -LO https://indexsupply.net/bin/1.4/darwin/arm64/shovel
+curl -LO https://indexsupply.net/bin/1.6/darwin/arm64/shovel
 chmod +x shovel
 ```
 
 For Linux
 ```
-curl -LO https://indexsupply.net/bin/1.4/linux/amd64/shovel
+curl -LO https://indexsupply.net/bin/1.6/linux/amd64/shovel
 chmod +x shovel
 ```
 
 Test
 ```
 ./shovel -version
-v1.4 2f76
+v1.6 582d
 ```
 
 The first part of this command prints a version string (which is also a git tag) and the first two bytes of the latest commit that was used to build the binaries.
