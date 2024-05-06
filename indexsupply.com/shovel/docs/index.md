@@ -816,7 +816,7 @@ Shovel has 3 monitoring interfaces: Prometheus, logs, and a Dashboard.
 
 ### Prometheus
 
-Shovel provides a `/metrics` endponit that prints the following Prometheus metrics:
+Shovel provides a `/metrics` api that prints the following Prometheus metrics:
 
 ```
 # HELP shovel_latest_block_local last block processed
@@ -870,7 +870,7 @@ commit d80f21e11cfc68df06b74cb44c9f1f6b2b172165 (tag: v1.0beta)
 Author: Ryan Smith <r@32k.io>
 Date:   Mon Nov 13 20:54:17 2023 -0800
 
-    shove: ui tweak. update demo config
+    shovel: ui tweak. update demo config
 
  cmd/shovel/demo.json  | 76 ++++++++++++++++++++++++++-------------------------
  shovel/web/index.html |  3 ++
@@ -928,7 +928,7 @@ The rest of this page contains detailed reference data.
 
 ## Data {.reference}
 
-Shoel provides access to the following Ethereum data. In addition to the fixed types found in the: blocks, transactions, receipts, logs, and traces, Shovel can index event data from the ABI decoded log.
+Shovel provides access to the following Ethereum data. In addition to the fixed types found in the: blocks, transactions, receipts, logs, and traces, Shovel can index event data from the ABI decoded log.
 
 Shovel will optimize its Ethereum JSON RPC API method choice based on the data that your integration requires. Integrations that only require data from `eth_getLogs` will be the most performant since `eth_getLogs` can filter and batch in ways that the other Eth APIs cannot. Whereas `eth_getBlockReceipts` and `trace_block` are extremely slow. Keep in mind that integrations are run independently so that you can partition your workload accordingly.
 
@@ -1504,7 +1504,7 @@ See [Notifications](#notifications) for overview.
 
 ### `integrations[].notification.columns[]` {#config-integrations-notification-columns .reference}
 
-A list of strings that reference column names. Column names must be previously defined the the integration's [table](#table) config. The columns values are serialized to text (hex when binary) and encoded into a comma seperated list and placed in the notification's payload. The order of the payload is the order used in the `columns` list.
+A list of strings that reference column names. Column names must be previously defined the integration's [table](#table) config. The columns values are serialized to text (hex when binary) and encoded into a comma separated list and placed in the notification's payload. The order of the payload is the order used in the `columns` list.
 
 With this config, and when Shovel is inserting new data into the foo table, it will send a notification with the following data:
 
@@ -1560,7 +1560,7 @@ The ABI defined event's `anonymous` value.
 
 ### `integrations[].event.inputs[]` {#config-integrations-event-inputs .reference}
 
-The ABI defined list of event inputs. Fully compatible with the ABI spec. and therefore can contain arbitrarily nested data.
+The ABI defined list of event inputs. Fully compatible with the ABI spec. And therefore can contain arbitrarily nested data.
 
 ### `integrations[].event.inputs[].indexed` {#config-integrations-event-inputs-indexed .reference}
 
