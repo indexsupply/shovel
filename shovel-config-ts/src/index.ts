@@ -65,7 +65,12 @@ export type BlockDataOptions =
   | "tx_type"
   | "tx_status"
   | "log_idx"
-  | "log_addr";
+  | "log_addr"
+  | "trace_action_call_type"
+  | "trace_action_idx"
+  | "trace_action_from"
+  | "trace_action_to"
+  | "trace_action_value";
 
 /**
  * BlockData represents non-event data to index. Shovel can index
