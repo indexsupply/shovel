@@ -793,7 +793,7 @@ Shovel is effectively one big retry loop.
 
 ### Multiple Shovel Instances
 
-Shovel makes use of a `pg_advisory_xact_lock` each time it attempts to index data. This means that you can have multiple Shovel instances running the same Config, connected to the same Postgres database, and you should observe that works is randomly distributed across the Shovel instances.
+Shovel makes use of a `pg_advisory_xact_lock` each time it attempts to index data. This means that you can have multiple Shovel instances running the same Config, connected to the same Postgres database, and you should observe that work is randomly distributed across the Shovel instances.
 
 ### Unsynchronized Ethereum Nodes
 
@@ -1149,9 +1149,9 @@ Shovel may use the Postgres [NOTIFY](https://www.postgresql.org/docs/current/sql
 There is a slight performance cost to using notifications. The cost should be almost 0 when Shovel is processing latest blocks but it may be non-zero when backfilling data. A couple of performance related things to keep in mind:
 
 1. If there are no listeners then the notifications are instantly dropped
-2. You can ommit the notification config if you are doing a backfill and then add it once things are in the steady state
+2. You can omit the notification config if you are doing a backfill and then add it once things are in the steady state
 
-To configure notifications on an Integration, speicfy a notification object in the Integration’s Config. See the [reference](#config-integrations-notification)
+To configure notifications on an Integration, specify a notification object in the [Integration’s Config](#config-integrations-notification).
 
 <hr>
 
