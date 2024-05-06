@@ -639,6 +639,15 @@ Source: https://github.com/indexsupply/code/tree/main/shovel-config-ts
 <details>
 <summary>Example</summary>
 
+
+Install the `shovel-config` TS package
+
+```
+bun install @indexsupply/shovel-config
+```
+
+Create a file named `shovel-config.ts` and add the following to the file:
+
 ```
 import { makeConfig, toJSON } from "@indexsupply/shovel-config";
 import type { Source, Table, Integration } from "@indexsupply/shovel-config";
@@ -692,6 +701,13 @@ const config = makeConfig({
 });
 
 console.log(toJSON(config));
+```
+
+Run the TS file and save its output to a file for Shovel to read.
+
+```
+bun run shovel-config.ts > config.json
+shovel -config config.json
 ```
 </details>
 
