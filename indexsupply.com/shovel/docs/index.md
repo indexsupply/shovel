@@ -1195,6 +1195,15 @@ When a column is added, if the table was non-empty, the existing rows will have 
 
 A SQL VIEW for finding the most recent block indexed, grouped by the Integration's Source. Since many Integrations can share a Source, and since each Integration can be working on different parts of the chain, this VIEW finds the min block number (after removing in-active Integrations) amongst the Integrations
 
+```
+select * from shovel.latest ;
+ src_name |   num
+----------+----------
+ base     | 14090162
+```
+
+The VIEW is defined [here](https://github.com/indexsupply/code/blob/main/shovel/schema.sql#L118-L132).
+
 ### Print Schema
 
 This `--print-schema` command flag will instruct Shovel to parse the Config and print the computed schema (derived from the Config's Integrations) to `stdout` command flag will instruct Shovel to parse the Config and print the computed schema (derived from the Config's Integrations) to `stdout`.
