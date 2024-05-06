@@ -944,7 +944,9 @@ The rest of this page contains detailed reference data.
 
 ## Data {.reference}
 
-Shovel provides access to the following Ethereum data. In addition to the fixed types found in the: blocks, transactions, receipts, logs, and traces, Shovel can index event data from the ABI decoded log.
+Shovel indexes data from: blocks, transactions, receipts, logs, ABI encoded event logs, and traces. To index ABI enocded event logs, you will use the [event config](#config-integrations-event). Use the [block config](#config-integrations-block) To index data from the: block, transaction, or receipt.
+
+An integration that indexes `trace_` data cannot also index ABI encoded event data.
 
 Shovel will optimize its Ethereum JSON RPC API method choice based on the data that your integration requires. Integrations that only require data from `eth_getLogs` will be the most performant since `eth_getLogs` can filter and batch in ways that the other Eth APIs cannot. Whereas `eth_getBlockReceipts` and `trace_block` are extremely slow. Keep in mind that integrations are run independently so that you can partition your workload accordingly.
 
