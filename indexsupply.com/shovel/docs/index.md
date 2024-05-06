@@ -1323,7 +1323,7 @@ This JSON Config is the primary UI for Shovel. The Config object holds the datab
         - [`filter_arg`](#config-integrations-block-filter_arg)
         - [`filter_ref`](#config-integrations-block-filter_ref)
     - [`event`](#config-integrations-event)
-        - [`name`](#config-integrations-event-)
+        - [`name`](#config-integrations-event-name)
         - [`anonymous`](#config-integrations-event-anonymous)
         - [`inputs[]`](#config-integrations-event-inputs)
             - [`name`](#config-integrations-event-inputs-name)
@@ -1334,6 +1334,9 @@ This JSON Config is the primary UI for Shovel. The Config object holds the datab
             - [`filter_arg`](#config-integrations-event-inputs-filter-arg)
             - [`filter_ref`](#config-integrations-event-inputs-filter-ref)
 - [`dashboard`](#config-dashboard)
+    - [`root_password`](#config-dashboard-root-password)
+    - [`enable_loopback_authn`](#config-dashboard-enable-loopback-authn)
+    - [`disable_authn`](#config-dashboard-disable-authn)
 
 </div>
 </details>
@@ -1643,7 +1646,7 @@ This new password will be printed to the logs each time you make a request so th
 {..., "dashboard": {..., "root_password": ""}}
 ```
 
-### `dashboard.enable_loopback_authn` {#config-enable-loopback-authn .reference}
+### `dashboard.enable_loopback_authn` {#config-dashboard-enable-loopback-authn .reference}
 
 This may be useful if you are developing features on Shovel and want to test the authentication code using localhost.
 
@@ -1651,7 +1654,7 @@ This may be useful if you are developing features on Shovel and want to test the
 {..., "dashboard": {..., "enable_loopback_authn": true}}
 ```
 
-### `dashboard.disable_authn` {#config-enable-disable-authn.reference}
+### `dashboard.disable_authn` {#config-dashboard-enable-disable-authn .reference}
 
 If, for whatever reason, you want to disable authentication entirely.
 
