@@ -24,6 +24,7 @@ test("makeConfig", () => {
       sources: [{ name: mainnet.name, start: 0n }],
       table: transfersTable,
       block: [],
+	  notification: {columns: ["from", "to", "value"]},
       event: {
         type: "event",
         name: "Transfer",
@@ -76,6 +77,7 @@ test("makeConfig", () => {
             },
           ],
         },
+		notification: {columns: ["from", "to", "value"]},
         block: [],
         event: {
           type: "event",

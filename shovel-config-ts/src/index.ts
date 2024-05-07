@@ -134,13 +134,18 @@ export type SourceReference = {
   start: EnvRef | bigint;
 };
 
+export type Notification = {
+	columns: string[];
+};
+
 export type Integration = {
   name: string;
   enabled: boolean;
   sources: SourceReference[];
   table: Table;
-  block: BlockData[];
-  event: Event;
+  notification?: Notification;
+  block?: BlockData[];
+  event?: Event;
 };
 
 export type Dashboard = {
