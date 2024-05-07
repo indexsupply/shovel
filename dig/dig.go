@@ -868,8 +868,10 @@ func (ig *Integration) notify(lwc *logWithCtx, pg wpg.Conn, rows [][]any) error 
 					payload = append(payload, v)
 				case []byte:
 					payload = append(payload, eth.EncodeHex(v))
+				case *uint256.Int:
+					payload = append(payload, v.Dec())
 				default:
-					panic(v)
+					return fmt.Errorf("unknown type for notification: %T", rows[i][k])
 				}
 			}
 		}
