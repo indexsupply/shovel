@@ -31,22 +31,30 @@ Shovel is configured using declarative JSON that maps the data you care about on
 {
   "pg_url": "postgres:///shovel",
   "eth_sources": [
-    {"name": "mainnet", "chain_id": 1, "url": "https://ethereum-rpc.publicnode.com"},
-    {"name": "sepolia",  "chain_id": 11155111, "url": "https://ethereum-sepolia-rpc.publicnode.com"}
+    {
+        "name": "mainnet",
+        "chain_id": 1,
+        "url": "https://ethereum-rpc.publicnode.com"
+    },
+    {
+        "name": "sepolia",
+        "chain_id": 11155111,
+        "url": "https://ethereum-sepolia-rpc.publicnode.com"
+    }
   ],
   "integrations": [
     {
       "name": "tokens",
       "enabled": true,
-      "sources": [{"name": "mainnet"}, {"name": "goerli"}],
+      "sources": [{"name": "mainnet"}, {"name": "sepolia"}],
       "table": {
         "name": "transfers",
           "columns": [
-            {"name": "log_addr",   "type": "bytea"},
+            {"name": "log_addr", "type": "bytea"},
             {"name": "block_time", "type": "numeric"},
-            {"name": "f",          "type": "bytea"},
-            {"name": "t",          "type": "bytea"},
-            {"name": "v",          "type": "numeric"}
+            {"name": "from", "type": "bytea"},
+            {"name": "to", "type": "bytea"},
+            {"name": "value", "type": "numeric"}
           ]
       },
       "block": [
@@ -63,9 +71,9 @@ Shovel is configured using declarative JSON that maps the data you care about on
         "type": "event",
         "anonymous": false,
         "inputs": [
-          {"indexed": true,  "name": "from",  "type": "address", "column": "f"},
-          {"indexed": true,  "name": "to",    "type": "address", "column": "t"},
-          {"indexed": false, "name": "value", "type": "uint256", "column": "v"}
+          {"indexed": true, "name": "from", "type": "address", "column": "from"},
+          {"indexed": true, "name": "to", "type": "address", "column": "to"},
+          {"indexed": false, "name": "value", "type": "uint256", "column": "value"}
         ]
       }
     }
@@ -93,7 +101,7 @@ log_addr   | \xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48
 </details>
 
 <details>
-	<summary><h2>Quickstart</h2></summary>
+    <summary><h2>Quickstart</h2></summary>
 
 ```
 # assumes you have pg running
