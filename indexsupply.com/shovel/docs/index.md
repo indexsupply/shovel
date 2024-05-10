@@ -1418,7 +1418,16 @@ An optional URL that points to a Websocket JSON RPC API. If this URL is set Shov
 
 ### `eth_sources[].poll_duration` {#config-eth-sources-poll-duration .reference}
 
-The amount of time to wait before checking the source for a new block. A lower value (eg 100ms) will increase the total number of requests that Shove will make to your node. This may count against your rate limit. A higher value will reduce the number of requests made. The default is `1s`.
+A string that can be parsed into an interval. For example:
+
+- `12s`
+- `500ms`
+
+Default: `1s`.
+
+The amount of time to wait before checking the source for a new block. A lower value (eg 100ms) will increase the total number of requests that Shove will make to your node. This may count against your rate limit. A higher value will reduce the number of requests made.
+
+If an error is encountered, Shovel will sleep for 1s before retrying. This is not yet configurable.
 
 ### `eth_sources[].batch_size` {#config-eth-sources-batch-size .reference}
 
