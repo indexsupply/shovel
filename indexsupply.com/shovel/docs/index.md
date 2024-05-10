@@ -100,6 +100,14 @@ The following resources are automatically deployed on a main commit:
   `linux/amd64`, `linux/arm64`
 - This web site https://indexsupply.com
 
+### main {#changelog-main}
+
+On main but not yet associated with a new version tag.
+
+- add tx_gas_used, tx_effective_gas_price as [data](#data) options. requires eth_getBlockReceipts
+- fix NOTIFICATION payload encoding for numeric/uint256
+- add trace_ fields to shovel-config-ts
+
 ### v1.6 {#changelog-v1.6}
 
 `582D 2024-05-06`
