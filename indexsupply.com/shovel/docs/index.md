@@ -76,7 +76,7 @@ l=info  v=1.6 msg=converge ig=usdc-transfer src=base req=13997369/1 n=13997369 h
 
 <hr>
 
-## Changelog
+## Change Log {#changelog}
 
 Latest stable version is: **1.6**
 
