@@ -682,7 +682,7 @@ func (tm *Manager) runTask(t *Task) {
 				time.Sleep(t.pollDuration)
 			case err != nil:
 				time.Sleep(time.Second)
-				slog.ErrorContext(t.ctx, "converge-retry")
+				slog.ErrorContext(t.ctx, "converge-retry", "msg", err)
 			default:
 				go func() {
 					// try out best to deliver update
