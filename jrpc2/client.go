@@ -19,6 +19,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/holiman/uint256"
 	"github.com/indexsupply/x/eth"
 	"github.com/indexsupply/x/shovel/glf"
 	"github.com/indexsupply/x/wctx"
@@ -601,16 +602,17 @@ func (c *Client) headers(ctx context.Context, start, limit uint64) ([]eth.Block,
 }
 
 type receiptResult struct {
-	BlockHash eth.Bytes  `json:"blockHash"`
-	BlockNum  eth.Uint64 `json:"blockNumber"`
-	TxHash    eth.Bytes  `json:"transactionHash"`
-	TxIdx     eth.Uint64 `json:"transactionIndex"`
-	TxType    eth.Byte   `json:"type"`
-	TxFrom    eth.Bytes  `json:"from"`
-	TxTo      eth.Bytes  `json:"to"`
-	Status    eth.Byte   `json:"status"`
-	GasUsed   eth.Uint64 `json:"gasUsed"`
-	Logs      eth.Logs   `json:"logs"`
+	BlockHash         eth.Bytes   `json:"blockHash"`
+	BlockNum          eth.Uint64  `json:"blockNumber"`
+	TxHash            eth.Bytes   `json:"transactionHash"`
+	TxIdx             eth.Uint64  `json:"transactionIndex"`
+	TxType            eth.Byte    `json:"type"`
+	TxFrom            eth.Bytes   `json:"from"`
+	TxTo              eth.Bytes   `json:"to"`
+	Status            eth.Byte    `json:"status"`
+	GasUsed           eth.Uint64  `json:"gasUsed"`
+	EffectiveGasPrice uint256.Int `json:"effectiveGasPrice"`
+	Logs              eth.Logs    `json:"logs"`
 }
 
 type receiptResp struct {
@@ -663,6 +665,7 @@ func (c *Client) receipts(ctx context.Context, bm blockmap, start, limit uint64)
 			tx.To.Write(resps[i].Result[j].TxTo)
 			tx.Status.Write(byte(resps[i].Result[j].Status))
 			tx.GasUsed = resps[i].Result[j].GasUsed
+			tx.EffectiveGasPrice = resps[i].Result[j].EffectiveGasPrice
 			tx.Logs = make([]eth.Log, len(resps[i].Result[j].Logs))
 			copy(tx.Logs, resps[i].Result[j].Logs)
 		}

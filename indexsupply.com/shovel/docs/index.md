@@ -953,28 +953,30 @@ An integration that indexes `trace_` data cannot also index ABI encoded event da
 Shovel will optimize its Ethereum JSON RPC API method choice based on the data that your integration requires. Integrations that only require data from `eth_getLogs` will be the most performant since `eth_getLogs` can filter and batch in ways that the other Eth APIs cannot. Whereas `eth_getBlockReceipts` and `trace_block` are extremely slow. Keep in mind that integrations are run independently so that you can partition your workload accordingly.
 
 
-| Name        | Eth Type        | Postgres Type    | Eth API          |
-|-------------|-----------------|------------------|------------------|
-| chain_id    | int             | int              | `n/a`            |
-| block_num   | numeric         | numeric          | `l, h, b, r, t`  |
-| block_hash  | bytea           | bytea            | `l, h, b, r, t`  |
-| block_time  | int             | int              | `h, b`           |
-| tx_hash     | bytes32         | bytea            | `l, h, b, r, t`  |
-| tx_idx      | int             | int              | `l, h, b, r, t`  |
-| tx_signer   | address         | bytea            | `b, r`           |
-| tx_to       | address         | bytea            | `b, r`           |
-| tx_value    | uint256         | numeric          | `b, r`           |
-| tx_input    | bytes           | bytea            | `b, r`           |
-| tx_type     | byte            | int              | `b, r`           |
-| tx_status   | byte            | int              | `r`              |
-| log_idx     | int             | int              | `l, r`           |
-| log_addr    | address         | bytea            | `l, r`           |
-| event data  | n/a             | n/a              | `l`              |
-| trace_action_call_type | string  | text          | `t`              |
-| trace_action_idx       | int     |int            | `t`              |
-| trace_action_from      | address | bytea         | `t`              |
-| trace_action_to        | address | bytea         | `t`              |
-| trace_action_value     | uint256 | numeric       | `t`              |
+| Name                   | Eth Type        | Postgres Type    | Eth API          |
+|------------------------|-----------------|------------------|------------------|
+| chain_id               | int             | int              | `n/a`            |
+| block_num              | numeric         | numeric          | `l, h, b, r, t`  |
+| block_hash             | bytea           | bytea            | `l, h, b, r, t`  |
+| block_time             | int             | int              | `h, b`           |
+| tx_hash                | bytes32         | bytea            | `l, h, b, r, t`  |
+| tx_idx                 | int             | int              | `l, h, b, r, t`  |
+| tx_signer              | address         | bytea            | `b, r`           |
+| tx_to                  | address         | bytea            | `b, r`           |
+| tx_value               | uint256         | numeric          | `b, r`           |
+| tx_input               | bytes           | bytea            | `b, r`           |
+| tx_type                | byte            | int              | `b, r`           |
+| tx_status              | byte            | int              | `r`              |
+| tx_gas_used            | uint64          | bigint           | `r`              |
+| tx_effective_gas_price | uint256         | numeric          | `r`              |
+| log_idx                | int             | int              | `l, r`           |
+| log_addr               | address         | bytea            | `l, r`           |
+| event data             | n/a             | n/a              | `l`              |
+| trace_action_call_type | string          | text             | `t`              |
+| trace_action_idx       | int             | int              | `t`              |
+| trace_action_from      | address         | bytea            | `t`              |
+| trace_action_to        | address         | bytea            | `t`              |
+| trace_action_value     | uint256         | numeric          | `t`              |
 
 The Eth API can be one of (in asc order of perf cost):
 

@@ -198,9 +198,10 @@ func (ls *Logs) UnmarshalRLP(b []byte) {
 }
 
 type Receipt struct {
-	Status  Byte
-	GasUsed Uint64
-	Logs    Logs
+	Status            Byte
+	GasUsed           Uint64
+	EffectiveGasPrice uint256.Int
+	Logs              Logs
 }
 
 func (r *Receipt) UnmarshalRLP(b []byte) {

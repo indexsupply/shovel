@@ -927,6 +927,10 @@ func (lwc *logWithCtx) get(name string) any {
 		return lwc.t.Receipt.Status
 	case "log_idx":
 		return lwc.l.Idx
+	case "tx_gas_used":
+		return lwc.t.GasUsed
+	case "tx_effective_gas_price":
+		return &lwc.t.EffectiveGasPrice
 	case "log_addr":
 		return lwc.l.Address.Bytes()
 	case "trace_action_call_type":
