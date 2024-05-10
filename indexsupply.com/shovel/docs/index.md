@@ -1431,7 +1431,11 @@ If an error is encountered, Shovel will sleep for 1s before retrying. This is no
 
 ### `eth_sources[].batch_size` {#config-eth-sources-batch-size .reference}
 
-The maximum number of batched requests to make to the JSON RPC API. This can speed up backfill operations but will potentially use a lot of API credits if you are running on a hosted node.
+On each loop iteration, Shovel will compute the delta between the local PG and the source node. Shovel then will index `max(batch_size, delta)` blocks over `concurrency` go-routines (threads).
+
+If the integration uses: logs, headers, or blocks each thread will group `batch_size/concurrency` block requests into a single batched RPC request.
+
+Otherwise, the integration will make `batch_size/concurrency` requests to get the data for the blocks.
 
 ### `eth_sources[].concurrency` {#config-eth-sources-concurrency .reference}
 
