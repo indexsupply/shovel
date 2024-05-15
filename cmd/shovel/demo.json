@@ -6,18 +6,16 @@
         "chain_id": 1,
         "url": "https://ethereum-rpc.publicnode.com"
     },
-    {
-        "name": "rs",
-        "chain_id": 690,
-        "url": "https://rpc.redstonechain.com",
-		"concurrency": 10,
-		"batch_size": 10000
+	{
+		"name": "base",
+		"chain_id": 8453,
+		"url": "https://base-rpc.publicnode.com"
     }
   ],
   "integrations": [{
     "name": "usdc-transfer",
     "enabled": true,
-    "sources": [{"name": "rs", "start": "1"}],
+    "sources": [{"name": "mainnet"}, {"name": "base"}],
     "table": {
       "name": "usdc",
       "columns": [
