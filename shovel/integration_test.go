@@ -48,6 +48,17 @@ func TestIntegrations(t *testing.T) {
 		deleteQuery string
 	}{
 		{
+			19583743,
+			"receipt.json",
+			[]string{
+				`
+				select count(*) = 0 from receipt_test
+				where block_num = 19583743
+				`,
+			},
+			"select count(*) = 0 from receipt_test",
+		},
+		{
 			17943843,
 			"txinput.json",
 			[]string{

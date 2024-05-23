@@ -645,7 +645,8 @@ func (c *Client) receipts(ctx context.Context, bm blockmap, start, limit uint64)
 	}
 	for i := range resps {
 		if len(resps[i].Result) == 0 {
-			return fmt.Errorf("no rpc error but empty result")
+			slog.ErrorContext(ctx, "no rpc error but empty result")
+			continue
 		}
 		blockNum := uint64(resps[i].Result[0].BlockNum)
 		if blockNum < start || blockNum > start+limit {

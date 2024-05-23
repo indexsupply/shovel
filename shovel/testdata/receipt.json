@@ -1,0 +1,23 @@
+{
+	"name": "receipt",
+	"enabled": true,
+	"table": {
+		"name": "receipt_test",
+		"columns": [
+			{"name": "chain_id", "type": "numeric"},
+			{"name": "block_num", "type": "numeric"},
+			{"name": "block_time", "type": "numeric"},
+			{"name": "tx_hash", "type": "bytea"},
+			{"name": "tx_input", "type": "bytea"},
+			{"name": "tx_gas_used", "type": "numeric"}
+		]
+	},
+	"block": [
+		{"name": "chain_id", "column": "chain_id"},
+		{"name": "block_num", "column": "block_num"},
+		{"name": "block_time", "column": "block_time"},
+		{"name": "tx_hash", "column": "tx_hash" },
+		{"name": "tx_input", "column": "tx_input"},
+		{"name": "tx_gas_used", "column": "tx_gas_used"}
+	]
+}
