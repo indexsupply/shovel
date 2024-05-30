@@ -7,6 +7,7 @@ package dig
 import (
 	"bytes"
 	"context"
+	"database/sql/driver"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -1066,9 +1067,27 @@ func (ig Integration) processLog(rows [][]any, lwc *logWithCtx, pgmut *sync.Mute
 	return rows, nil
 }
 
+type negInt struct {
+	i *uint256.Int
+}
+
+func (ni *negInt) Value() (driver.Value, error) {
+	v, err := ni.i.Value()
+	if ni.i.Sign() < 0 {
+		x := uint256.NewInt(0).Neg(ni.i)
+		v, err = x.Value()
+		return "-" + v.(string), err
+	}
+	return v, err
+}
+
 func dbtype(abitype string, d []byte) any {
 	switch {
-	case strings.HasPrefix(abitype, "uint"), strings.HasPrefix(abitype, "int"):
+	case strings.HasPrefix(abitype, "int"):
+		x := &uint256.Int{}
+		x.SetBytes(d)
+		return &negInt{x}
+	case strings.HasPrefix(abitype, "uint"):
 		var x uint256.Int
 		x.SetBytes(d)
 		return &x

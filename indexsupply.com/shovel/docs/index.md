@@ -104,6 +104,7 @@ The following resources are automatically deployed on a main commit:
 
 On main but not yet associated with a new version tag.
 
+- fix db encoding for negative int{..256} values
 - fix `error="getting receipts: no rpc error but empty result"`
 - add tx_gas_used, tx_effective_gas_price as [data](#data) options. requires eth_getBlockReceipts
 - fix NOTIFICATION payload encoding for numeric/uint256
