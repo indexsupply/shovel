@@ -387,7 +387,7 @@ type Filter struct {
 }
 
 func (f Filter) Accept(ctx context.Context, pgmut *sync.Mutex, pg wpg.Conn, d any) (bool, error) {
-	if len(f.Arg) == 0 {
+	if len(f.Arg) == 0 && len(f.Ref.Integration) == 0 {
 		return true, nil
 	}
 	switch v := d.(type) {

@@ -7,10 +7,10 @@ import (
 	"github.com/kr/pretty"
 )
 
-func NoErr(t *testing.T, err error) {
-	t.Helper()
+func NoErr(tb testing.TB, err error) {
+	tb.Helper()
 	if err != nil {
-		t.Fatalf("expected no error. got: %s", err)
+		tb.Fatalf("expected no error. got: %s", err)
 	}
 }
 

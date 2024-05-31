@@ -1,4 +1,4 @@
-{
+[{
 	"name": "txinput",
 	"enabled": true,
 	"table": {
@@ -18,4 +18,4 @@
 		{"name": "tx_hash", "column": "tx_hash", "filter_op": "contains", "filter_arg": ["713df81a2ab53db1d01531106fc5de43012a401ddc3e0586d522e5c55a162d42"]},
 		{"name": "tx_input", "column": "tx_input"}
 	]
-}
+}]

@@ -1,4 +1,4 @@
-{
+[{
 	"name": "receipt",
 	"enabled": true,
 	"table": {
@@ -20,4 +20,4 @@
 		{"name": "tx_input", "column": "tx_input"},
 		{"name": "tx_gas_used", "column": "tx_gas_used"}
 	]
-}
+}]

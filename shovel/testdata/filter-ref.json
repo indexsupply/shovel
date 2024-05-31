@@ -1,0 +1,41 @@
+[
+	{
+		"name": "tx",
+		"enabled": true,
+		"table": {
+			"name": "tx",
+			"columns": [{"name": "tx_hash", "type": "bytea"}]
+		},
+		"block": [
+			{
+				"name": "tx_hash",
+				"column": "tx_hash",
+				"filter_op": "contains",
+				"filter_arg": ["0x713df81a2ab53db1d01531106fc5de43012a401ddc3e0586d522e5c55a162d42"]
+			}
+		]
+	},
+	{
+		"name": "tx_w_block",
+		"enabled": true,
+		"table": {
+			"name": "tx_w_block",
+			"columns": [
+				{"name": "block_num", "type": "numeric"},
+				{"name": "tx_hash", "type": "bytea"}
+			]
+		},
+		"block": [
+			{"name": "block_num", "column": "block_num"},
+			{
+				"name": "tx_hash",
+				"column": "tx_hash",
+				"filter_op": "contains",
+				"filter_ref": {
+					"integration": "tx",
+					"column": "tx_hash"
+				}
+			}
+		]
+	}
+]

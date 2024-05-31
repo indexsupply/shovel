@@ -8,45 +8,26 @@ import (
 
 	"github.com/indexsupply/x/jrpc2"
 	"github.com/indexsupply/x/shovel/config"
+	"github.com/indexsupply/x/tc"
 	"github.com/indexsupply/x/wpg"
-	"github.com/jackc/pgx/v5/pgxpool"
-	"kr.dev/diff"
 )
-
-func check(t testing.TB, err error) {
-	t.Helper()
-	if err != nil {
-		t.Fatal(err)
-	}
-}
-
-// Process will download the header,bodies, and receipts data
-// if it doesn't exist in: integrations/testdata
-// In the case that it needs to fetch the data, an RPC
-// client will be used. The RPC endpoint needs to support
-// the debug_dbAncient and debug_dbGet methods.
-func process(tb testing.TB, pg *pgxpool.Pool, conf config.Root, n uint64) *Task {
-	check(tb, config.ValidateFix(&conf))
-	check(tb, config.Migrate(context.Background(), pg, conf))
-
-	task, err := NewTask(
-		WithPG(pg),
-		WithSource(jrpc2.New("https://ethereum.publicnode.com")),
-		WithIntegration(conf.Integrations[0]),
-		WithRange(n, n+1),
-	)
-	check(tb, err)
-	check(tb, task.Converge())
-	return task
-}
 
 func TestIntegrations(t *testing.T) {
 	cases := []struct {
-		blockNum    uint64
-		config      string
-		queries     []string
-		deleteQuery string
+		blockNum uint64
+		config   string
+		check    []string
+		delete   string
 	}{
+		{
+			17943843,
+			"filter-ref.json",
+			[]string{
+				`select count(*) = 1 from tx`,
+				`select count(*) = 1 from tx_w_block`,
+			},
+			"select count(*) = 0 from tx",
+		},
 		{
 			19583743,
 			"receipt.json",
@@ -124,30 +105,45 @@ func TestIntegrations(t *testing.T) {
 			"select count(*) = 0 from seaport_test",
 		},
 	}
-	for _, tc := range cases {
-		pg := wpg.TestPG(t, Schema)
-		conf := config.Root{Integrations: []config.Integration{{}}}
-		decode(t, read(t, tc.config), &conf.Integrations[0])
-		task := process(t, pg, conf, tc.blockNum)
-		for i, q := range tc.queries {
-			var found bool
-			err := pg.QueryRow(context.Background(), q).Scan(&found)
-			diff.Test(t, t.Errorf, nil, err)
-			if err != nil {
-				t.Logf("failing test query: %d", i)
-			}
-			if !found {
-				t.Errorf("test %s failed", tc.config)
-			}
+	for _, c := range cases {
+		var (
+			ctx  = context.Background()
+			pg   = wpg.TestPG(t, Schema)
+			conf = config.Root{Integrations: []config.Integration{{}}}
+		)
+		decode(t, read(t, c.config), &conf.Integrations)
+		tc.NoErr(t, config.ValidateFix(&conf))
+		tc.NoErr(t, config.Migrate(ctx, pg, conf))
+		for _, ig := range conf.Integrations {
+			task, err := NewTask(
+				WithPG(pg),
+				WithSource(jrpc2.New("https://ethereum.publicnode.com")),
+				WithIntegration(ig),
+				WithRange(c.blockNum, c.blockNum+1),
+			)
+			tc.NoErr(t, err)
+			tc.NoErr(t, task.Converge())
 		}
+		check(t, c.config, pg, c.check...)
+		for _, ig := range conf.Integrations {
+			task, err := NewTask(
+				WithPG(pg),
+				WithSource(jrpc2.New("https://ethereum.publicnode.com")),
+				WithIntegration(ig),
+			)
+			tc.NoErr(t, err)
+			tc.NoErr(t, task.Delete(pg, c.blockNum))
+			check(t, c.config, pg, c.delete)
+		}
+	}
+}
 
-		check(t, task.Delete(pg, tc.blockNum))
-
-		var deleted bool
-		err := pg.QueryRow(context.Background(), tc.deleteQuery).Scan(&deleted)
-		diff.Test(t, t.Errorf, nil, err)
-		if !deleted {
-			t.Errorf("%s was not cleaned up after ig.Delete", tc.config)
+func check(t *testing.T, name string, pg wpg.Conn, queries ...string) {
+	for i, q := range queries {
+		var res bool
+		tc.NoErr(t, pg.QueryRow(context.Background(), q).Scan(&res))
+		if !res {
+			t.Errorf("query %s/%d failed: %q", name, i, q)
 		}
 	}
 }
