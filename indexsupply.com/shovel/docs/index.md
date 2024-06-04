@@ -1566,7 +1566,7 @@ A list of strings that reference column names. Column names must be previously d
 With this config, and when Shovel is inserting new data into the foo table, it will send a notification with the following data:
 
 ```
-NOTIFY mainnet-foo '$block_num,$a,$b'
+NOTIFY "mainnet-foo" '$block_num,$a,$b'
 ```
 
 ### `integrations[].block[]` {#config-integrations-block .reference}
