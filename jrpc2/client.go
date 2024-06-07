@@ -63,14 +63,19 @@ func randbytes() []byte {
 	return b
 }
 
-func New(providedURL string) *Client {
-	var urls []*URL
-	for _, provided := range strings.Split(providedURL, ",") {
+func New(providedURLs ...string) *Client {
+	var (
+		urls           []*URL
+		debug, nocache bool
+	)
+	for _, provided := range providedURLs {
+		debug = strings.Contains(provided, "debug")
+		nocache = strings.Contains(provided, "nocache")
 		urls = append(urls, MustURL(provided))
 	}
 	return &Client{
-		d:       strings.Contains(providedURL, "debug"),
-		nocache: strings.Contains(providedURL, "nocache"),
+		d:       debug,
+		nocache: nocache,
 		hc: &http.Client{
 			Timeout:   10 * time.Second,
 			Transport: gzhttp.Transport(http.DefaultTransport),

@@ -248,7 +248,7 @@ func (h *Handler) Prom(w http.ResponseWriter, r *http.Request) {
 	}
 	var res []string
 	for _, sc := range scs {
-		src := jrpc2.New(sc.URL)
+		src := jrpc2.New(sc.URLs...)
 		for _, line := range checkSource(sc.Name, src) {
 			res = append(res, line)
 		}
@@ -303,7 +303,7 @@ func (h *Handler) Diag(w http.ResponseWriter, r *http.Request) {
 	for _, sc := range scs {
 		var (
 			dr  = &DiagResult{Source: sc.Name}
-			src = jrpc2.New(sc.URL)
+			src = jrpc2.New(sc.URLs...)
 		)
 		checkPG(dr)
 		checkSrc(src, dr)

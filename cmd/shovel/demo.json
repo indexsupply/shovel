@@ -4,7 +4,7 @@
     {
         "name": "mainnet",
         "chain_id": 1,
-        "url": "https://ethereum-rpc.publicnode.com"
+        "urls": ["https://ethereum-rpc.publicnode.com", "https://ethereum-rpc.publicnode.com"]
     },
 	{
 		"name": "base",
@@ -15,7 +15,7 @@
   "integrations": [{
     "name": "usdc-transfer",
     "enabled": true,
-    "sources": [{"name": "mainnet"}],
+    "sources": [{"name": "mainnet"}, {"name": "base"}],
     "table": {
       "name": "usdc",
       "columns": [

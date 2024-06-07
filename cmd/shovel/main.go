@@ -78,11 +78,11 @@ func main() {
 		return "ig", igName
 	})
 	lh.RegisterContext(func(ctx context.Context) (string, any) {
-		srcURL := wctx.SrcURL(ctx)
-		if srcURL == "" {
+		srcHost := wctx.SrcHost(ctx)
+		if srcHost == "" {
 			return "", nil
 		}
-		return "host", srcURL
+		return "host", srcHost
 	})
 	lh.RegisterContext(func(ctx context.Context) (string, any) {
 		srcName := wctx.SrcName(ctx)

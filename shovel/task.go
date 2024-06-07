@@ -348,7 +348,7 @@ func (task *Task) Converge() error {
 		url     = nextURL.String()
 		nrpc    = uint64(0)
 	)
-	ctx = wctx.WithSrcURL(ctx, nextURL.Hostname())
+	ctx = wctx.WithSrcHost(ctx, nextURL.Hostname())
 	ctx = wctx.WithCounter(ctx, &nrpc)
 
 	pgtx, err := task.pgp.Begin(ctx)
@@ -755,7 +755,7 @@ func loadTasks(ctx context.Context, pgp *pgxpool.Pool, c config.Root) ([]*Task, 
 	}
 	var sources = map[string]Source{}
 	for _, sc := range scByName {
-		sources[sc.Name] = jrpc2.New(sc.URL).
+		sources[sc.Name] = jrpc2.New(sc.URLs...).
 			WithWSURL(sc.WSURL).
 			WithPollDuration(sc.PollDuration).
 			WithMaxReads(len(allIntegrations))

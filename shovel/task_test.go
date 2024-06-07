@@ -378,7 +378,7 @@ func TestLoadTasks(t *testing.T) {
 			config.Source{
 				Name:    "foo",
 				ChainID: 888,
-				URL:     "http://foo",
+				URLs:    []string{"http://foo"},
 			},
 		},
 		Integrations: []config.Integration{

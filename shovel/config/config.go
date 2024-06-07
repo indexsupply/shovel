@@ -328,7 +328,7 @@ type Dashboard struct {
 type Source struct {
 	Name         string
 	ChainID      uint64
-	URL          string
+	URLs         []string
 	WSURL        string
 	Start        uint64
 	Stop         uint64
@@ -339,27 +339,40 @@ type Source struct {
 
 func (s *Source) UnmarshalJSON(d []byte) error {
 	x := struct {
-		Name         wos.EnvString `json:"name"`
-		ChainID      wos.EnvUint64 `json:"chain_id"`
-		URL          wos.EnvString `json:"url"`
-		WSURL        wos.EnvString `json:"ws_url"`
-		Start        wos.EnvUint64 `json:"start"`
-		Stop         wos.EnvUint64 `json:"stop"`
-		PollDuration wos.EnvString `json:"poll_duration"`
-		Concurrency  wos.EnvInt    `json:"concurrency"`
-		BatchSize    wos.EnvInt    `json:"batch_size"`
+		Name         wos.EnvString   `json:"name"`
+		ChainID      wos.EnvUint64   `json:"chain_id"`
+		URL          wos.EnvString   `json:"url"`
+		URLs         []wos.EnvString `json:"urls"`
+		WSURL        wos.EnvString   `json:"ws_url"`
+		Start        wos.EnvUint64   `json:"start"`
+		Stop         wos.EnvUint64   `json:"stop"`
+		PollDuration wos.EnvString   `json:"poll_duration"`
+		Concurrency  wos.EnvInt      `json:"concurrency"`
+		BatchSize    wos.EnvInt      `json:"batch_size"`
 	}{}
 	if err := json.Unmarshal(d, &x); err != nil {
 		return err
 	}
 	s.Name = string(x.Name)
 	s.ChainID = uint64(x.ChainID)
-	s.URL = string(x.URL)
 	s.WSURL = string(x.WSURL)
 	s.Start = uint64(x.Start)
 	s.Stop = uint64(x.Stop)
 	s.Concurrency = int(x.Concurrency)
 	s.BatchSize = int(x.BatchSize)
+
+	var urls []string
+	urls = append(urls, string(x.URL))
+	for _, url := range x.URLs {
+		urls = append(urls, string(url))
+	}
+
+	for _, u := range urls {
+		if len(u) == 0 {
+			continue
+		}
+		s.URLs = append(s.URLs, u)
+	}
 
 	s.PollDuration = time.Second
 	if len(x.PollDuration) > 0 {
@@ -382,10 +395,14 @@ func Sources(ctx context.Context, pgp *pgxpool.Pool) ([]Source, error) {
 		return nil, fmt.Errorf("querying sources: %w", err)
 	}
 	for rows.Next() {
-		var s Source
-		if err := rows.Scan(&s.Name, &s.ChainID, &s.URL); err != nil {
+		var (
+			s      Source
+			urlStr string
+		)
+		if err := rows.Scan(&s.Name, &s.ChainID, &urlStr); err != nil {
 			return nil, fmt.Errorf("scanning source: %w", err)
 		}
+		s.URLs = append(s.URLs, urlStr)
 		res = append(res, s)
 	}
 	return res, nil
