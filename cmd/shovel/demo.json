@@ -15,7 +15,7 @@
   "integrations": [{
     "name": "usdc-transfer",
     "enabled": true,
-    "sources": [{"name": "mainnet"}, {"name": "base"}],
+    "sources": [{"name": "mainnet"}],
     "table": {
       "name": "usdc",
       "columns": [

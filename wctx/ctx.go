@@ -15,6 +15,7 @@ const (
 	versionKey  key = 4
 	counterKey  key = 5
 	numLimitKey key = 6
+	srcURLKey   key = 7
 )
 
 func WithChainID(ctx context.Context, id uint64) context.Context {
@@ -52,6 +53,7 @@ func Version(ctx context.Context) string {
 	v, _ := ctx.Value(versionKey).(string)
 	return v
 }
+
 func WithCounter(ctx context.Context, c *uint64) context.Context {
 	return context.WithValue(ctx, counterKey, c)
 }
@@ -81,4 +83,13 @@ func WithNumLimit(ctx context.Context, n, l uint64) context.Context {
 func NumLimit(ctx context.Context) (uint64, uint64) {
 	nl, _ := ctx.Value(numLimitKey).(numLimit)
 	return nl.num, nl.limit
+}
+
+func WithSrcURL(ctx context.Context, v string) context.Context {
+	return context.WithValue(ctx, srcURLKey, v)
+}
+
+func SrcURL(ctx context.Context) string {
+	v, _ := ctx.Value(srcURLKey).(string)
+	return v
 }
