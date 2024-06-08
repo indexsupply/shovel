@@ -1377,6 +1377,7 @@ The following fields are able to read from the os env:
 - `eth_sources.name`
 - `eth_sources.chain_id`
 - `eth_sources.url`
+- `eth_sources.urls`
 - `eth_sources.ws_url`
 - `eth_sources.poll_duration`
 - `eth_sources.concurrency`
