@@ -70,8 +70,8 @@ l=info  v=1.6 msg=new-task ig=usdc-transfer src=base
 l=info  v=1.6 msg=prune-task n=0
 l=info  v=1.6 msg=start at latest ig=usdc-transfer src=mainnet num=19793295
 l=info  v=1.6 msg=start at latest ig=usdc-transfer src=base num=13997369
-l=info  v=1.6 msg=converge ig=usdc-transfer src=mainnet req=19793295/1 n=19793295 h=f537a5c3 nrows=1 nrpc=4 nblocks=1 elapsed=1.117870458s
-l=info  v=1.6 msg=converge ig=usdc-transfer src=base req=13997369/1 n=13997369 h=9b4a1912 nrows=0 nrpc=4 nblocks=1 elapsed=1.160724958s
+l=info  v=1.6 msg=converge ig=usdc-transfer host=base-rpc.publicnode.com src=base req=15507896/1 n=15507896 h=edadbe50 nrows=11 nrpc=3 nblocks=1 elapsed=817.485916ms
+l=info  v=1.6 msg=converge ig=usdc-transfer host=ethereum-rpc.publicnode.com src=mainnet req=20043416/1 n=20043416 h=949c4c7e nrows=3 nrpc=3 nblocks=1 elapsed=984.472375ms
 ```
 
 <hr>
