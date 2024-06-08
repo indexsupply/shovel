@@ -16,7 +16,7 @@ Here is a basic Config that saves ERC20 transfers
     {
       "name": "mainnet",
       "chain_id": 1,
-      "url": "https://ethereum-rpc.publicnode.com"
+      "urls": ["https://ethereum-rpc.publicnode.com"]
     }
   ],
   "integrations": [{
@@ -217,7 +217,7 @@ go run ./cmd/shovel
     {
       "name": "mainnet",
       "chain_id": 1,
-      "url": "https://ethereum-rpc.publicnode.com"
+      "urls": ["https://ethereum-rpc.publicnode.com"]
     }
   ],
   "integrations": [
@@ -277,7 +277,7 @@ Indexes:
     {
       "name": "fast",
       "chain_id": 1,
-      "url": "https://ethereum-rpc.publicnode.com",
+      "urls": ["https://ethereum-rpc.publicnode.com"],
       "concurrency": 10,
       "batch_size": 100
     }
@@ -301,8 +301,8 @@ Indexes:
 {
   "pg_url": "postgres:///shovel",
   "eth_sources": [
-    {"name": "mainnet", "chain_id": 1, "url": "https://ethereum-rpc.publicnode.com"},
-    {"name": "goerli",  "chain_id": 11155111, "url": "https://ethereum-sepolia-rpc.publicnode.com"}
+    {"name": "mainnet", "chain_id": 1, "urls": ["https://ethereum-rpc.publicnode.com"]},
+    {"name": "goerli",  "chain_id": 11155111, "urls": ["https://ethereum-sepolia-rpc.publicnode.com"]}
   ],
   "integrations": [
     {
@@ -376,7 +376,7 @@ Indexes:
     {
       "name": "mainnet",
       "chain_id": 1,
-      "url": "https://ethereum-rpc.publicnode.com"
+      "urls": ["https://ethereum-rpc.publicnode.com"]
     }
   ],
   "integrations": [
@@ -518,7 +518,7 @@ Indexes:
 ```
 {
     "pg_url": "postgres:///shovel",
-    "eth_sources": [{"name": "mainnet", "chain_id": 1, "url": "XXX"}],
+    "eth_sources": [{"name": "mainnet", "chain_id": 1, "urls": ["https://ethereum-rpc.publicnode.com"]}],
     "integrations": [
         {
             "name": "internal-eth-transfers",
@@ -571,7 +571,7 @@ This config uses the contains filter operation on the tx_input to index transact
 {
   "pg_url": "postgres:///shovel",
   "eth_sources": [
-    {"name": "mainnet", "chain_id": 1, "url": "https://ethereum-rpc.publicnode.com"}
+    {"name": "mainnet", "chain_id": 1, "urls": ["https://ethereum-rpc.publicnode.com"]}
   ],
   "integrations": [{
     "name": "specific-tx",
