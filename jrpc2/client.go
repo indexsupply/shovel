@@ -11,11 +11,13 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unicode"
 
@@ -31,22 +33,53 @@ import (
 	"nhooyr.io/websocket/wsjson"
 )
 
+type URL struct {
+	parsed   *url.URL
+	provided string
+}
+
+func MustURL(provided string) *URL {
+	parsed, err := url.Parse(provided)
+	if err != nil {
+		fmt.Printf("unable to parse url: %s\n", provided)
+		os.Exit(1)
+	}
+	return &URL{parsed: parsed, provided: provided}
+}
+
+func (u *URL) Hostname() string {
+	return u.parsed.Hostname()
+}
+
+func (u *URL) String() string {
+	return u.parsed.String()
+}
+
 func randbytes() []byte {
 	b := make([]byte, 10)
 	rand.Read(b)
 	return b
 }
 
-func New(url string) *Client {
+func New(providedURLs ...string) *Client {
+	var (
+		urls           []*URL
+		debug, nocache bool
+	)
+	for _, provided := range providedURLs {
+		debug = strings.Contains(provided, "debug")
+		nocache = strings.Contains(provided, "nocache")
+		urls = append(urls, MustURL(provided))
+	}
 	return &Client{
-		d:       strings.Contains(url, "debug"),
-		nocache: strings.Contains(url, "nocache"),
+		d:       debug,
+		nocache: nocache,
 		hc: &http.Client{
 			Timeout:   10 * time.Second,
 			Transport: gzhttp.Transport(http.DefaultTransport),
 		},
+		urls:         urls,
 		pollDuration: time.Second,
-		url:          url,
 		lcache:       NumHash{maxreads: 20},
 		bcache:       cache{maxreads: 20},
 		hcache:       cache{maxreads: 20},
@@ -57,14 +90,21 @@ type Client struct {
 	nocache bool
 	d       bool
 	hc      *http.Client
-	url     string
+	urls    []*URL
 	wsurl   string
 
+	reqCounter   uint64
 	pollDuration time.Duration
 
 	lcache NumHash
 	bcache cache
 	hcache cache
+}
+
+func (c *Client) NextURL() *URL {
+	atomic.AddUint64(&c.reqCounter, 1)
+	next := c.reqCounter % uint64(len(c.urls))
+	return c.urls[next]
 }
 
 func (c *Client) WithMaxReads(n int) *Client {
@@ -98,7 +138,7 @@ type request struct {
 	Params  []any  `json:"params"`
 }
 
-func (c *Client) do(ctx context.Context, dest, req any) error {
+func (c *Client) do(ctx context.Context, url string, dest, req any) error {
 	var (
 		eg   errgroup.Group
 		r, w = io.Pipe()
@@ -109,7 +149,7 @@ func (c *Client) do(ctx context.Context, dest, req any) error {
 		return json.NewEncoder(w).Encode(req)
 	})
 	eg.Go(func() error {
-		req, err := http.NewRequest("POST", c.url, c.debug(r))
+		req, err := http.NewRequest("POST", url, c.debug(r))
 		if err != nil {
 			return fmt.Errorf("unable to new request: %w", err)
 		}
@@ -266,14 +306,14 @@ func (c *Client) wsListen(ctx context.Context) {
 	}
 }
 
-func (c *Client) httpPoll(ctx context.Context) {
+func (c *Client) httpPoll(ctx context.Context, url string) {
 	var (
 		ticker = time.NewTicker(c.pollDuration)
 		hresp  = headerResp{}
 	)
 	defer ticker.Stop()
 	for range ticker.C {
-		err := c.do(ctx, &hresp, request{
+		err := c.do(ctx, url, &hresp, request{
 			ID:      "1",
 			Version: "2.0",
 			Method:  "eth_getBlockByNumber",
@@ -305,7 +345,7 @@ func (c *Client) httpPoll(ctx context.Context) {
 // When n is 0, Latest always fetches the latest block
 // rather than using the cached value,
 // bypassing the caching mechanism.
-func (c *Client) Latest(ctx context.Context, n uint64) (uint64, []byte, error) {
+func (c *Client) Latest(ctx context.Context, url string, n uint64) (uint64, []byte, error) {
 	c.lcache.once.Do(func() {
 		switch {
 		case len(c.wsurl) > 0:
@@ -313,7 +353,7 @@ func (c *Client) Latest(ctx context.Context, n uint64) (uint64, []byte, error) {
 			go c.wsListen(context.Background())
 		default:
 			slog.DebugContext(ctx, "jrpc2 http polling")
-			go c.httpPoll(context.Background())
+			go c.httpPoll(context.Background(), url)
 		}
 	})
 	if n, h, ok := c.lcache.get(ctx, n); ok {
@@ -321,7 +361,7 @@ func (c *Client) Latest(ctx context.Context, n uint64) (uint64, []byte, error) {
 	}
 
 	hresp := headerResp{}
-	err := c.do(ctx, &hresp, request{
+	err := c.do(ctx, url, &hresp, request{
 		ID:      fmt.Sprintf("latest-%d-%x", n, randbytes()),
 		Version: "2.0",
 		Method:  "eth_getBlockByNumber",
@@ -342,9 +382,9 @@ func (c *Client) Latest(ctx context.Context, n uint64) (uint64, []byte, error) {
 	return uint64(hresp.Number), hresp.Hash, nil
 }
 
-func (c *Client) Hash(ctx context.Context, n uint64) ([]byte, error) {
+func (c *Client) Hash(ctx context.Context, url string, n uint64) ([]byte, error) {
 	hresp := headerResp{}
-	err := c.do(ctx, &hresp, request{
+	err := c.do(ctx, url, &hresp, request{
 		ID:      fmt.Sprintf("hash-%d-%x", n, randbytes()),
 		Version: "2.0",
 		Method:  "eth_getBlockByNumber",
@@ -368,6 +408,7 @@ type blockmap map[uint64]*eth.Block
 
 func (c *Client) Get(
 	ctx context.Context,
+	url string,
 	filter *glf.Filter,
 	start, limit uint64,
 ) ([]eth.Block, error) {
@@ -385,12 +426,12 @@ func (c *Client) Get(
 	)
 	switch {
 	case filter.UseBlocks:
-		blocks, err = c.bcache.get(c.nocache, ctx, start, limit, c.blocks)
+		blocks, err = c.bcache.get(c.nocache, ctx, url, start, limit, c.blocks)
 		if err != nil {
 			return nil, fmt.Errorf("getting blocks: %w", err)
 		}
 	case filter.UseHeaders:
-		blocks, err = c.hcache.get(c.nocache, ctx, start, limit, c.headers)
+		blocks, err = c.hcache.get(c.nocache, ctx, url, start, limit, c.headers)
 		if err != nil {
 			return nil, fmt.Errorf("getting headers: %w", err)
 		}
@@ -411,15 +452,15 @@ func (c *Client) Get(
 
 	switch {
 	case filter.UseReceipts:
-		if err := c.receipts(ctx, bm, start, limit); err != nil {
+		if err := c.receipts(ctx, url, bm, start, limit); err != nil {
 			return nil, fmt.Errorf("getting receipts: %w", err)
 		}
 	case filter.UseLogs:
-		if err := c.logs(ctx, filter, bm, start, limit); err != nil {
+		if err := c.logs(ctx, url, filter, bm, start, limit); err != nil {
 			return nil, fmt.Errorf("getting logs: %w", err)
 		}
 	case filter.UseTraces:
-		if err := c.traces(ctx, bm, start, limit); err != nil {
+		if err := c.traces(ctx, url, bm, start, limit); err != nil {
 			return nil, fmt.Errorf("getting traces: %w", err)
 		}
 	}
@@ -444,7 +485,7 @@ type cache struct {
 	segments map[key]*segment
 }
 
-type getter func(ctx context.Context, start, limit uint64) ([]eth.Block, error)
+type getter func(ctx context.Context, url string, start, limit uint64) ([]eth.Block, error)
 
 func (c *cache) pruneMaxRead() {
 	for k, v := range c.segments {
@@ -473,9 +514,9 @@ func (c *cache) pruneSegments() {
 	}
 }
 
-func (c *cache) get(nocache bool, ctx context.Context, start, limit uint64, f getter) ([]eth.Block, error) {
+func (c *cache) get(nocache bool, ctx context.Context, url string, start, limit uint64, f getter) ([]eth.Block, error) {
 	if nocache {
-		return f(ctx, start, limit)
+		return f(ctx, url, start, limit)
 	}
 	c.Lock()
 	if c.segments == nil {
@@ -497,7 +538,7 @@ func (c *cache) get(nocache bool, ctx context.Context, start, limit uint64, f ge
 		return seg.d, nil
 	}
 
-	blocks, err := f(ctx, start, limit)
+	blocks, err := f(ctx, url, start, limit)
 	if err != nil {
 		return nil, fmt.Errorf("cache get: %w", err)
 	}
@@ -507,7 +548,7 @@ func (c *cache) get(nocache bool, ctx context.Context, start, limit uint64, f ge
 	return seg.d, nil
 }
 
-func (c *Client) blocks(ctx context.Context, start, limit uint64) ([]eth.Block, error) {
+func (c *Client) blocks(ctx context.Context, url string, start, limit uint64) ([]eth.Block, error) {
 	var (
 		t0     = time.Now()
 		reqs   = make([]request, limit)
@@ -523,7 +564,7 @@ func (c *Client) blocks(ctx context.Context, start, limit uint64) ([]eth.Block, 
 		}
 		resps[i].Block = &blocks[i]
 	}
-	err := c.do(ctx, &resps, reqs)
+	err := c.do(ctx, url, &resps, reqs)
 	if err != nil {
 		return nil, fmt.Errorf("requesting blocks: %w", err)
 	}
@@ -571,7 +612,7 @@ type headerResp struct {
 	*eth.Header `json:"result"`
 }
 
-func (c *Client) headers(ctx context.Context, start, limit uint64) ([]eth.Block, error) {
+func (c *Client) headers(ctx context.Context, url string, start, limit uint64) ([]eth.Block, error) {
 	var (
 		t0     = time.Now()
 		reqs   = make([]request, limit)
@@ -587,7 +628,7 @@ func (c *Client) headers(ctx context.Context, start, limit uint64) ([]eth.Block,
 		}
 		resps[i].Header = &blocks[i].Header
 	}
-	err := c.do(ctx, &resps, reqs)
+	err := c.do(ctx, url, &resps, reqs)
 	if err != nil {
 		return nil, fmt.Errorf("requesting headers: %w", err)
 	}
@@ -620,7 +661,7 @@ type receiptResp struct {
 	Result []receiptResult `json:"result"`
 }
 
-func (c *Client) receipts(ctx context.Context, bm blockmap, start, limit uint64) error {
+func (c *Client) receipts(ctx context.Context, url string, bm blockmap, start, limit uint64) error {
 	var (
 		reqs  = make([]request, limit)
 		resps = make([]receiptResp, limit)
@@ -633,7 +674,7 @@ func (c *Client) receipts(ctx context.Context, bm blockmap, start, limit uint64)
 			Params:  []any{eth.EncodeUint64(start + i)},
 		}
 	}
-	err := c.do(ctx, &resps, reqs)
+	err := c.do(ctx, url, &resps, reqs)
 	if err != nil {
 		return fmt.Errorf("requesting receipts: %w", err)
 	}
@@ -688,7 +729,7 @@ type logResp struct {
 	Result []logResult `json:"result"`
 }
 
-func (c *Client) logs(ctx context.Context, filter *glf.Filter, bm blockmap, start, limit uint64) error {
+func (c *Client) logs(ctx context.Context, url string, filter *glf.Filter, bm blockmap, start, limit uint64) error {
 	var (
 		t0 = time.Now()
 		lf = struct {
@@ -707,7 +748,7 @@ func (c *Client) logs(ctx context.Context, filter *glf.Filter, bm blockmap, star
 			&logResp{},
 		}
 	)
-	err := c.do(ctx, &resp, []request{
+	err := c.do(ctx, url, &resp, []request{
 		request{
 			ID:      fmt.Sprintf("blocks-%d-%d-%x", start, limit, randbytes()),
 			Version: "2.0",
@@ -788,7 +829,7 @@ type traceBlockResp struct {
 	Result []traceBlockResult `json:"result"`
 }
 
-func (c *Client) traces(ctx context.Context, bm blockmap, start, limit uint64) error {
+func (c *Client) traces(ctx context.Context, url string, bm blockmap, start, limit uint64) error {
 	t0 := time.Now()
 	for i := uint64(0); i < limit; i++ {
 		res := traceBlockResp{}
@@ -798,7 +839,7 @@ func (c *Client) traces(ctx context.Context, bm blockmap, start, limit uint64) e
 			Method:  "trace_block",
 			Params:  []any{eth.EncodeUint64(start + i)},
 		}
-		err := c.do(ctx, &res, req)
+		err := c.do(ctx, url, &res, req)
 		if err != nil {
 			return fmt.Errorf("requesting traces: %w", err)
 		}

@@ -16,7 +16,7 @@ Here is a basic Config that saves ERC20 transfers
     {
       "name": "mainnet",
       "chain_id": 1,
-      "url": "https://ethereum-rpc.publicnode.com"
+      "urls": ["https://ethereum-rpc.publicnode.com"]
     }
   ],
   "integrations": [{
@@ -70,8 +70,8 @@ l=info  v=1.6 msg=new-task ig=usdc-transfer src=base
 l=info  v=1.6 msg=prune-task n=0
 l=info  v=1.6 msg=start at latest ig=usdc-transfer src=mainnet num=19793295
 l=info  v=1.6 msg=start at latest ig=usdc-transfer src=base num=13997369
-l=info  v=1.6 msg=converge ig=usdc-transfer src=mainnet req=19793295/1 n=19793295 h=f537a5c3 nrows=1 nrpc=4 nblocks=1 elapsed=1.117870458s
-l=info  v=1.6 msg=converge ig=usdc-transfer src=base req=13997369/1 n=13997369 h=9b4a1912 nrows=0 nrpc=4 nblocks=1 elapsed=1.160724958s
+l=info  v=1.6 msg=converge ig=usdc-transfer host=base-rpc.publicnode.com src=base req=15507896/1 n=15507896 h=edadbe50 nrows=11 nrpc=3 nblocks=1 elapsed=817.485916ms
+l=info  v=1.6 msg=converge ig=usdc-transfer host=ethereum-rpc.publicnode.com src=mainnet req=20043416/1 n=20043416 h=949c4c7e nrows=3 nrpc=3 nblocks=1 elapsed=984.472375ms
 ```
 
 <hr>
@@ -104,6 +104,7 @@ The following resources are automatically deployed on a main commit:
 
 On main but not yet associated with a new version tag.
 
+- accept multiple URLs per source for redundancy
 - fix db encoding for negative int{..256} values
 - fix `error="getting receipts: no rpc error but empty result"`
 - add tx_gas_used, tx_effective_gas_price as [data](#data) options. requires eth_getBlockReceipts
@@ -216,7 +217,7 @@ go run ./cmd/shovel
     {
       "name": "mainnet",
       "chain_id": 1,
-      "url": "https://ethereum-rpc.publicnode.com"
+      "urls": ["https://ethereum-rpc.publicnode.com"]
     }
   ],
   "integrations": [
@@ -276,7 +277,7 @@ Indexes:
     {
       "name": "fast",
       "chain_id": 1,
-      "url": "https://ethereum-rpc.publicnode.com",
+      "urls": ["https://ethereum-rpc.publicnode.com"],
       "concurrency": 10,
       "batch_size": 100
     }
@@ -300,8 +301,8 @@ Indexes:
 {
   "pg_url": "postgres:///shovel",
   "eth_sources": [
-    {"name": "mainnet", "chain_id": 1, "url": "https://ethereum-rpc.publicnode.com"},
-    {"name": "goerli",  "chain_id": 11155111, "url": "https://ethereum-sepolia-rpc.publicnode.com"}
+    {"name": "mainnet", "chain_id": 1, "urls": ["https://ethereum-rpc.publicnode.com"]},
+    {"name": "goerli",  "chain_id": 11155111, "urls": ["https://ethereum-sepolia-rpc.publicnode.com"]}
   ],
   "integrations": [
     {
@@ -375,7 +376,7 @@ Indexes:
     {
       "name": "mainnet",
       "chain_id": 1,
-      "url": "https://ethereum-rpc.publicnode.com"
+      "urls": ["https://ethereum-rpc.publicnode.com"]
     }
   ],
   "integrations": [
@@ -517,7 +518,7 @@ Indexes:
 ```
 {
     "pg_url": "postgres:///shovel",
-    "eth_sources": [{"name": "mainnet", "chain_id": 1, "url": "XXX"}],
+    "eth_sources": [{"name": "mainnet", "chain_id": 1, "urls": ["https://ethereum-rpc.publicnode.com"]}],
     "integrations": [
         {
             "name": "internal-eth-transfers",
@@ -570,7 +571,7 @@ This config uses the contains filter operation on the tx_input to index transact
 {
   "pg_url": "postgres:///shovel",
   "eth_sources": [
-    {"name": "mainnet", "chain_id": 1, "url": "https://ethereum-rpc.publicnode.com"}
+    {"name": "mainnet", "chain_id": 1, "urls": ["https://ethereum-rpc.publicnode.com"]}
   ],
   "integrations": [{
     "name": "specific-tx",
@@ -621,7 +622,7 @@ Postgres is configured with a database URL. It will respect the SSL Mode defined
 
 ### Ethereum
 
-A single Shovel process can connect to many Ethereum Sources. Each Source is identified by name and includes a Chain ID and a URL. Shovel uses the following HTTP JSON RPC API methods:
+A single Shovel process can connect to many Ethereum Sources. Each Source is identified by name and includes a Chain ID and a URL(s). Shovel uses the following HTTP JSON RPC API methods:
 
 1. `eth_getBlockByNumber`
 2. `eth_getLogs`
@@ -631,6 +632,8 @@ A single Shovel process can connect to many Ethereum Sources. Each Source is ide
 Shovel will choose the RPC method depending on the integration’s data requirements. See [Data](#data) for a table outlining the data that you can index, its required API, and the associated performance cost.
 
 Upon startup, Shovel will use `eth_getBlockByNumber` to find the latest block. It will then compare the response with its latest block in Postgres to figure out where to begin. While indexing data, Shovel will make batched calls to `eth_getBlockByNumber`, batched calls to `eth_getBlockReceipts`, and single calls to `eth_getLogs` depending on the configured `batch_size` and the RPC methods required to index the data.
+
+Shovel accepts either a single `url` or an array of `urls` per Source. Setting multiple `urls` instructs Shovel to round-robin requests so that a single url doesn't halt progress.
 
 ### Integrations
 
@@ -835,6 +838,11 @@ Shovel logs an error when the node provider is unsynchronized
 error=getting logs: eth backend missing logs for block
 ```
 
+### Multiple Ethereum Source URLs
+
+Each Ethereum Source can be configured with multiple URLs. This enables Shovel to survive 3rd party Ethereum API provider downtime. Shovel will round-robin requests to the set of URLs. This is preferred over a _backup url_ since resources that are only used during an emergency are often misconfigured or under-provisioned. By using a round-robin request strategy, Shovel operators can be sure that the _backup_ is just as good as the primary.
+
+Each log line contains a `host=domain.com` key-value pair so that operators can gain insight into the health of the Ethereum API provider.
 
 <hr>
 
@@ -1308,6 +1316,7 @@ This JSON Config is the primary UI for Shovel. The Config object holds the datab
     - [`name`](#config-eth-sources-name)
     - [`chain_id`](#config-eth-sources-chain-id)
     - [`url`](#config-eth-sources-url)
+    - [`urls`](#config-eth-sources-urls)
     - [`ws_url`](#config-eth-sources-ws-url)
     - [`poll_duration`](#config-eth-sources-poll-duration)
     - [`concurrency`](#config-eth-sources-concurrency)
@@ -1412,7 +1421,17 @@ There isn't a whole lot that depends on this value at the moment (ie no crypto f
 
 ### `eth_sources[].url` {#config-eth-sources-url .reference}
 
-A URL that points to a HTTP JSON RPC API. This can be a local {G,R}eth node or a Quicknode.
+A URL that points to an HTTP JSON RPC API. This can be a local {G,R}eth node or a Quicknode.
+
+### `eth_sources[].urls` {#config-eth-sources-urls .reference}
+
+An array of [url](#config-eth-sources-url)s that point to an HTTP JSON RPC API.
+
+It is possible, although not useful, to use this field and the [url](#config-eth-sources-url) field. When both fields are used the sources will be configured with a union of all the URLs.
+
+Shovel will round-robin requests to the URLs. This is useful when you would like to have a backup HTTP JSON RPC API.
+
+In the case that a single request to a single url fails, either because of a 500, a timeout, or general problem indexing the data, Shovel will simply try the `Converge` function again with the next url in the list. Shovel chooses a single url for the entire `Converge` function.
 
 ### `eth_sources[].ws_url` {#config-eth-sources-ws-url .reference}
 

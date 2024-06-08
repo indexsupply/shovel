@@ -30,9 +30,10 @@ import (
 var Schema string
 
 type Source interface {
-	Get(context.Context, *glf.Filter, uint64, uint64) ([]eth.Block, error)
-	Latest(context.Context, uint64) (uint64, []byte, error)
-	Hash(context.Context, uint64) ([]byte, error)
+	Get(context.Context, string, *glf.Filter, uint64, uint64) ([]eth.Block, error)
+	Latest(context.Context, string, uint64) (uint64, []byte, error)
+	Hash(context.Context, string, uint64) ([]byte, error)
+	NextURL() *jrpc2.URL
 }
 
 type Destination interface {
@@ -303,18 +304,18 @@ func (t *Task) latest(ctx context.Context, pg wpg.Conn) (uint64, []byte, error) 
 		switch {
 		case t.start > 0:
 			n := t.start - 1
-			h, err := t.src.Hash(ctx, n)
+			h, err := t.src.Hash(ctx, t.src.NextURL().String(), n)
 			if err != nil {
 				return 0, nil, fmt.Errorf("getting hash for %d: %w", n, err)
 			}
 			slog.InfoContext(t.ctx, "start at config", "num", t.start)
 			return n, h, nil
 		default:
-			n, _, err := t.src.Latest(ctx, 0)
+			n, _, err := t.src.Latest(ctx, t.src.NextURL().String(), 0)
 			if err != nil {
 				return 0, nil, err
 			}
-			h, err := t.src.Hash(ctx, n-1)
+			h, err := t.src.Hash(ctx, t.src.NextURL().String(), n-1)
 			if err != nil {
 				return 0, nil, fmt.Errorf("getting hash for %d: %w", n-1, err)
 			}
@@ -341,10 +342,15 @@ var (
 // in no side-effects.
 func (task *Task) Converge() error {
 	var (
-		t0   = time.Now()
-		nrpc = uint64(0)
-		ctx  = wctx.WithCounter(task.ctx, &nrpc)
+		ctx     = task.ctx
+		t0      = time.Now()
+		nextURL = task.src.NextURL()
+		url     = nextURL.String()
+		nrpc    = uint64(0)
 	)
+	ctx = wctx.WithSrcHost(ctx, nextURL.Hostname())
+	ctx = wctx.WithCounter(ctx, &nrpc)
+
 	pgtx, err := task.pgp.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("starting converge tx: %w", err)
@@ -365,7 +371,7 @@ func (task *Task) Converge() error {
 		if task.stop > 0 && localNum >= task.stop {
 			return ErrDone
 		}
-		gethNum, gethHash, err := task.src.Latest(ctx, localNum)
+		gethNum, gethHash, err := task.src.Latest(ctx, url, localNum)
 		if err != nil {
 			return fmt.Errorf("getting latest from eth: %w", err)
 		}
@@ -411,7 +417,7 @@ func (task *Task) Converge() error {
 			return ErrNothingNew
 		}
 		ctx = wctx.WithNumLimit(ctx, localNum+1, delta)
-		switch last, err := task.loadinsert(ctx, pgtx, localHash, localNum+1, delta); {
+		switch last, err := task.loadinsert(ctx, url, pgtx, localHash, localNum+1, delta); {
 		case errors.Is(err, ErrReorg):
 			slog.ErrorContext(ctx, "reorg",
 				"n", localNum,
@@ -454,6 +460,7 @@ type hashcheck struct {
 
 func (t *Task) loadinsert(
 	ctx context.Context,
+	url string,
 	pg wpg.Conn,
 	localHash []byte,
 	start, limit uint64,
@@ -476,7 +483,7 @@ func (t *Task) loadinsert(
 		}
 		eg.Go(func() error {
 			ctx = wctx.WithNumLimit(ctx, m, n)
-			blocks, err := t.src.Get(ctx, &t.filter, m, n)
+			blocks, err := t.src.Get(ctx, url, &t.filter, m, n)
 			if err != nil {
 				slog.ErrorContext(ctx, "loading blocks", "error", err)
 				return fmt.Errorf("loading blocks: %w", err)
@@ -748,7 +755,7 @@ func loadTasks(ctx context.Context, pgp *pgxpool.Pool, c config.Root) ([]*Task, 
 	}
 	var sources = map[string]Source{}
 	for _, sc := range scByName {
-		sources[sc.Name] = jrpc2.New(sc.URL).
+		sources[sc.Name] = jrpc2.New(sc.URLs...).
 			WithWSURL(sc.WSURL).
 			WithPollDuration(sc.PollDuration).
 			WithMaxReads(len(allIntegrations))

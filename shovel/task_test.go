@@ -10,6 +10,7 @@ import (
 
 	"github.com/indexsupply/x/dig"
 	"github.com/indexsupply/x/eth"
+	"github.com/indexsupply/x/jrpc2"
 	"github.com/indexsupply/x/shovel/config"
 	"github.com/indexsupply/x/shovel/glf"
 	"github.com/indexsupply/x/tc"
@@ -95,11 +96,15 @@ type testGeth struct {
 	blocks []eth.Block
 }
 
+func (tg *testGeth) NextURL() *jrpc2.URL {
+	return jrpc2.MustURL("")
+}
+
 func (tg *testGeth) factory(config.Source, glf.Filter) Source {
 	return tg
 }
 
-func (tg *testGeth) Hash(_ context.Context, n uint64) ([]byte, error) {
+func (tg *testGeth) Hash(_ context.Context, _ string, n uint64) ([]byte, error) {
 	for j := range tg.blocks {
 		if uint64(tg.blocks[j].Header.Number) == n {
 			return tg.blocks[j].Header.Hash, nil
@@ -108,7 +113,7 @@ func (tg *testGeth) Hash(_ context.Context, n uint64) ([]byte, error) {
 	return nil, fmt.Errorf("not found: %d", n)
 }
 
-func (tg *testGeth) Latest(_ context.Context, _ uint64) (uint64, []byte, error) {
+func (tg *testGeth) Latest(_ context.Context, _ string, _ uint64) (uint64, []byte, error) {
 	if len(tg.blocks) == 0 {
 		return 0, nil, nil
 	}
@@ -116,7 +121,7 @@ func (tg *testGeth) Latest(_ context.Context, _ uint64) (uint64, []byte, error) 
 	return b.Num(), b.Hash(), nil
 }
 
-func (tg *testGeth) Get(_ context.Context, filter *glf.Filter, start, limit uint64) ([]eth.Block, error) {
+func (tg *testGeth) Get(_ context.Context, _ string, filter *glf.Filter, start, limit uint64) ([]eth.Block, error) {
 	if start+limit-1 > tg.blocks[len(tg.blocks)-1].Num() {
 		const tag = "no blocks. start=%d limit=%d latest=%d"
 		return nil, fmt.Errorf(tag, start, limit, tg.blocks[len(tg.blocks)-1].Num())
@@ -373,7 +378,7 @@ func TestLoadTasks(t *testing.T) {
 			config.Source{
 				Name:    "foo",
 				ChainID: 888,
-				URL:     "http://foo",
+				URLs:    []string{"http://foo"},
 			},
 		},
 		Integrations: []config.Integration{

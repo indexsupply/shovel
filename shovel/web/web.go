@@ -218,7 +218,7 @@ func (h *Handler) Prom(w http.ResponseWriter, r *http.Request) {
 
 		// Source
 		start = time.Now()
-		srcLatest, _, err = src.Latest(r.Context(), 0)
+		srcLatest, _, err = src.Latest(r.Context(), src.NextURL().String(), 0)
 		if err != nil {
 			srcErr++
 		}
@@ -248,7 +248,7 @@ func (h *Handler) Prom(w http.ResponseWriter, r *http.Request) {
 	}
 	var res []string
 	for _, sc := range scs {
-		src := jrpc2.New(sc.URL)
+		src := jrpc2.New(sc.URLs...)
 		for _, line := range checkSource(sc.Name, src) {
 			res = append(res, line)
 		}
@@ -288,7 +288,7 @@ func (h *Handler) Diag(w http.ResponseWriter, r *http.Request) {
 	}
 	checkSrc := func(src shovel.Source, dr *DiagResult) {
 		start := time.Now()
-		n, _, err := src.Latest(ctx, 0)
+		n, _, err := src.Latest(ctx, src.NextURL().String(), 0)
 		if err != nil {
 			dr.Error = err.Error()
 		}
@@ -303,7 +303,7 @@ func (h *Handler) Diag(w http.ResponseWriter, r *http.Request) {
 	for _, sc := range scs {
 		var (
 			dr  = &DiagResult{Source: sc.Name}
-			src = jrpc2.New(sc.URL)
+			src = jrpc2.New(sc.URLs...)
 		)
 		checkPG(dr)
 		checkSrc(src, dr)
