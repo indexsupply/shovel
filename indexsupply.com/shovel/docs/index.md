@@ -840,7 +840,9 @@ error=getting logs: eth backend missing logs for block
 
 ### Multiple Ethereum Source URLs
 
-Each Ethereum Source can be configured with multiple URLs. This gives Shovel operators the ability to survive 3rd party provider downtime. Shovel round-robin requests to the set of URLs. This is preferred over a _backup url_ since resources that are only used during an emergency are often misconfigured or under-provisioned. By using round-robin requests, operators can be sure that the _backup_ is just as good as the primary.
+Each Ethereum Source can be configured with multiple URLs. This enables Shovel to survive 3rd party Ethereum API provider downtime. Shovel will round-robin requests to the set of URLs. This is preferred over a _backup url_ since resources that are only used during an emergency are often misconfigured or under-provisioned. By using a round-robin request strategy, Shovel operators can be sure that the _backup_ is just as good as the primary.
+
+Each log line contains a `host=domain.com` key-value pair so that operators can gain insight into the health of the Ethereum API provider.
 
 <hr>
 
