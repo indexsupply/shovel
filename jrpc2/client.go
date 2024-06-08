@@ -34,10 +34,8 @@ import (
 )
 
 type URL struct {
-	parsed         *url.URL
-	provided       string
-	success, total uint64
-	lastError      time.Time
+	parsed   *url.URL
+	provided string
 }
 
 func MustURL(provided string) *URL {
