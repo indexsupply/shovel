@@ -1,6 +1,6 @@
 {
   "name": "@indexsupply/shovel-config",
   "description": "Types and functions for building a Shovel config file.",
-  "version": "0.0.16",
+  "version": "0.0.17",
   "exports": "./src/index.ts"
 }

@@ -120,9 +120,19 @@ export type Event = {
   readonly inputs: readonly EventInput[];
 };
 
+/**
+ * Source represents an Ethereum HTTP JSON RPC API Provider.
+ */
 export type Source = {
   name: string;
   url: string;
+  /**
+   * Shovel will round-robin requests to these urls.
+   * This may be helpful for reducing downtime.
+   *
+   * url is added to urls
+   */
+  urls: string[];
   chain_id: EnvRef | number;
   poll_duration?: EnvRef | string;
   concurrency?: EnvRef | number;
