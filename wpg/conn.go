@@ -54,36 +54,3 @@ func LockHash(s string) int64 {
 	}
 	return n
 }
-
-func NewTxLocker(tx pgx.Tx) *TxLocker {
-	return &TxLocker{tx: tx}
-}
-
-type TxLocker struct {
-	sync.Mutex
-	tx pgx.Tx
-}
-
-func (t *TxLocker) QueryRow(ctx context.Context, sql string, args ...any) pgx.Row {
-	t.Lock()
-	defer t.Unlock()
-	return t.tx.QueryRow(ctx, sql, args...)
-}
-
-func (t *TxLocker) Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error) {
-	t.Lock()
-	defer t.Unlock()
-	return t.tx.Query(ctx, sql, args...)
-}
-
-func (t *TxLocker) Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
-	t.Lock()
-	defer t.Unlock()
-	return t.tx.Exec(ctx, sql, args...)
-}
-
-func (t *TxLocker) CopyFrom(ctx context.Context, table pgx.Identifier, cols []string, source pgx.CopyFromSource) (int64, error) {
-	t.Lock()
-	defer t.Unlock()
-	return t.tx.CopyFrom(ctx, table, cols, source)
-}
