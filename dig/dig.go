@@ -1103,6 +1103,11 @@ func dbtype(abitype string, d []byte) any {
 		return false
 	case abitype == "string":
 		return string(d)
+	case abitype == "bytes":
+		if len(d) == 0 {
+			return []byte{}
+		}
+		return d
 	default:
 		return d
 	}

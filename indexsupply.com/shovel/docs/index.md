@@ -104,6 +104,7 @@ The following resources are automatically deployed on a main commit:
 
 On main but not yet associated with a new version tag.
 
+- empty decoded bytes are stored as an empty byte array instead of NULL
 - accept multiple URLs per source for redundancy
 - fix db encoding for negative int{..256} values
 - fix `error="getting receipts: no rpc error but empty result"`

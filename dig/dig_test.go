@@ -349,6 +349,12 @@ func TestDBType(t *testing.T) {
 			&negInt{uint256.NewInt(0).Neg(uint256.NewInt(1))},
 			reflect.Ptr,
 		},
+		{
+			"bytes",
+			nil,
+			[]byte{},
+			reflect.Slice,
+		},
 	}
 	for _, tc := range cases {
 		got := dbtype(tc.abitype, tc.input)
