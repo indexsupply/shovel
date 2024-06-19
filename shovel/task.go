@@ -2,12 +2,14 @@ package shovel
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"database/sql"
 	_ "embed"
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -351,20 +353,26 @@ func (task *Task) Converge() error {
 	ctx = wctx.WithSrcHost(ctx, nextURL.Hostname())
 	ctx = wctx.WithCounter(ctx, &nrpc)
 
-	pgtx, err := task.pgp.Begin(ctx)
-	if err != nil {
-		return fmt.Errorf("starting converge tx: %w", err)
-	}
-	defer pgtx.Rollback(ctx)
+	var (
+		pg       wpg.Conn = task.pgp
+		commit            = func() error { return nil }
+		rollback          = func() error { return nil }
 
-	const lockq = `select pg_advisory_xact_lock($1)`
-	_, err = pgtx.Exec(ctx, lockq, task.lockid)
-	if err != nil {
-		return fmt.Errorf("task lock %d: %w", task.srcChainID, err)
-	}
+		startReorgTx = sync.OnceFunc(func() {
+			slog.ErrorContext(ctx, "starting reorg db tx")
+			pgtx, err := task.pgp.Begin(ctx)
+			if err != nil {
+				panic("unable to start pg tx during reorg")
+			}
+			commit = func() error { return pgtx.Commit(ctx) }
+			rollback = func() error { return pgtx.Rollback(ctx) }
+			pg = pgtx
+		})
+	)
+	defer rollback()
 
 	for reorgs := 0; reorgs <= 10; reorgs++ {
-		localNum, localHash, err := task.latest(ctx, pgtx)
+		localNum, localHash, err := task.latest(ctx, pg)
 		if err != nil {
 			return fmt.Errorf("getting latest from task: %w", err)
 		}
@@ -381,7 +389,7 @@ func (task *Task) Converge() error {
 		)
 		switch {
 		case len(task.destConfig.Dependencies) > 0:
-			depNum, depHash, err := task.latestDependency(pgtx)
+			depNum, depHash, err := task.latestDependency(pg)
 			if err != nil {
 				return fmt.Errorf("getting latest from dependencies: %w", err)
 			}
@@ -417,62 +425,67 @@ func (task *Task) Converge() error {
 			return ErrNothingNew
 		}
 		ctx = wctx.WithNumLimit(ctx, localNum+1, delta)
-		switch last, err := task.loadinsert(ctx, url, pgtx, localHash, localNum+1, delta); {
-		case errors.Is(err, ErrReorg):
+		blocks, err := task.load(ctx, url, localHash, localNum+1, delta)
+		if errors.Is(err, ErrReorg) {
 			slog.ErrorContext(ctx, "reorg",
 				"n", localNum,
 				"h", fmt.Sprintf("%.4x", localHash),
 			)
-			if err := task.Delete(pgtx, localNum); err != nil {
+			startReorgTx()
+			if err := task.Delete(pg, localNum); err != nil {
 				return fmt.Errorf("deleting during reorg: %w", err)
 			}
 			continue
-		case err != nil:
-			return fmt.Errorf("loading/insert: %w", err)
-		default:
-			err := task.update(pgtx, last.num, last.hash, targetNum, targetHash, delta, last.nrows, time.Since(t0))
-			if err != nil {
-				return fmt.Errorf("updating task: %w", err)
-			}
-			if err := pgtx.Commit(ctx); err != nil {
-				return fmt.Errorf("committing tx: %w", err)
-			}
-			slog.InfoContext(ctx, "converge",
-				"n", last.num,
-				"h", fmt.Sprintf("%.4x", last.hash),
-				"nrows", last.nrows,
-				"nrpc", wctx.Counter(ctx),
-				"nblocks", delta,
-				"elapsed", time.Since(t0),
-			)
-			return nil
 		}
+		if err != nil {
+			return fmt.Errorf("loading data: %w", err)
+		}
+		commit()
+
+		pgtx, err := task.pgp.Begin(ctx)
+		if err != nil {
+			return fmt.Errorf("starting insert pg tx: %w", err)
+		}
+		nrows, err := task.insert(ctx, pgtx, blocks)
+		if err != nil {
+			pgtx.Rollback(ctx)
+			return fmt.Errorf("inserting data: %w", err)
+		}
+		last := blocks[len(blocks)-1]
+		err = task.update(pgtx, last.Num(), last.Hash(), targetNum, targetHash, delta, nrows, time.Since(t0))
+		if err != nil {
+			pgtx.Rollback(ctx)
+			return fmt.Errorf("updating task: %w", err)
+		}
+		if err := pgtx.Commit(ctx); err != nil {
+			return fmt.Errorf("committing tx: %w", err)
+		}
+		slog.InfoContext(ctx, "converge",
+			"n", last.Num(),
+			"h", fmt.Sprintf("%.4x", last.Hash()),
+			"nrows", nrows,
+			"nrpc", wctx.Counter(ctx),
+			"nblocks", delta,
+			"elapsed", time.Since(t0),
+		)
+		return nil
 	}
 	return ErrReorg
 }
 
-type hashcheck struct {
-	nrows  int64
-	num    uint64
-	hash   []byte
-	parent []byte
-}
-
-func (t *Task) loadinsert(
+func (t *Task) load(
 	ctx context.Context,
 	url string,
-	pg wpg.Conn,
 	localHash []byte,
 	start, limit uint64,
-) (hashcheck, error) {
+) ([]eth.Block, error) {
 	var (
-		t0    = time.Now()
-		eg    errgroup.Group
-		pgmut sync.Mutex
-		part  = t.batchSize / t.concurrency
+		t0   = time.Now()
+		eg   errgroup.Group
+		part = t.batchSize / t.concurrency
 
-		checkMut    sync.Mutex
-		first, last = hashcheck{}, hashcheck{}
+		blocksMut sync.Mutex
+		blocks    []eth.Block
 	)
 	for i := 0; i < t.concurrency; i++ {
 		i := i
@@ -483,45 +496,74 @@ func (t *Task) loadinsert(
 		}
 		eg.Go(func() error {
 			ctx = wctx.WithNumLimit(ctx, m, n)
-			blocks, err := t.src.Get(ctx, url, &t.filter, m, n)
+			b, err := t.src.Get(ctx, url, &t.filter, m, n)
 			if err != nil {
 				slog.ErrorContext(ctx, "loading blocks", "error", err)
 				return fmt.Errorf("loading blocks: %w", err)
 			}
-			nr, err := t.dests[i].Insert(ctx, &pgmut, pg, blocks)
-			if err != nil {
-				return fmt.Errorf("inserting blocks: %w", err)
-			}
-			atomic.AddInt64(&last.nrows, nr)
-			checkMut.Lock()
-			if b := blocks[0]; first.num == 0 || first.num > b.Num() {
-				first.num = b.Num()
-				first.hash = b.Hash()
-				first.parent = b.Header.Parent
-			}
-			if b := blocks[len(blocks)-1]; last.num < b.Num() {
-				last.num = b.Num()
-				last.hash = b.Hash()
-				last.parent = b.Header.Parent
-			}
-			checkMut.Unlock()
+			blocksMut.Lock()
+			blocks = append(blocks, b...)
+			blocksMut.Unlock()
 			return nil
 		})
 	}
 	if err := eg.Wait(); err != nil {
-		return last, err
+		return nil, err
 	}
-	if len(first.parent) == 32 && !bytes.Equal(localHash, first.parent) {
-		return last, ErrReorg
+	slices.SortFunc(blocks, func(a, b eth.Block) int {
+		return cmp.Compare(a.Num(), b.Num())
+	})
+	first, last := blocks[0], blocks[len(blocks)-1]
+	if len(first.Header.Parent) == 32 && !bytes.Equal(localHash, first.Header.Parent) {
+		return nil, ErrReorg
 	}
-	slog.DebugContext(ctx, "insert",
-		"n", last.num,
-		"h", fmt.Sprintf("%.4x", last.hash),
-		"nrows", last.nrows,
+	slog.DebugContext(ctx, "load",
+		"n", last.Num(),
+		"h", fmt.Sprintf("%.4x", last.Hash()),
 		"nrpc", wctx.Counter(ctx),
 		"elapsed", time.Since(t0),
 	)
-	return last, nil
+	return blocks, nil
+}
+
+func (t *Task) insert(
+	ctx context.Context,
+	pg wpg.Conn,
+	blocks []eth.Block,
+) (int64, error) {
+	var (
+		t0    = time.Now()
+		nrows int64
+		eg    errgroup.Group
+		pgmut sync.Mutex
+	)
+	for i := 0; i < len(blocks); i += t.batchSize {
+		i := i
+		n := i + t.batchSize
+		if n > len(blocks) {
+			n = len(blocks)
+		}
+		eg.Go(func() error {
+			ctx = wctx.WithNumLimit(ctx, uint64(i), uint64(n))
+			nr, err := t.dests[i].Insert(ctx, &pgmut, pg, blocks[i:n])
+			if err != nil {
+				return fmt.Errorf("inserting blocks: %w", err)
+			}
+			atomic.AddInt64(&nrows, nr)
+			return nil
+		})
+	}
+	if err := eg.Wait(); err != nil {
+		return 0, err
+	}
+	last := blocks[len(blocks)-1]
+	slog.DebugContext(ctx, "insert",
+		"n", last.Num(),
+		"h", fmt.Sprintf("%.4x", last.Hash()),
+		"nrows", nrows,
+		"elapsed", time.Since(t0),
+	)
+	return nrows, nil
 }
 
 func PruneTask(ctx context.Context, pg wpg.Conn, n int) error {
