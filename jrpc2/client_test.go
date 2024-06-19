@@ -327,7 +327,7 @@ func TestValidate_Logs_NoBlocks(t *testing.T) {
 		_, err = c.Get(ctx, c.NextURL().String(), &glf.Filter{UseLogs: true}, 18000000, 2)
 	)
 	tc.WantErr(t, err)
-	const want = "getting logs: eth backend missing logs for block"
+	const want = "getting logs: eth backend missing logs for block: 18000001"
 	tc.WantGot(t, want, err.Error())
 }
 

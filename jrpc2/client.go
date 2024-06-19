@@ -731,15 +731,17 @@ type logResp struct {
 
 func (c *Client) logs(ctx context.Context, url string, filter *glf.Filter, bm blockmap, start, limit uint64) error {
 	var (
-		t0 = time.Now()
-		lf = struct {
+		t0        = time.Now()
+		fromBlock = start
+		toBlock   = start + limit - 1
+		lf        = struct {
 			From    string     `json:"fromBlock"`
 			To      string     `json:"toBlock"`
 			Address []string   `json:"address"`
 			Topics  [][]string `json:"topics"`
 		}{
-			From:    eth.EncodeUint64(start),
-			To:      eth.EncodeUint64(start + limit - 1),
+			From:    eth.EncodeUint64(fromBlock),
+			To:      eth.EncodeUint64(toBlock),
 			Address: filter.Addresses(),
 			Topics:  filter.Topics(),
 		}
@@ -753,7 +755,7 @@ func (c *Client) logs(ctx context.Context, url string, filter *glf.Filter, bm bl
 			ID:      fmt.Sprintf("blocks-%d-%d-%x", start, limit, randbytes()),
 			Version: "2.0",
 			Method:  "eth_getBlockByNumber",
-			Params:  []any{"0x" + strconv.FormatUint(start, 16), false},
+			Params:  []any{lf.To, false},
 		},
 		request{
 			ID:      fmt.Sprintf("logs-%d-%d-%x", start, limit, randbytes()),
@@ -770,12 +772,12 @@ func (c *Client) logs(ctx context.Context, url string, filter *glf.Filter, bm bl
 		lresp = resp[1].(*logResp)
 	)
 	switch {
-	case hresp.Header == nil:
-		return fmt.Errorf("eth backend missing logs for block")
 	case hresp.Error.Exists():
 		return fmt.Errorf("rpc=eth_getLogs/eth_getBlockByNumber %w", lresp.Error)
 	case lresp.Error.Exists():
 		return fmt.Errorf("rpc=eth_getLogs %w", lresp.Error)
+	case hresp.Header == nil:
+		return fmt.Errorf("eth backend missing logs for block: %d", toBlock)
 	}
 	var logsByTx = map[key][]logResult{}
 	for i := range lresp.Result {
