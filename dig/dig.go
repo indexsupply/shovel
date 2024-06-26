@@ -943,7 +943,7 @@ func (lwc *logWithCtx) get(name string) any {
 	case "trace_action_to":
 		return lwc.ta.To.Bytes()
 	case "trace_action_value":
-		return lwc.ta.Value.Dec()
+		return lwc.ta.Value
 	default:
 		return nil
 	}
