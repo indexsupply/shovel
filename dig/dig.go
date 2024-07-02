@@ -949,17 +949,23 @@ func (lwc *logWithCtx) get(name string) any {
 	}
 }
 
-type filterResults []bool
+type filterResults struct {
+	set bool
+	val bool
+}
 
 func (fr *filterResults) add(b bool) {
-	*fr = append(*fr, b)
+	fr.set = true
+	if !fr.val {
+		fr.val = b
+	}
 }
 
 func (fr *filterResults) accept() bool {
-	if len(*fr) == 0 {
+	if !fr.set {
 		return true
 	}
-	return slices.Contains(*fr, true)
+	return fr.val
 }
 
 func (ig Integration) processTx(rows [][]any, lwc *logWithCtx, pgmut *sync.Mutex, pg wpg.Conn) ([][]any, bool, error) {
@@ -967,7 +973,7 @@ func (ig Integration) processTx(rows [][]any, lwc *logWithCtx, pgmut *sync.Mutex
 	case ig.numSelected > 0:
 		return rows, false, nil
 	case ig.numBDSelected > 0:
-		frs := make(filterResults, 0)
+		frs := filterResults{}
 		row := make([]any, len(ig.coldefs))
 		for i, def := range ig.coldefs {
 			switch {
@@ -1001,7 +1007,7 @@ func (ig Integration) processLog(rows [][]any, lwc *logWithCtx, pgmut *sync.Mute
 		}
 		for i := 0; i < ig.resultCache.Len(); i++ {
 			ictr, actr := 1, 0
-			frs := make(filterResults, 0)
+			frs := filterResults{}
 			row := make([]any, len(ig.coldefs))
 			for j, def := range ig.coldefs {
 				switch {
@@ -1038,7 +1044,7 @@ func (ig Integration) processLog(rows [][]any, lwc *logWithCtx, pgmut *sync.Mute
 			}
 		}
 	default:
-		frs := make(filterResults, 0)
+		frs := filterResults{}
 		row := make([]any, len(ig.coldefs))
 		for i, def := range ig.coldefs {
 			switch {
