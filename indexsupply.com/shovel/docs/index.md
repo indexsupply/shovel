@@ -104,6 +104,7 @@ The following resources are automatically deployed on a main commit:
 
 On main but not yet associated with a new version tag.
 
+- fix multiple filters per block/event
 - fix filter operations on trace_action_value
 - empty decoded bytes are stored as an empty byte array instead of NULL
 - accept multiple URLs per source for redundancy
