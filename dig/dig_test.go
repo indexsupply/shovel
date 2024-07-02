@@ -457,8 +457,9 @@ func TestFilter(t *testing.T) {
 		},
 	}
 	for _, c := range cases {
-		got, err := c.f.Accept(context.Background(), mt, pg, c.d)
+		frs := make(filterResults, 0)
+		err := c.f.Accept(context.Background(), mt, pg, c.d, &frs)
 		tc.NoErr(t, err)
-		tc.WantGot(t, c.want, got)
+		tc.WantGot(t, c.want, frs.accept())
 	}
 }
