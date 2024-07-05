@@ -1,0 +1,20 @@
+apiVersion: v2
+name: shovel
+description: Helm chart for Shovel
+sources:
+  - https://github.com/indexsupply/code
+type: application
+# This is the chart version. This version number should be incremented each time you make changes
+# to the chart and its templates, including the app version.
+# Versions are expected to follow Semantic Versioning (https://semver.org/)
+version: 0.1.0
+appVersion: '1.6'
+dependencies:
+  - name: postgresql
+    condition: global.postgresql.enabled
+    version: "15.4.0"
+    repository: "https://charts.bitnami.com/bitnami"
+maintainers:
+  - name: indexsupply
+    url: https://indexsupply.com
+    email: info@indexsupply.com

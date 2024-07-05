@@ -1,0 +1,35 @@
+{{ template "chart.header" . }}
+{{ template "chart.badgesSection" . }}
+
+{{ template "chart.description" . }}
+
+
+{{ template "chart.homepageLine" . }}
+
+{{ template "chart.maintainersHeader" . }}
+{{ template "chart.maintainersTable" . }}
+{{ template "chart.deprecationWarning" . }}
+{{ template "chart.sourcesSection" . }}
+{{ template "chart.requirementsSection" . }}
+
+## Quick Start
+
+```bash
+helm install shovel shovel
+```
+
+## PostgreSQL
+
+By default the chart will install a PostgreSQL database using the bitnami PostgreSQL chart listening on port `5432` with service type `ClusterIP`
+and username and password `shovel` (see below Values section for more detail).
+
+If you want to use your own existing database instead (e.g. managed postgresql or [cloudnative-pg](https://cloudnative-pg.io)),
+specify the url to the database in the values.yaml:
+
+```yaml
+shovel:
+  pgUrl: "postgres:///my-postgresql"
+```
+
+
+{{ template "chart.valuesSection" . }}

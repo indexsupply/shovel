@@ -1,0 +1,153 @@
+# Default values for shovel
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+# Replicas are not supported 
+
+# -- Overrides the chart's name
+nameOverride: ""
+# -- Overrides the chart's computed fullname
+fullnameOverride: ""
+
+global:
+  # -- A list of pull secrets is used when credentials are needed to access a container registry with username and password.
+  imagePullSecrets: []
+  nodeSelector: {}
+  tolerations: []
+  # -- Set affinity
+  affinity: {}
+  # -- Pod security context
+  securityContext:
+    fsGroup: 1000
+    runAsGroup: 1000
+    runAsNonRoot: true
+    runAsUser: 1000
+  serviceAccount:
+    # -- Enable service account (Note: Service Account will only be automatically created if `global.serviceAccount.name` is not set)
+    create: true
+    # -- Annotations to add to the service account
+    annotations: {}
+    # -- Name of an already existing service account. Setting this value disables the automatic service account creation
+    name: ""
+  podMonitor:
+    # -- Create a [PodMonitor](https://github.com/prometheus-operator/prometheus-operator/blob/main/Documentation/user-guides/getting-started.md)
+    create: false
+  service:
+    # -- Enable Service
+    enabled: true
+    # -- Service type, ClusterIP, LoadBalancer or ClusterIP.
+    type: ClusterIP 
+    # -- Service annotations
+    annotations: {}
+  postgresql:
+    enabled: true
+    auth:
+      username: "shovel"
+      password: "shovel"
+      database: "shovel"
+
+# -- PostgreSQL parameters, only used if global.postgresql.enabled is set to true. See https://github.com/bitnami/charts/blob/main/bitnami/postgresql/values.yaml for full list of available option.
+postgresql:
+  primary:
+    # -- PostgreSQL Primary persistence configuration
+    persistence:
+      # -- PostgreSQL Primary PVC Storage Class for data volume. If undefined (the default) or set to null, no storageClassName spec is set, choosing the default provisioner.
+      storageClass: ""
+      # -- PostgreSQL Primary PVC Storage Request for data volume.
+      size: 8Gi
+    # -- PostgreSQL Primary service configuration
+    service:
+      # -- PostgreSQL Primary service type
+      type: ClusterIP
+      # -- PostgreSQL Primary service port
+      ports:
+        postgresql: 5432
+      # -- PostgreSQL Primary Load balancer class if service type is `LoadBalancer`
+      loadBalancerClass: ""
+# Shovel
+shovel:
+  # -- Name of the container
+  name: shovel
+  # -- Pod annotation to be added
+  podAnnotations: {}
+  # -- Pod labels to be added
+  podLabels: {}
+  image:
+    # -- Container image
+    repository: "nbtim/shovel"
+    # -- Container pull policy
+    pullPolicy: IfNotPresent
+    # -- Container image tag
+    tag: v1.6
+  containerSecurityContext:
+    runAsGroup: 1000
+    runAsNonRoot: true
+    runAsUser: 1000
+  ports:
+    # -- Dashboard port
+    http: 8546
+    # -- Metrics port
+    metrics: 9090
+  # -- Resource requests and limits
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 4Gi
+    requests:
+      cpu: 500m
+      memory: 2Gi
+  podMonitor:
+    path: /metrics
+    interval: 30s
+    scrapeTimeout: 10s
+  # -- Shovel pg_url, use for setting your own PostgreSQL endpoint, by default it uses the integrated PostgreSQL from the bitnami/postgresql dependency
+  pgUrl: "postgres:///shovel"
+  # -- Shovel config example (see https://indexsupply.com/shovel/docs/#config for more information)
+  config:
+    pg_url: "$PG_URL"
+    eth_sources:
+      - name: mainnet
+        chain_id: 1
+        url: https://eth.merkle.io
+    integrations:
+      - name: usdc-transfer
+        enabled: true
+        sources:
+          - name: mainnet
+            batch_size: 100
+        table:
+          name: usdc
+          columns:
+            - name: log_addr
+              type: bytea
+            - name: block_time
+              type: numeric
+            - name: from
+              type: bytea
+            - name: to
+              type: bytea
+            - name: value
+              type: numeric
+        block:
+          - name: log_addr
+            column: log_addr
+            filter_op: contains
+            filter_arg:
+              - a0b86991c6218b36c1d19d4a2e9eb0ce3606eb48
+        event:
+          name: Transfer
+          type: event
+          anonymous: false
+          inputs:
+            - indexed: true
+              name: from
+              type: address
+              column: from
+            - indexed: true
+              name: to
+              type: address
+              column: to
+            - name: value
+              type: uint256
+              column: value
+        dashboard:
+          disable_authn: true

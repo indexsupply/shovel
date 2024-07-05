@@ -1,0 +1,78 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "shovel.fullname" . }}
+  labels:
+    {{- include "shovel.labels" . | nindent 4 }}
+  annotations:
+    {{- toYaml .Values.shovel.podAnnotations | nindent 4 }}
+spec:
+  replicas: {{ .Values.shovel.replicas }}
+  selector:
+    matchLabels:
+      {{- include "shovel.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "shovel.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "shovel.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.global.securityContext | nindent 8 }}
+      containers:
+        - name: {{ .Values.shovel.name }}
+          securityContext: 
+           {{- toYaml .Values.global.containerSecurityContext | nindent 12 }}
+          image: "{{ .Values.shovel.image.repository }}:{{ .Values.shovel.image.tag }}"
+          imagePullPolicy: {{ .Values.shovel.image.pullPolicy }}
+          env:
+            - name: PG_URL
+              {{ if .Values.global.postgresql.enabled }}
+              value: "postgres://{{ .Values.global.postgresql.auth.username }}:{{ .Values.global.postgresql.auth.password }}@{{ include "shovel.fullname" . }}-postgresql:5432"
+              {{ else }}
+              value: {{ .Values.shovel.pgUrl | quote }}
+              {{- end }}
+          command: 
+            - sh
+            - -ac
+            - >
+              shovel
+              -config /home/config.json 
+              -l 0.0.0.0:{{ .Values.shovel.ports.http }}
+              {{ if .Values.shovel.notx }}
+              -notx
+              {{- end }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.shovel.ports.http }}
+              protocol: TCP
+          volumeMounts:
+            - name: config
+              mountPath: /home/config.json
+              subPath: config.json
+          livenessProbe:
+            {{- toYaml .Values.shovel.livenessProbe | nindent 12 }}
+          readinessProbe:
+            {{- toYaml .Values.shovel.readinessProbe | nindent 12 }}
+          resources:
+            {{- toYaml .Values.shovel.resources | nindent 12 }}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "shovel.fullname" . }}
+            items:
+              - key: config.json
+                path: config.json
+      nodeSelector:
+        {{- toYaml .Values.global.nodeSelector | nindent 8 }}
+      affinity:
+        {{- toYaml .Values.global.affinity | nindent 8 }}
+      tolerations:
+        {{- toYaml .Values.global.tolerations | nindent 8 }}
+      terminationGracePeriodSeconds: {{ .Values.shovel.terminationGracePeriodSeconds }}
+
+

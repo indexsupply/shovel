@@ -1,0 +1,20 @@
+{{- if .Values.global.service.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "shovel.fullname" . }}
+  labels:
+    {{- include "shovel.labels" . | nindent 4 }}
+  annotations:
+    {{- toYaml .Values.global.service.annotations | nindent 4}}
+spec:
+  type: {{ .Values.global.service.type }}
+  clusterIP: {{ .Values.global.service.clusterIP }}
+  ports:
+    - port: {{ .Values.shovel.ports.http }}
+      targetPort: {{ .Values.shovel.ports.http }}
+      protocol: TCP
+      name: http
+  selector:
+    {{- include "shovel.selectorLabels" . | nindent 4 }}
+{{- end }}

@@ -1,0 +1,24 @@
+{{- if .Values.global.podMonitor.create -}}
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: {{ include "shovel.fullname" . }}
+  labels:
+    {{- include "shovel.labels" . | nindent 4 }}
+spec:
+  podMetricsEndpoints:
+  - interval: {{ .Values.shovel.podMonitor.interval }}
+    {{- if .Values.shovel.podMonitor.scrapeTimeout }}
+    scrapeTimeout: {{ .Values.shovel.podMonitor.scrapeTimeout }}
+    {{- end }}
+    honorLabels: true
+    port: http
+    path: {{ .Values.shovel.podMonitor.path }}
+  jobLabel: {{ .Release.Name }}
+  selector:
+    matchLabels:
+      {{- include "shovel.selectorLabels" . | nindent 8 }}
+  namespaceSelector:
+    matchNames:
+      - {{ .Release.Namespace }}
+{{- end }}
