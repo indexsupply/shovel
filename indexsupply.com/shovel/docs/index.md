@@ -104,6 +104,7 @@ The following resources are automatically deployed on a main commit:
 
 On main but not yet associated with a new version tag.
 
+- add tx_nonce, tx_gas_price to tx indexing
 - fix multiple filters per block/event
 - fix filter operations on trace_action_value
 - empty decoded bytes are stored as an empty byte array instead of NULL
@@ -987,8 +988,10 @@ Shovel will optimize its Ethereum JSON RPC API method choice based on the data t
 | tx_value               | uint256         | numeric          | `b, r`           |
 | tx_input               | bytes           | bytea            | `b, r`           |
 | tx_type                | byte            | int              | `b, r`           |
+| tx_nonce               | uint64          | bigint           | `b, r`           |
 | tx_status              | byte            | int              | `r`              |
 | tx_gas_used            | uint64          | bigint           | `r`              |
+| tx_gas_price           | uint256         | numeric          | `b`              |
 | tx_effective_gas_price | uint256         | numeric          | `r`              |
 | log_idx                | int             | int              | `l, r`           |
 | log_addr               | address         | bytea            | `l, r`           |
