@@ -934,6 +934,10 @@ func (lwc *logWithCtx) get(name string) any {
 		return &lwc.t.GasPrice
 	case "tx_effective_gas_price":
 		return &lwc.t.EffectiveGasPrice
+	case "tx_max_priority_fee_per_gas":
+		return &lwc.t.MaxPriorityFeePerGas
+	case "tx_max_fee_per_gas":
+		return &lwc.t.MaxFeePerGas
 	case "tx_nonce":
 		return lwc.t.Nonce
 	case "log_addr":

@@ -337,8 +337,8 @@ type Tx struct {
 	AccessList AccessTuples `json:"-"` // TODO
 
 	// EIP-1559
-	MaxPriorityFeePerGas uint256.Int
-	MaxFeePerGas         uint256.Int
+	MaxPriorityFeePerGas uint256.Int `json:"maxPriorityFeePerGas"`
+	MaxFeePerGas         uint256.Int `json:"maxFeePerGas"`
 
 	PrecompHash  Bytes `json:"hash"`
 	cacheMut     sync.Mutex

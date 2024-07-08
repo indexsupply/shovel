@@ -113,6 +113,8 @@ var (
 		"tx_input",
 		"tx_value",
 		"tx_type",
+		"tx_max_priority_fee_per_gas",
+		"tx_max_fee_per_gas",
 	}
 	receipt = []string{
 		"block_hash",
