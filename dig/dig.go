@@ -660,6 +660,7 @@ type Integration struct {
 	Block        []BlockData
 	Table        wpg.Table
 	Notification Notification
+	filterAGG    string
 
 	Columns []string
 	coldefs []coldef
@@ -683,7 +684,7 @@ const (
 	indexLog
 )
 
-func New(name string, ev Event, bd []BlockData, table wpg.Table, notif Notification) (Integration, error) {
+func New(name string, ev Event, bd []BlockData, table wpg.Table, notif Notification, filterAGG string) (Integration, error) {
 	ig := Integration{
 		name:         name,
 		Event:        ev,
@@ -691,6 +692,7 @@ func New(name string, ev Event, bd []BlockData, table wpg.Table, notif Notificat
 		Table:        table,
 		Notification: notif,
 
+		filterAGG:   strings.ToLower(filterAGG),
 		numNotify:   len(notif.Columns),
 		numIndexed:  ev.numIndexed(),
 		resultCache: NewResult(ev.ABIType()),
@@ -958,22 +960,35 @@ func (lwc *logWithCtx) get(name string) any {
 }
 
 type filterResults struct {
-	set bool
-	val bool
+	kind string
+	used bool
+	val  bool
 }
 
 func (fr *filterResults) add(b bool) {
-	fr.set = true
-	if !fr.val {
-		fr.val = b
+	fr.used = true
+	switch fr.kind {
+	case "and":
+		if !b {
+			fr.val = false
+		}
+	default:
+		if b {
+			fr.val = true
+		}
 	}
 }
 
 func (fr *filterResults) accept() bool {
-	if !fr.set {
+	if !fr.used {
 		return true
 	}
-	return fr.val
+	switch fr.kind {
+	case "and":
+		return !fr.val
+	default:
+		return fr.val
+	}
 }
 
 func (ig Integration) processTx(rows [][]any, lwc *logWithCtx, pgmut *sync.Mutex, pg wpg.Conn) ([][]any, bool, error) {
@@ -981,7 +996,7 @@ func (ig Integration) processTx(rows [][]any, lwc *logWithCtx, pgmut *sync.Mutex
 	case ig.numSelected > 0:
 		return rows, false, nil
 	case ig.numBDSelected > 0:
-		frs := filterResults{}
+		frs := filterResults{kind: ig.filterAGG}
 		row := make([]any, len(ig.coldefs))
 		for i, def := range ig.coldefs {
 			switch {
@@ -1015,7 +1030,7 @@ func (ig Integration) processLog(rows [][]any, lwc *logWithCtx, pgmut *sync.Mute
 		}
 		for i := 0; i < ig.resultCache.Len(); i++ {
 			ictr, actr := 1, 0
-			frs := filterResults{}
+			frs := filterResults{kind: ig.filterAGG}
 			row := make([]any, len(ig.coldefs))
 			for j, def := range ig.coldefs {
 				switch {
@@ -1052,7 +1067,7 @@ func (ig Integration) processLog(rows [][]any, lwc *logWithCtx, pgmut *sync.Mute
 			}
 		}
 	default:
-		frs := filterResults{}
+		frs := filterResults{kind: ig.filterAGG}
 		row := make([]any, len(ig.coldefs))
 		for i, def := range ig.coldefs {
 			switch {

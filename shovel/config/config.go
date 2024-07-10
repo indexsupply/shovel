@@ -79,6 +79,12 @@ func ValidateFix(conf *Root) error {
 		return fmt.Errorf("checking config for filter_refs: %w", err)
 	}
 	for i := range conf.Integrations {
+		if conf.Integrations[i].FilterAGG == "" {
+			conf.Integrations[i].FilterAGG = "or"
+		}
+		if !slices.Contains([]string{"and", "or", ""}, conf.Integrations[i].FilterAGG) {
+			return fmt.Errorf("filter_agg must be one of: and, or. got: %s", conf.Integrations[i].FilterAGG)
+		}
 		conf.Integrations[i].AddRequiredFields()
 		AddUniqueIndex(&conf.Integrations[i].Table)
 		if err := ValidateColRefs(conf.Integrations[i]); err != nil {
@@ -418,6 +424,7 @@ type Integration struct {
 	Enabled      bool             `json:"enabled"`
 	Sources      []Source         `json:"sources"`
 	Table        wpg.Table        `json:"table"`
+	FilterAGG    string           `json:"filter_agg"`
 	Notification dig.Notification `json:"notification"`
 	Compiled     Compiled         `json:"compiled"`
 	Block        []dig.BlockData  `json:"block"`

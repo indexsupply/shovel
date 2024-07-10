@@ -122,7 +122,7 @@ func NewDestination(ig config.Integration) (Destination, error) {
 		}
 		return dest, nil
 	default:
-		dest, err := dig.New(ig.Name, ig.Event, ig.Block, ig.Table, ig.Notification)
+		dest, err := dig.New(ig.Name, ig.Event, ig.Block, ig.Table, ig.Notification, ig.FilterAGG)
 		if err != nil {
 			return nil, fmt.Errorf("building abi integration: %w", err)
 		}

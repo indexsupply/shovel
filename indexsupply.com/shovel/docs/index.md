@@ -104,6 +104,7 @@ The following resources are automatically deployed on a main commit:
 
 On main but not yet associated with a new version tag.
 
+- add integrations[].filter_agg to allow AND xor OR based filtering
 - add tx_max_fee_per_gas, tx_max_priority_fee_per_gas to tx indexing
 - add tx_nonce, tx_gas_price to tx indexing
 - fix multiple filters per block/event
@@ -1068,7 +1069,13 @@ A common BTREE index is automatically created for the reference table's column. 
 
 ### Multiple Filters
 
-An integration can have multiple filters. Evaluation order is unspecified. An event, or transaction, is saved if one of the filters evaluates to `true`. In other words, the filters are evaluated and the results are combined using an `OR` operation.
+An integration can have multiple filters. The integration has an optional `filter_agg` field that can be one of: `"and"`, `"or"`.
+
+When `filter_agg="or"` the Transaction/Event is saved when **any** of the filters evalutes true.
+
+When `filter_agg="and"` the Transaction/Event is saved when **all** the filters evaluate true.
+
+
 
 ### Filter Examples
 
@@ -1333,6 +1340,7 @@ This JSON Config is the primary UI for Shovel. The Config object holds the datab
 - [`integrations[]`](#config-integrations)
     - [`name`](#config-integrations-name)
     - [`enabled`](#config-integrations-enabled)
+    - [`filter_agg`](#config-integrations-filter-agg)
     - [`sources`](#config-integrations-sources)
         - [`name`](#config-integrations-sources-name)
         - [`start`](#config-integrations-sources-start)
@@ -1483,6 +1491,12 @@ A good, concise description of the integration. This value should not be changed
 ### `integrations[].enabled` {#config-integrations-enabled .reference}
 
 Must be true or false. Shovel will only load integrations that are enabled. This is meant to be a quick way to disable an integration while keeping the config in the file.
+
+### `integrations[].filter_agg` {#config-integrations-filter-agg .reference}
+
+Must be one of: `"and"`, `"or"`. Default: `"or"`.
+
+Determines outcome of multiple filters on an integration. Use `"or"` when at least one of the filters must be true in order for the Transaction/Event to be saved. Use `"and"` when all filters must be true in order for the Transaction/Event to be saved.
 
 ### `integrations[].sources` {#config-integrations-sources .reference}
 
