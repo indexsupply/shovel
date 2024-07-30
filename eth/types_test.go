@@ -1,11 +1,17 @@
 package eth
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"testing"
 
 	"kr.dev/diff"
 )
+
+func h2b(h string) []byte {
+	b, _ := hex.DecodeString(h)
+	return b
+}
 
 func TestDecode(t *testing.T) {
 	cases := []struct {

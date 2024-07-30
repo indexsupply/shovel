@@ -6,10 +6,6 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/btcsuite/btcd/btcec/v2/ecdsa"
-	"github.com/indexsupply/x/bint"
-	"github.com/indexsupply/x/rlp"
-
 	"github.com/holiman/uint256"
 )
 
@@ -151,22 +147,6 @@ type Log struct {
 	Data    Bytes   `json:"data"`
 }
 
-func (l *Log) UnmarshalRLP(b []byte) {
-	var (
-		iter    = rlp.Iter(b)
-		ntopics int
-	)
-	l.Address.Write(iter.Bytes())
-	for i, it := 0, rlp.Iter(iter.Bytes()); it.HasNext(); i++ {
-		var t *Bytes
-		l.Topics, t = get(l.Topics, i)
-		t.Write(it.Bytes())
-		ntopics++
-	}
-	l.Topics = l.Topics[:ntopics]
-	l.Data.Write(iter.Bytes())
-}
-
 type Logs []Log
 
 func (ls *Logs) Add(other *Log) {
@@ -187,28 +167,11 @@ func (ls *Logs) Add(other *Log) {
 	*ls = append(*ls, l)
 }
 
-func (ls *Logs) UnmarshalRLP(b []byte) {
-	var i int
-	for it := rlp.Iter(b); it.HasNext(); i++ {
-		var l *Log
-		*ls, l = get(*ls, i)
-		l.UnmarshalRLP(it.Bytes())
-	}
-	*ls = (*ls)[:i]
-}
-
 type Receipt struct {
 	Status            Byte
 	GasUsed           Uint64
 	EffectiveGasPrice uint256.Int
 	Logs              Logs
-}
-
-func (r *Receipt) UnmarshalRLP(b []byte) {
-	iter := rlp.Iter(b)
-	r.Status.Write(iter.Bytes()[0])
-	r.GasUsed = Uint64(bint.Uint64(iter.Bytes()))
-	r.Logs.UnmarshalRLP(iter.Bytes())
 }
 
 type Header struct {
@@ -219,93 +182,14 @@ type Header struct {
 	Time      Uint64 `json:"timestamp"`
 }
 
-func (h *Header) UnmarshalRLP(b []byte) {
-	h.Hash = Keccak(b)
-	for i, it := 0, rlp.Iter(b); it.HasNext(); i++ {
-		d := it.Bytes()
-		switch i {
-		case 0:
-			h.Parent.Write(d)
-		case 6:
-			h.LogsBloom.Write(d)
-		case 8:
-			h.Number = Uint64(bint.Uint64(d))
-		case 11:
-			h.Time = Uint64(bint.Uint64(d))
-		}
-	}
-}
-
 type AccessTuple struct {
 	Address     [20]byte
 	StorageKeys [][32]byte
 }
 
-func (at *AccessTuple) MarshalRLP() []byte {
-	var keys [][]byte
-	for i := range at.StorageKeys {
-		keys = append(keys, rlp.Encode(at.StorageKeys[i][:]))
-	}
-	return rlp.List(
-		rlp.Encode(at.Address[:]),
-		rlp.List(keys...),
-	)
-}
-
-func (at *AccessTuple) UnmarshalRLP(b []byte) error {
-	it := rlp.Iter(b)
-	copy(at.Address[:], it.Bytes())
-	for i, it := 0, rlp.Iter(it.Bytes()); it.HasNext(); i++ {
-		at.StorageKeys = append(at.StorageKeys, [32]byte(it.Bytes()))
-	}
-	return nil
-}
-
 type AccessTuples []AccessTuple
 
-func (ats *AccessTuples) MarshalRLP() []byte {
-	var res [][]byte
-	for i := range *ats {
-		res = append(res, (*ats)[i].MarshalRLP())
-	}
-	return rlp.List(res...)
-}
-
-func (ats *AccessTuples) UnmarshalRLP(b []byte) error {
-	var i int
-	for it := rlp.Iter(b); it.HasNext(); i++ {
-		var at *AccessTuple
-		*ats, at = get(*ats, i)
-		if err := at.UnmarshalRLP(it.Bytes()); err != nil {
-			return fmt.Errorf("unmarshaling access tuple: %w", err)
-		}
-	}
-	*ats = (*ats)[:i]
-	return nil
-}
-
 type Txs []Tx
-
-func (txs *Txs) UnmarshalRLP(bodies, receipts []byte) {
-	var i int
-	for it := rlp.Iter(bodies); it.HasNext(); i++ {
-		tx := Tx{}
-		tx.UnmarshalRLP(it.Bytes())
-		tx.Idx = Uint64(i)
-		*txs = append(*txs, tx)
-	}
-	for i, it := 0, rlp.Iter(receipts); it.HasNext(); i++ {
-		(*txs)[i].Receipt.UnmarshalRLP(it.Bytes())
-	}
-
-	var n uint64
-	for i := range *txs {
-		for j := range (*txs)[i].Logs {
-			(*txs)[i].Logs[j].Idx = Uint64(n)
-			n++
-		}
-	}
-}
 
 type TraceAction struct {
 	Idx      uint64
@@ -354,85 +238,7 @@ func (tx *Tx) Hash() []byte {
 	return tx.PrecompHash
 }
 
-func (tx *Tx) UnmarshalRLP(b []byte) error {
-	if len(b) < 1 {
-		return fmt.Errorf("decoding empty transaction bytes")
-	}
-	tx.rbuf = append(tx.rbuf[:0], b...)
-	// Legacy Transaction
-	if it := rlp.Iter(b); it.HasNext() {
-		tx.Type = 0x00
-		tx.Nonce = Uint64(bint.Decode(it.Bytes()))
-		tx.GasPrice.SetBytes(it.Bytes())
-		tx.GasLimit = Uint64(bint.Decode(it.Bytes()))
-		tx.To.Write(it.Bytes())
-		tx.Value.SetBytes(it.Bytes())
-		tx.Data.Write(it.Bytes())
-		tx.V.SetBytes(it.Bytes())
-		tx.R.SetBytes(it.Bytes())
-		tx.S.SetBytes(it.Bytes())
-		return nil
-	}
-	// EIP-2718: Typed Transaction
-	// https://eips.ethereum.org/EIPS/eip-2718
-	switch iter := rlp.Iter(b[1:]); b[0] {
-	case 0x01:
-		// EIP-2930: Access List
-		// https://eips.ethereum.org/EIPS/eip-2930
-		tx.Type = 0x01
-		tx.ChainID.SetBytes(iter.Bytes())
-		tx.Nonce = Uint64(bint.Decode(iter.Bytes()))
-		tx.GasPrice.SetBytes(iter.Bytes())
-		tx.GasLimit = Uint64(bint.Decode(iter.Bytes()))
-		tx.To.Write(iter.Bytes())
-		tx.Value.SetBytes(iter.Bytes())
-		tx.Data.Write(iter.Bytes())
-		tx.AccessList.UnmarshalRLP(iter.Bytes())
-		tx.V.SetBytes(iter.Bytes())
-		tx.R.SetBytes(iter.Bytes())
-		tx.S.SetBytes(iter.Bytes())
-		return nil
-	case 0x02:
-		// EIP-1559: Dynamic Fee
-		// https://eips.ethereum.org/EIPS/eip-1559
-		tx.Type = 0x02
-		tx.ChainID.SetBytes(iter.Bytes())
-		tx.Nonce = Uint64(bint.Decode(iter.Bytes()))
-		tx.MaxPriorityFeePerGas.SetBytes(iter.Bytes())
-		tx.MaxFeePerGas.SetBytes(iter.Bytes())
-		tx.GasLimit = Uint64(bint.Decode(iter.Bytes()))
-		tx.To.Write(iter.Bytes())
-		tx.Value.SetBytes(iter.Bytes())
-		tx.Data.Write(iter.Bytes())
-		tx.AccessList.UnmarshalRLP(iter.Bytes())
-		tx.V.SetBytes(iter.Bytes())
-		tx.R.SetBytes(iter.Bytes())
-		tx.S.SetBytes(iter.Bytes())
-		return nil
-	default:
-		return fmt.Errorf("unsupported tx type: 0x%X", b[0])
-	}
-}
-
 func (tx *Tx) Signer() ([]byte, error) {
-	tx.cacheMut.Lock()
-	defer tx.cacheMut.Unlock()
-	if len(tx.From) > 0 {
-		return tx.From, nil
-	}
-	var sig [65]byte
-	sig[0] = tx.v()
-	copy(sig[33-len(tx.R.Bytes()):33], tx.R.Bytes())
-	copy(sig[65-len(tx.S.Bytes()):65], tx.S.Bytes())
-	pubk, _, err := ecdsa.RecoverCompact(sig[:], tx.SigHash())
-	if err != nil {
-		return nil, fmt.Errorf("recovering pubkey: %w", err)
-	}
-	var (
-		cpk  = pubk.SerializeUncompressed()
-		addr = Keccak(cpk[1:])
-	)
-	tx.From = append(tx.From[:0], addr[12:]...)
 	return tx.From, nil
 }
 
@@ -464,59 +270,5 @@ func (tx *Tx) chainid() uint64 {
 		return (v - 35) >> 1
 	default:
 		return 0
-	}
-}
-
-func (t *Tx) SigHash() []byte {
-	switch t.Type {
-	case 0x00:
-		switch {
-		case t.eip155():
-			return Keccak(rlp.List(
-				rlp.Encode(bint.Encode(nil, uint64(t.Nonce))),
-				rlp.Encode(t.GasPrice.Bytes()),
-				rlp.Encode(bint.Encode(nil, uint64(t.GasLimit))),
-				rlp.Encode(t.To),
-				rlp.Encode(t.Value.Bytes()),
-				rlp.Encode(t.Data),
-				rlp.Encode(bint.Encode(nil, t.chainid())),
-				rlp.Encode([]byte{0}),
-				rlp.Encode([]byte{0}),
-			))
-		default:
-			return Keccak(rlp.List(
-				rlp.Encode(bint.Encode(nil, uint64(t.Nonce))),
-				rlp.Encode(t.GasPrice.Bytes()),
-				rlp.Encode(bint.Encode(nil, uint64(t.GasLimit))),
-				rlp.Encode(t.To),
-				rlp.Encode(t.Value.Bytes()),
-				rlp.Encode(t.Data),
-			))
-		}
-	case 0x01:
-		return Keccak(append([]byte{0x01}, rlp.List(
-			rlp.Encode(t.ChainID.Bytes()),
-			rlp.Encode(bint.Encode(nil, uint64(t.Nonce))),
-			rlp.Encode(t.GasPrice.Bytes()),
-			rlp.Encode(bint.Encode(nil, uint64(t.GasLimit))),
-			rlp.Encode(t.To),
-			rlp.Encode(t.Value.Bytes()),
-			rlp.Encode(t.Data),
-			t.AccessList.MarshalRLP(),
-		)...))
-	case 0x02:
-		return Keccak(append([]byte{0x02}, rlp.List(
-			rlp.Encode(t.ChainID.Bytes()),
-			rlp.Encode(bint.Encode(nil, uint64(t.Nonce))),
-			rlp.Encode(t.MaxPriorityFeePerGas.Bytes()),
-			rlp.Encode(t.MaxFeePerGas.Bytes()),
-			rlp.Encode(bint.Encode(nil, uint64(t.GasLimit))),
-			rlp.Encode(t.To),
-			rlp.Encode(t.Value.Bytes()),
-			rlp.Encode(t.Data),
-			t.AccessList.MarshalRLP(),
-		)...))
-	default:
-		return nil
 	}
 }
