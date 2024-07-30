@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/indexsupply/x/tc"
+	"github.com/indexsupply/shovel/tc"
 )
 
 func TestCounter(t *testing.T) {

@@ -16,11 +16,11 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/indexsupply/x/bint"
-	"github.com/indexsupply/x/eth"
-	"github.com/indexsupply/x/shovel/glf"
-	"github.com/indexsupply/x/wctx"
-	"github.com/indexsupply/x/wpg"
+	"github.com/indexsupply/shovel/bint"
+	"github.com/indexsupply/shovel/eth"
+	"github.com/indexsupply/shovel/shovel/glf"
+	"github.com/indexsupply/shovel/wctx"
+	"github.com/indexsupply/shovel/wpg"
 
 	"github.com/holiman/uint256"
 	"github.com/jackc/pgx/v5"

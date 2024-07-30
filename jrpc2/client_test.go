@@ -17,9 +17,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/indexsupply/x/eth"
-	"github.com/indexsupply/x/shovel/glf"
-	"github.com/indexsupply/x/tc"
+	"github.com/indexsupply/shovel/eth"
+	"github.com/indexsupply/shovel/shovel/glf"
+	"github.com/indexsupply/shovel/tc"
 	"golang.org/x/sync/errgroup"
 	"kr.dev/diff"
 )

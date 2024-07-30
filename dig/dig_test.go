@@ -11,9 +11,9 @@ import (
 
 	"blake.io/pqx/pqxtest"
 	"github.com/holiman/uint256"
-	"github.com/indexsupply/x/bint"
-	"github.com/indexsupply/x/eth"
-	"github.com/indexsupply/x/tc"
+	"github.com/indexsupply/shovel/bint"
+	"github.com/indexsupply/shovel/eth"
+	"github.com/indexsupply/shovel/tc"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/stdlib"
 

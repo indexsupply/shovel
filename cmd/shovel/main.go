@@ -16,13 +16,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/indexsupply/x/shovel"
-	"github.com/indexsupply/x/shovel/config"
-	"github.com/indexsupply/x/shovel/web"
-	"github.com/indexsupply/x/wctx"
-	"github.com/indexsupply/x/wos"
-	"github.com/indexsupply/x/wpg"
-	"github.com/indexsupply/x/wslog"
+	"github.com/indexsupply/shovel/shovel"
+	"github.com/indexsupply/shovel/shovel/config"
+	"github.com/indexsupply/shovel/shovel/web"
+	"github.com/indexsupply/shovel/wctx"
+	"github.com/indexsupply/shovel/wos"
+	"github.com/indexsupply/shovel/wpg"
+	"github.com/indexsupply/shovel/wslog"
 )
 
 func check(err error) {

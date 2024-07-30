@@ -1,4 +1,4 @@
-module github.com/indexsupply/x
+module github.com/indexsupply/shovel
 
 go 1.21
 

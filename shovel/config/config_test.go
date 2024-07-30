@@ -3,8 +3,8 @@ package config
 import (
 	"testing"
 
-	"github.com/indexsupply/x/dig"
-	"github.com/indexsupply/x/wpg"
+	"github.com/indexsupply/shovel/dig"
+	"github.com/indexsupply/shovel/wpg"
 
 	"kr.dev/diff"
 )

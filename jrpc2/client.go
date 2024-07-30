@@ -22,9 +22,9 @@ import (
 	"unicode"
 
 	"github.com/holiman/uint256"
-	"github.com/indexsupply/x/eth"
-	"github.com/indexsupply/x/shovel/glf"
-	"github.com/indexsupply/x/wctx"
+	"github.com/indexsupply/shovel/eth"
+	"github.com/indexsupply/shovel/shovel/glf"
+	"github.com/indexsupply/shovel/wctx"
 
 	"github.com/goccy/go-json"
 	"github.com/klauspost/compress/gzhttp"

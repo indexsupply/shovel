@@ -6,10 +6,10 @@ import (
 	"os"
 	"testing"
 
-	"github.com/indexsupply/x/jrpc2"
-	"github.com/indexsupply/x/shovel/config"
-	"github.com/indexsupply/x/tc"
-	"github.com/indexsupply/x/wpg"
+	"github.com/indexsupply/shovel/jrpc2"
+	"github.com/indexsupply/shovel/shovel/config"
+	"github.com/indexsupply/shovel/tc"
+	"github.com/indexsupply/shovel/wpg"
 )
 
 func TestIntegrations(t *testing.T) {

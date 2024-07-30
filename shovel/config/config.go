@@ -9,10 +9,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/indexsupply/x/dig"
-	"github.com/indexsupply/x/wos"
-	"github.com/indexsupply/x/wpg"
-	"github.com/indexsupply/x/wstrings"
+	"github.com/indexsupply/shovel/dig"
+	"github.com/indexsupply/shovel/wos"
+	"github.com/indexsupply/shovel/wpg"
+	"github.com/indexsupply/shovel/wstrings"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )

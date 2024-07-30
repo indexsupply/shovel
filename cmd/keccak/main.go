@@ -6,7 +6,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/indexsupply/x/eth"
+	"github.com/indexsupply/shovel/eth"
 )
 
 func main() {
