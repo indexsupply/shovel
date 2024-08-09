@@ -455,6 +455,11 @@ func TestFilter(t *testing.T) {
 			"bar",
 			true,
 		},
+		{
+			Filter{Op: "eq", Arg: []string{""}},
+			[]byte{0x00, 0x01, 0x02},
+			false,
+		},
 	}
 	for _, c := range cases {
 		frs := filterResults{}

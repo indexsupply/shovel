@@ -433,7 +433,7 @@ func (f Filter) Accept(ctx context.Context, pgmut *sync.Mutex, pg wpg.Conn, d an
 			frs.add(res)
 		case f.Op == "eq" || f.Op == "ne":
 			for i := range f.Arg {
-				if bytes.Contains(v, eth.DecodeHex(f.Arg[i])) {
+				if bytes.Equal(v, eth.DecodeHex(f.Arg[i])) {
 					res = true
 					break
 				}
