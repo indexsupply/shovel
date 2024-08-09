@@ -463,3 +463,25 @@ func TestFilter(t *testing.T) {
 		tc.WantGot(t, c.want, frs.accept())
 	}
 }
+
+func TestFilterResults(t *testing.T) {
+	cases := []struct {
+		kind  string
+		want  bool
+		input []bool
+	}{
+		{"and", false, []bool{true, false}},
+		{"and", false, []bool{false, false}},
+		{"and", true, []bool{true, true}},
+		{"or", true, []bool{true, false}},
+		{"or", true, []bool{true, true}},
+		{"or", false, []bool{false, false}},
+	}
+	for _, c := range cases {
+		frs := filterResults{kind: c.kind}
+		for _, b := range c.input {
+			frs.add(b)
+		}
+		tc.WantGot(t, c.want, frs.accept())
+	}
+}

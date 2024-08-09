@@ -961,34 +961,29 @@ func (lwc *logWithCtx) get(name string) any {
 
 type filterResults struct {
 	kind string
-	used bool
+	set  bool
 	val  bool
 }
 
 func (fr *filterResults) add(b bool) {
-	fr.used = true
+	if !fr.set {
+		fr.set = true
+		fr.val = b
+		return
+	}
 	switch fr.kind {
 	case "and":
-		if !b {
-			fr.val = false
-		}
+		fr.val = fr.val && b
 	default:
-		if b {
-			fr.val = true
-		}
+		fr.val = fr.val || b
 	}
 }
 
 func (fr *filterResults) accept() bool {
-	if !fr.used {
+	if !fr.set {
 		return true
 	}
-	switch fr.kind {
-	case "and":
-		return !fr.val
-	default:
-		return fr.val
-	}
+	return fr.val
 }
 
 func (ig Integration) processTx(rows [][]any, lwc *logWithCtx, pgmut *sync.Mutex, pg wpg.Conn) ([][]any, bool, error) {
