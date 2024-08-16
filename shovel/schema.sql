@@ -149,3 +149,45 @@ with abs_latest as (
 	group by shovel.task_updates.src_name, shovel.task_updates.ig_name
 )
 select src_name, min(num) num from src_latest group by 1;
+
+BEGIN;
+
+-- Create latest_blocks table in shovel schema
+CREATE TABLE IF NOT EXISTS shovel.latest_blocks (
+    chain_id INT NOT NULL,
+    src_name TEXT NOT NULL,
+    block_number NUMERIC NOT NULL,
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    PRIMARY KEY (chain_id, src_name)
+);
+
+-- Create an index for faster lookups
+CREATE INDEX IF NOT EXISTS idx_latest_blocks_src_name ON shovel.latest_blocks (src_name);
+
+-- Create function to update latest_blocks
+CREATE OR REPLACE FUNCTION shovel.update_latest_blocks()
+RETURNS TRIGGER AS $$
+BEGIN
+    INSERT INTO shovel.latest_blocks (chain_id, src_name, block_number)
+    VALUES (NEW.chain_id, NEW.src_name, NEW.num)
+    ON CONFLICT (chain_id, src_name)
+    DO UPDATE SET
+        block_number = GREATEST(shovel.latest_blocks.block_number, EXCLUDED.block_number),
+        updated_at = NOW();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Create trigger to update latest_blocks
+DROP TRIGGER IF EXISTS trigger_update_latest_blocks ON shovel.task_updates;
+CREATE TRIGGER trigger_update_latest_blocks
+AFTER INSERT OR UPDATE ON shovel.task_updates
+FOR EACH ROW
+EXECUTE FUNCTION shovel.update_latest_blocks();
+
+-- Commit transaction
+COMMIT;
+
+GRANT USAGE ON SCHEMA shovel TO service_role;
+
+GRANT SELECT ON ALL TABLES IN SCHEMA shovel TO service_role;
