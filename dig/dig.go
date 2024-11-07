@@ -914,7 +914,7 @@ func (lwc *logWithCtx) get(name string) any {
 	case "tx_signer":
 		d, err := lwc.t.Signer()
 		if err != nil {
-			slog.ErrorContext(lwc.ctx, "unable to derive signer", err)
+			slog.ErrorContext(lwc.ctx, "unable to derive signer", "error", err)
 			return nil
 		}
 		return d

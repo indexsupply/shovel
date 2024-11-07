@@ -127,7 +127,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if err := tmpl.Execute(w, nil); err != nil {
-			slog.ErrorContext(r.Context(), "error", err)
+			slog.ErrorContext(r.Context(), "template", "error", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -366,7 +366,7 @@ func (h *Handler) SaveIntegration(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 	err = json.NewDecoder(r.Body).Decode(&ig)
 	if err != nil {
-		slog.ErrorContext(ctx, "decoding integration", err)
+		slog.ErrorContext(ctx, "decoding integration", "error", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -377,19 +377,19 @@ func (h *Handler) SaveIntegration(w http.ResponseWriter, r *http.Request) {
 	}
 	cj, err := json.Marshal(ig)
 	if err != nil {
-		slog.ErrorContext(ctx, "encoding integration", err)
+		slog.ErrorContext(ctx, "encoding integration", "error", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	const q = `insert into shovel.integrations(name, conf) values ($1, $2)`
 	_, err = h.pgp.Exec(ctx, q, ig.Name, cj)
 	if err != nil {
-		slog.ErrorContext(ctx, "inserting integration", err)
+		slog.ErrorContext(ctx, "inserting integration", "error", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	if err := h.mgr.Restart(); err != nil {
-		slog.ErrorContext(ctx, "saving integration", err)
+		slog.ErrorContext(ctx, "saving integration", "error", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -422,7 +422,7 @@ func (h *Handler) AddIntegration(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := tmpl.Execute(w, view); err != nil {
-		slog.ErrorContext(ctx, "error", err)
+		slog.ErrorContext(ctx, "template", "error", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -520,12 +520,12 @@ func (h *Handler) SaveSource(w http.ResponseWriter, r *http.Request) {
 	)
 	chainID, err := strconv.Atoi(r.FormValue("chainID"))
 	if err != nil {
-		slog.ErrorContext(ctx, "parsing chain id", err)
+		slog.ErrorContext(ctx, "parsing chain id", "error", err)
 		return
 	}
 	name := r.FormValue("name")
 	if len(name) == 0 {
-		slog.ErrorContext(ctx, "parsing chain name", err)
+		slog.ErrorContext(ctx, "parsing chain name", "error", err)
 		return
 	}
 	if err := wstrings.Safe(name); err != nil {
@@ -534,7 +534,7 @@ func (h *Handler) SaveSource(w http.ResponseWriter, r *http.Request) {
 	}
 	url := r.FormValue("ethURL")
 	if len(url) == 0 {
-		slog.ErrorContext(ctx, "parsing chain eth url", err)
+		slog.ErrorContext(ctx, "parsing chain eth url", "error", err)
 		return
 	}
 	const q = `
@@ -544,11 +544,11 @@ func (h *Handler) SaveSource(w http.ResponseWriter, r *http.Request) {
 	_, err = h.pgp.Exec(ctx, q, chainID, name, url)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
-		slog.ErrorContext(ctx, "inserting task", err)
+		slog.ErrorContext(ctx, "inserting task", "error", err)
 		return
 	}
 	if err := h.mgr.Restart(); err != nil {
-		slog.ErrorContext(ctx, "saving source", err)
+		slog.ErrorContext(ctx, "saving source", "error", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

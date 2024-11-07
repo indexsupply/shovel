@@ -117,7 +117,7 @@ func TestIntegrations(t *testing.T) {
 		for _, ig := range conf.Integrations {
 			task, err := NewTask(
 				WithPG(pg),
-				WithSource(jrpc2.New("https://ethereum.publicnode.com")),
+				WithSource(jrpc2.New("https://practical-flashy-research.quiknode.pro/caae41d41b732f1f0872c8fa3ca2fe66ebb76a93/")),
 				WithIntegration(ig),
 				WithRange(c.blockNum, c.blockNum+1),
 			)
@@ -128,7 +128,7 @@ func TestIntegrations(t *testing.T) {
 		for _, ig := range conf.Integrations {
 			task, err := NewTask(
 				WithPG(pg),
-				WithSource(jrpc2.New("https://ethereum.publicnode.com")),
+				WithSource(jrpc2.New("https://practical-flashy-research.quiknode.pro/caae41d41b732f1f0872c8fa3ca2fe66ebb76a93/")),
 				WithIntegration(ig),
 			)
 			tc.NoErr(t, err)

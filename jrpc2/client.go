@@ -232,7 +232,7 @@ func (nh *NumHash) get(ctx context.Context, n uint64) (uint64, []byte, bool) {
 		case errors.Is(err, net.ErrClosed), errors.Is(err, context.DeadlineExceeded):
 			slog.DebugContext(ctx, "rpc connection reset")
 		default:
-			slog.DebugContext(ctx, "rpc connection error: %w", err)
+			slog.DebugContext(ctx, "rpc connection error", "error", err)
 		}
 		nh.err = nil
 		nh.once = sync.Once{}
