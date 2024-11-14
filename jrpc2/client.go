@@ -654,6 +654,7 @@ type receiptResult struct {
 	GasUsed           eth.Uint64  `json:"gasUsed"`
 	EffectiveGasPrice uint256.Int `json:"effectiveGasPrice"`
 	Logs              eth.Logs    `json:"logs"`
+	ContractAddress   eth.Bytes   `json:"contractAddress"`
 }
 
 type receiptResp struct {
@@ -709,6 +710,7 @@ func (c *Client) receipts(ctx context.Context, url string, bm blockmap, start, l
 			tx.GasUsed = resps[i].Result[j].GasUsed
 			tx.EffectiveGasPrice = resps[i].Result[j].EffectiveGasPrice
 			tx.Logs = make([]eth.Log, len(resps[i].Result[j].Logs))
+			tx.ContractAddress.Write(resps[i].Result[j].ContractAddress)
 			copy(tx.Logs, resps[i].Result[j].Logs)
 		}
 	}
