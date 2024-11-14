@@ -460,6 +460,41 @@ func TestFilter(t *testing.T) {
 			[]byte{0x00, 0x01, 0x02},
 			false,
 		},
+		{
+			Filter{Op: "nonEmpty"},
+			[]byte{},
+			false,
+		},
+		{
+			Filter{Op: "nonEmpty"},
+			[]byte{0x01, 0x02, 0x03},
+			true,
+		},
+		{
+			Filter{Op: "nonEmpty"},
+			[]byte{0x01, 0x02},
+			true,
+		},
+		{
+			Filter{Op: "nonEmpty"},
+			[]byte{0x01},
+			true,
+		},
+		{
+			Filter{Op: "nonEmpty"},
+			make([]byte, 32),
+			true,
+		},
+		{
+			Filter{Op: "nonEmpty"},
+			make([]byte, 31),
+			true,
+		},
+		{
+			Filter{Op: "nonEmpty"},
+			[]byte(nil),
+			false,
+		},
 	}
 	for _, c := range cases {
 		frs := filterResults{}

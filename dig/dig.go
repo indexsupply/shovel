@@ -387,7 +387,7 @@ type Filter struct {
 }
 
 func (f Filter) Accept(ctx context.Context, pgmut *sync.Mutex, pg wpg.Conn, d any, frs *filterResults) error {
-	if len(f.Arg) == 0 && len(f.Ref.Integration) == 0 {
+	if len(f.Arg) == 0 && len(f.Ref.Integration) == 0 && f.Op != "nonEmpty" {
 		return nil
 	}
 
@@ -430,6 +430,9 @@ func (f Filter) Accept(ctx context.Context, pgmut *sync.Mutex, pg wpg.Conn, d an
 			if strings.HasPrefix(f.Op, "!") {
 				res = !res
 			}
+			frs.add(res)
+		case f.Op == "nonEmpty":
+			res = len(v) > 0
 			frs.add(res)
 		case f.Op == "eq" || f.Op == "ne":
 			for i := range f.Arg {
