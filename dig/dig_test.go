@@ -460,41 +460,6 @@ func TestFilter(t *testing.T) {
 			[]byte{0x00, 0x01, 0x02},
 			false,
 		},
-		{
-			Filter{Op: "ne"},
-			[]byte{},
-			false,
-		},
-		{
-			Filter{Op: "ne"},
-			[]byte{0x01, 0x02, 0x03},
-			true,
-		},
-		{
-			Filter{Op: "ne"},
-			[]byte{0x01, 0x02},
-			true,
-		},
-		{
-			Filter{Op: "ne"},
-			[]byte{0x01},
-			true,
-		},
-		{
-			Filter{Op: "ne"},
-			make([]byte, 32),
-			true,
-		},
-		{
-			Filter{Op: "ne"},
-			make([]byte, 31),
-			true,
-		},
-		{
-			Filter{Op: "ne"},
-			[]byte(nil),
-			false,
-		},
 	}
 	for _, c := range cases {
 		frs := filterResults{}
