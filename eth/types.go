@@ -172,6 +172,7 @@ type Receipt struct {
 	GasUsed           Uint64
 	EffectiveGasPrice uint256.Int
 	Logs              Logs
+	ContractAddress   Bytes
 }
 
 type Header struct {
