@@ -37,7 +37,9 @@ export type Table = {
   index?: IndexStatment[];
 };
 
-export type FilterOp = "contains" | "!contains";
+export type FilterRefOp = "contains" | "!contains";
+
+export type FilterArgOp = FilterRefOp | "eq" | "ne" | "gt" | "lt";
 
 export type FilterReference = {
   integration: string;
@@ -45,7 +47,7 @@ export type FilterReference = {
 };
 
 export type Filter = {
-  op: FilterOp;
+  op: FilterRefOp;
   arg: Hex[];
 };
 
@@ -65,6 +67,13 @@ export type BlockDataOptions =
   | "tx_type"
   | "tx_status"
   | "log_idx"
+  | "tx_gas_used"
+  | "tx_gas_price"
+  | "tx_effective_gas_price"
+  | "tx_contract_address"
+  | "tx_max_priority_fee_per_gas"
+  | "tx_max_fee_per_gas"
+  | "tx_nonce"
   | "log_addr"
   | "trace_action_call_type"
   | "trace_action_idx"
@@ -81,10 +90,13 @@ export type BlockData = {
   name: BlockDataOptions;
 
   column: string;
-  filter_op?: FilterOp;
+} & ({
+  filter_op?: FilterArgOp;
   filter_arg?: Hex[];
+} | {
+  filter_op?: FilterRefOp;
   filter_ref?: FilterReference;
-};
+});
 
 /**
  * EventInput is a superset of the ABI JSON defintion for event
@@ -108,10 +120,13 @@ export type EventInput = {
   readonly components?: EventInput[];
 
   column?: string;
-  filter_op?: FilterOp;
+} & ({
+  filter_op?: FilterArgOp;
   filter_arg?: Hex[];
+} | {
+  filter_op?: FilterRefOp;
   filter_ref?: FilterReference;
-};
+});
 
 export type Event = {
   readonly name: string;
