@@ -1,5 +1,7 @@
 Here are set of commonly used commands for this project:
 
+bun install
+
 bun run build
 bun link @indexsupply/shovel-config
 
