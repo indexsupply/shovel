@@ -8,7 +8,6 @@
 type EnvRef = `$${string}`;
 
 type Hex = `0x${string}`;
-type HexOrNull = Hex | "";
 
 export type PGColumnType =
   | "bigint"
@@ -49,7 +48,7 @@ export type FilterReference = {
 
 export type Filter = {
   op: FilterRefOp;
-  arg: HexOrNull[];
+  arg: string[];
 };
 
 export type BlockDataOptions =
@@ -93,7 +92,7 @@ export type BlockData = {
   column: string;
 } & ({
   filter_op?: FilterArgOp;
-  filter_arg?: HexOrNull[];
+  filter_arg?: string[];
 } | {
   filter_op?: FilterRefOp;
   filter_ref?: FilterReference;
@@ -123,7 +122,7 @@ export type EventInput = {
   column?: string;
 } & ({
   filter_op?: FilterArgOp;
-  filter_arg?: HexOrNull[];
+  filter_arg?: string[];
 } | {
   filter_op?: FilterRefOp;
   filter_ref?: FilterReference;
