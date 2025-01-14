@@ -663,55 +663,84 @@ type receiptResp struct {
 }
 
 func (c *Client) receipts(ctx context.Context, url string, bm blockmap, start, limit uint64) error {
+	// First get block headers to ensure we have hashes for all blocks
 	var (
-		reqs  = make([]request, limit)
-		resps = make([]receiptResp, limit)
+		headerReqs  = make([]request, limit)
+		headerResps = make([]headerResp, limit)
 	)
 	for i := uint64(0); i < limit; i++ {
-		reqs[i] = request{
+		headerReqs[i] = request{
+			ID:      fmt.Sprintf("header-%d-%d-%x", start, limit, randbytes()),
+			Version: "2.0",
+			Method:  "eth_getBlockByNumber",
+			Params:  []any{eth.EncodeUint64(start + i), false},
+		}
+	}
+	err := c.do(ctx, url, &headerResps, headerReqs)
+	if err != nil {
+		return fmt.Errorf("requesting headers: %w", err)
+	}
+	for i := range headerResps {
+		if headerResps[i].Error.Exists() {
+			const tag = "eth_getBlockByNumber"
+			return fmt.Errorf("rpc=%s %w", tag, headerResps[i].Error)
+		}
+		blockNum := start + uint64(i)
+		b, ok := bm[blockNum]
+		if !ok {
+			return fmt.Errorf("block not found for number %d", blockNum)
+		}
+		// Initialize block hash from header
+		b.Header.Hash.Write(headerResps[i].Hash)
+	}
+
+	// Then get receipts
+	var (
+		receiptReqs  = make([]request, limit)
+		receiptResps = make([]receiptResp, limit)
+	)
+	for i := uint64(0); i < limit; i++ {
+		receiptReqs[i] = request{
 			ID:      fmt.Sprintf("receipts-%d-%d-%x", start, limit, randbytes()),
 			Version: "2.0",
 			Method:  "eth_getBlockReceipts",
 			Params:  []any{eth.EncodeUint64(start + i)},
 		}
 	}
-	err := c.do(ctx, url, &resps, reqs)
+	err = c.do(ctx, url, &receiptResps, receiptReqs)
 	if err != nil {
 		return fmt.Errorf("requesting receipts: %w", err)
 	}
-	for i := range resps {
-		if resps[i].Error.Exists() {
+	for i := range receiptResps {
+		if receiptResps[i].Error.Exists() {
 			const tag = "eth_getBlockReceipts"
-			return fmt.Errorf("rpc=%s %w", tag, resps[i].Error)
+			return fmt.Errorf("rpc=%s %w", tag, receiptResps[i].Error)
 		}
 	}
-	for i := range resps {
-		if len(resps[i].Result) == 0 {
-			slog.ErrorContext(ctx, "no rpc error but empty result")
+
+	// Process receipts if they exist
+	for i := range receiptResps {
+		blockNum := start + uint64(i)
+		b := bm[blockNum] // We know this exists from header check above
+
+		if len(receiptResps[i].Result) == 0 {
+			slog.DebugContext(ctx, "block has no transactions", "number", blockNum, "URL: ", url)
 			continue
 		}
-		blockNum := uint64(resps[i].Result[0].BlockNum)
-		if blockNum < start || blockNum > start+limit {
-			const tag = "eth_getBlockReceipts out of range block. num=%d start=%d lim=%d"
-			return fmt.Errorf(tag, blockNum, start, limit)
-		}
-		b, ok := bm[blockNum]
-		if !ok {
-			return fmt.Errorf("block not found")
-		}
-		b.Header.Hash.Write(resps[i].Result[0].BlockHash)
-		for j := range resps[i].Result {
-			tx := b.Tx(uint64(resps[i].Result[j].TxIdx))
-			tx.PrecompHash.Write(resps[i].Result[j].TxHash)
-			tx.Type.Write(byte(resps[i].Result[j].TxType))
-			tx.From.Write(resps[i].Result[j].TxFrom)
-			tx.To.Write(resps[i].Result[j].TxTo)
-			tx.Status.Write(byte(resps[i].Result[j].Status))
-			tx.GasUsed = resps[i].Result[j].GasUsed
-			tx.EffectiveGasPrice = resps[i].Result[j].EffectiveGasPrice
-			tx.Logs = make([]eth.Log, len(resps[i].Result[j].Logs))
-			tx.ContractAddress.Write(resps[i].Result[j].ContractAddress)
-			copy(tx.Logs, resps[i].Result[j].Logs)
+
+		// Process receipts
+		for j := range receiptResps[i].Result {
+			tx := b.Tx(uint64(receiptResps[i].Result[j].TxIdx))
+			tx.PrecompHash.Write(receiptResps[i].Result[j].TxHash)
+			tx.Type.Write(byte(receiptResps[i].Result[j].TxType))
+			tx.From.Write(receiptResps[i].Result[j].TxFrom)
+			tx.To.Write(receiptResps[i].Result[j].TxTo)
+			tx.Status.Write(byte(receiptResps[i].Result[j].Status))
+			tx.GasUsed = receiptResps[i].Result[j].GasUsed
+			tx.EffectiveGasPrice = receiptResps[i].Result[j].EffectiveGasPrice
+			tx.Logs = make([]eth.Log, len(receiptResps[i].Result[j].Logs))
+			tx.ContractAddress.Write(receiptResps[i].Result[j].ContractAddress)
+			copy(tx.Logs, receiptResps[i].Result[j].Logs)
 		}
 	}
 	return nil
