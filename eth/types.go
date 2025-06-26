@@ -173,6 +173,12 @@ type Receipt struct {
 	EffectiveGasPrice uint256.Int
 	Logs              Logs
 	ContractAddress   Bytes
+	L1BaseFeeScalar     *uint256.Int `json:"l1BaseFeeScalar,omitempty"`
+	L1BlobBaseFee       *uint256.Int `json:"l1BlobBaseFee,omitempty"`
+	L1BlobBaseFeeScalar *uint256.Int `json:"l1BlobBaseFeeScalar,omitempty"`
+	L1Fee               *uint256.Int `json:"l1Fee,omitempty"`
+	L1GasPrice          *uint256.Int `json:"l1GasPrice,omitempty"`
+	L1GasUsed           *Uint64      `json:"l1GasUsed,omitempty"`
 }
 
 type Header struct {

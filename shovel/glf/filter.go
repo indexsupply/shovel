@@ -127,6 +127,12 @@ var (
 		"tx_status",
 		"tx_gas_used",
 		"tx_contract_address",
+		"tx_l1_base_fee_scalar",
+		"tx_l1_blob_base_fee",
+		"tx_l1_blob_base_fee_scalar",
+		"tx_l1_fee",
+		"tx_l1_gas_price",
+		"tx_l1_gas_used",
 		"log_addr",
 		"log_idx",
 	}
