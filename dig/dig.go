@@ -944,6 +944,18 @@ func (lwc *logWithCtx) get(name string) any {
 		return &lwc.t.MaxFeePerGas
 	case "tx_nonce":
 		return lwc.t.Nonce
+	case "tx_l1_base_fee_scalar":
+		return lwc.t.L1BaseFeeScalar
+	case "tx_l1_blob_base_fee":
+		return lwc.t.L1BlobBaseFee
+	case "tx_l1_blob_base_fee_scalar":
+		return lwc.t.L1BlobBaseFeeScalar
+	case "tx_l1_fee":
+		return lwc.t.L1Fee
+	case "tx_l1_gas_price":
+		return lwc.t.L1GasPrice
+	case "tx_l1_gas_used":
+		return lwc.t.L1GasUsed
 	case "log_addr":
 		return lwc.l.Address.Bytes()
 	case "trace_action_call_type":

@@ -655,6 +655,12 @@ type receiptResult struct {
 	EffectiveGasPrice uint256.Int `json:"effectiveGasPrice"`
 	Logs              eth.Logs    `json:"logs"`
 	ContractAddress   eth.Bytes   `json:"contractAddress"`
+	L1BaseFeeScalar     *uint256.Int `json:"l1BaseFeeScalar,omitempty"`
+	L1BlobBaseFee       *uint256.Int `json:"l1BlobBaseFee,omitempty"`
+	L1BlobBaseFeeScalar *uint256.Int `json:"l1BlobBaseFeeScalar,omitempty"`
+	L1Fee               *uint256.Int `json:"l1Fee,omitempty"`
+	L1GasPrice          *uint256.Int `json:"l1GasPrice,omitempty"`
+	L1GasUsed           *eth.Uint64  `json:"l1GasUsed,omitempty"`
 }
 
 type receiptResp struct {
@@ -712,6 +718,12 @@ func (c *Client) receipts(ctx context.Context, url string, bm blockmap, start, l
 			tx.Logs = make([]eth.Log, len(resps[i].Result[j].Logs))
 			tx.ContractAddress.Write(resps[i].Result[j].ContractAddress)
 			copy(tx.Logs, resps[i].Result[j].Logs)
+			tx.L1BaseFeeScalar = resps[i].Result[j].L1BaseFeeScalar
+			tx.L1BlobBaseFee = resps[i].Result[j].L1BlobBaseFee
+			tx.L1BlobBaseFeeScalar = resps[i].Result[j].L1BlobBaseFeeScalar
+			tx.L1Fee = resps[i].Result[j].L1Fee
+			tx.L1GasPrice = resps[i].Result[j].L1GasPrice
+			tx.L1GasUsed = resps[i].Result[j].L1GasUsed
 		}
 	}
 	return nil
