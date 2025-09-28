@@ -957,6 +957,9 @@ func (lwc *logWithCtx) get(name string) any {
 	case "tx_l1_gas_used":
 		return lwc.t.L1GasUsed
 	case "log_addr":
+		if lwc.l == nil {
+			return nil
+		}
 		return lwc.l.Address.Bytes()
 	case "trace_action_call_type":
 		return lwc.ta.CallType
