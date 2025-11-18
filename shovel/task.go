@@ -120,6 +120,12 @@ func WithConsensus(ce *ConsensusEngine) Option {
 	}
 }
 
+func WithReceiptValidator(rv *ReceiptValidator) Option {
+	return func(t *Task) {
+		t.receiptValidator = rv
+	}
+}
+
 func NewDestination(ig config.Integration) (Destination, error) {
 	switch {
 	case len(ig.Compiled.Name) > 0:
@@ -191,7 +197,8 @@ type Task struct {
 	srcName    string
 	srcChainID uint64
 
-	consensus *ConsensusEngine
+	consensus        *ConsensusEngine
+	receiptValidator *ReceiptValidator
 
 	dests       []Destination
 	destFactory func(config.Integration) (Destination, error)
@@ -349,6 +356,8 @@ var (
 	ErrAhead      = errors.New("ahead")
 )
 
+const maxReceiptRetries = 5
+
 // Indexes at most batchSize of the delta between min(g, limit) and pg.
 // If pg contains an invalid latest block (ie reorg) then [ErrReorg]
 // is returned and the caller may rollback the transaction resulting
@@ -463,31 +472,135 @@ func (task *Task) Converge() error {
 		if err != nil {
 			return fmt.Errorf("starting insert pg tx: %w", err)
 		}
-		nrows, err := task.insert(ctx, pgtx, blocks)
-		if err != nil {
-			pgtx.Rollback(ctx)
-			return fmt.Errorf("inserting data: %w", err)
+	nrows, err := task.insert(ctx, pgtx, blocks)
+	if err != nil {
+		pgtx.Rollback(ctx)
+		return fmt.Errorf("inserting data: %w", err)
+	}
+	if task.receiptValidator != nil && task.receiptValidator.Enabled() {
+		for _, b := range blocks {
+			// Check retry count for this block before attempting validation
+			const checkRetryQ = `
+				select retry_count from shovel.block_verification
+				where src_name = $1 and ig_name = $2 and block_num = $3
+			`
+			var retryCount int
+			if err := pgtx.QueryRow(ctx, checkRetryQ, task.srcName, task.destConfig.Name, b.Num()).Scan(&retryCount); err != nil {
+				switch {
+				case errors.Is(err, pgx.ErrNoRows):
+					retryCount = 0
+				default:
+					pgtx.Rollback(ctx)
+					return fmt.Errorf("checking receipt retry count: %w", err)
+				}
+			}
+			if retryCount > maxReceiptRetries {
+				// Mark as unverified but allow indexing to proceed
+				const unverifiedQ = `
+					insert into shovel.block_verification (
+						src_name,
+						ig_name,
+						block_num,
+						audit_status,
+						retry_count,
+						last_verified_at
+					) values ($1, $2, $3, 'receipt_unverified', $4, now())
+					on conflict (src_name, ig_name, block_num)
+					do update set
+						audit_status = 'receipt_unverified',
+						retry_count = excluded.retry_count,
+						last_verified_at = now()
+				`
+				_, err := pgtx.Exec(ctx, unverifiedQ, task.srcName, task.destConfig.Name, b.Num(), retryCount)
+				if err != nil {
+					pgtx.Rollback(ctx)
+					return fmt.Errorf("marking block as receipt_unverified: %w", err)
+				}
+
+				slog.WarnContext(ctx, "receipt-validation-unverified",
+					"block", b.Num(),
+					"retry_count", retryCount,
+					"status", "Data indexed but marked as receipt_unverified",
+				)
+
+				// Continue processing - don't block indexing
+				continue
+			}
+
+			// Use HashBlocksWithRange for consistency with receipt validator empty-range handling
+			blockHash := HashBlocksWithRange([]eth.Block{b}, b.Num(), 1)
+			if err := task.receiptValidator.Validate(ctx, &task.filter, b.Num(), blockHash); err != nil {
+				pgtx.Rollback(ctx)
+				slog.ErrorContext(ctx, "receipt-mismatch", "block", b.Num(), "error", err)
+
+				// Mark block for retry by updating block_verification status and retry count
+				const q = `
+					insert into shovel.block_verification (
+						src_name,
+						ig_name,
+						block_num,
+						audit_status,
+						retry_count
+					) values ($1, $2, $3, 'retrying', 1)
+					on conflict (src_name, ig_name, block_num)
+					do update set
+						audit_status = 'retrying',
+						retry_count = shovel.block_verification.retry_count + 1,
+						last_verified_at = now()
+				`
+
+				cleanupTx, err := task.pgp.Begin(ctx)
+				if err != nil {
+					return fmt.Errorf("starting cleanup tx: %w", err)
+				}
+
+				if _, err := cleanupTx.Exec(ctx, q, task.srcName, task.destConfig.Name, b.Num()); err != nil {
+					cleanupTx.Rollback(ctx)
+					return fmt.Errorf("updating receipt verification status: %w", err)
+				}
+
+				if err := task.Delete(cleanupTx, b.Num()); err != nil {
+					cleanupTx.Rollback(ctx)
+					return fmt.Errorf("deleting mismatched block: %w", err)
+				}
+
+				if err := cleanupTx.Commit(ctx); err != nil {
+					return fmt.Errorf("committing cleanup tx: %w", err)
+				}
+
+				return fmt.Errorf("validating receipts: %w", err)
+			}
 		}
-		last := blocks[len(blocks)-1]
+	}
+	last := blocks[len(blocks)-1]
 		err = task.update(pgtx, last.Num(), last.Hash(), targetNum, targetHash, delta, nrows, time.Since(t0))
 		if err != nil {
 			pgtx.Rollback(ctx)
 			return fmt.Errorf("updating task: %w", err)
 		}
 		if task.consensus != nil {
+			// Compute receipt hash from actual receipts (not consensus blocks)
+			var receiptHash []byte
+			if task.receiptValidator != nil && task.receiptValidator.Enabled() {
+				lastBlock := blocks[len(blocks)-1]
+				receiptHash = task.receiptValidator.FetchReceiptHash(ctx, &task.filter, lastBlock.Num())
+			}
+
 			const q = `
 				insert into shovel.block_verification (
 					src_name,
 					ig_name,
 					block_num,
 					consensus_hash,
+					receipt_hash,
 					audit_status,
 					provider_set,
 					created_at
-				) values ($1, $2, $3, $4, 'healthy', $5, now())
+				) values ($1, $2, $3, $4, $5, 'healthy', $6, now())
 				on conflict (src_name, ig_name, block_num)
 				do update set
 					consensus_hash = excluded.consensus_hash,
+					receipt_hash = excluded.receipt_hash,
 					audit_status = 'healthy',
 					last_verified_at = now()
 			`
@@ -507,6 +620,7 @@ func (task *Task) Converge() error {
 				task.destConfig.Name,
 				lastBlock.Num(),
 				consensusHash,
+				receiptHash,
 				providerSetJSON,
 			)
 			if err != nil {
@@ -890,6 +1004,10 @@ func loadTasks(ctx context.Context, pgp *pgxpool.Pool, c config.Root) ([]*Task, 
 					return nil, fmt.Errorf("setting up consensus engine: %w", err)
 				}
 			}
+			var rv *ReceiptValidator
+			if sc.ReceiptVerifier.Enabled {
+				rv = NewReceiptValidator(jrpc2.New(sc.ReceiptVerifier.Provider), true, NewMetrics(sc.Name, ig.Name))
+			}
 			task, err := NewTask(
 				WithContext(ctx),
 				WithPG(pgp),
@@ -901,6 +1019,7 @@ func loadTasks(ctx context.Context, pgp *pgxpool.Pool, c config.Root) ([]*Task, 
 				WithSource(src),
 				WithIntegration(ig),
 				WithConsensus(ce),
+				WithReceiptValidator(rv),
 			)
 			if err != nil {
 				return nil, fmt.Errorf("setting up main task: %w", err)

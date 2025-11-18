@@ -35,6 +35,11 @@ var (
 		Name: "shovel_consensus_expansions_total",
 		Help: "Number of times provider pool was expanded during consensus retries",
 	}, []string{"src_name", "ig_name"})
+
+	ReceiptMismatch = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "shovel_receipt_mismatch_total",
+		Help: "Number of receipt validation mismatches",
+	}, []string{"src_name", "ig_name"})
 )
 
 type Metrics struct {
@@ -64,6 +69,10 @@ func (m *Metrics) ProviderError(p string) {
 
 func (m *Metrics) Expansion() {
 	ConsensusExpansions.WithLabelValues(m.src, m.ig).Inc()
+}
+
+func (m *Metrics) ReceiptMismatch() {
+	ReceiptMismatch.WithLabelValues(m.src, m.ig).Inc()
 }
 
 func (m *Metrics) Stop() {
