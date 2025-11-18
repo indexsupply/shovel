@@ -341,6 +341,14 @@ type Source struct {
 	PollDuration time.Duration
 	Concurrency  int
 	BatchSize    int
+	Consensus    Consensus
+}
+
+type Consensus struct {
+	Providers    int           `json:"providers"`
+	Threshold    int           `json:"threshold"`
+	RetryBackoff time.Duration `json:"retry_backoff"`
+	MaxBackoff   time.Duration `json:"max_backoff"`
 }
 
 func (s *Source) UnmarshalJSON(d []byte) error {
@@ -355,6 +363,12 @@ func (s *Source) UnmarshalJSON(d []byte) error {
 		PollDuration wos.EnvString   `json:"poll_duration"`
 		Concurrency  wos.EnvInt      `json:"concurrency"`
 		BatchSize    wos.EnvInt      `json:"batch_size"`
+		Consensus    struct {
+			Providers    wos.EnvInt    `json:"providers"`
+			Threshold    wos.EnvInt    `json:"threshold"`
+			RetryBackoff wos.EnvString `json:"retry_backoff"`
+			MaxBackoff   wos.EnvString `json:"max_backoff"`
+		} `json:"consensus"`
 	}{}
 	if err := json.Unmarshal(d, &x); err != nil {
 		return err
@@ -366,6 +380,14 @@ func (s *Source) UnmarshalJSON(d []byte) error {
 	s.Stop = uint64(x.Stop)
 	s.Concurrency = int(x.Concurrency)
 	s.BatchSize = int(x.BatchSize)
+	s.Consensus.Providers = int(x.Consensus.Providers)
+	s.Consensus.Threshold = int(x.Consensus.Threshold)
+	if s.Consensus.Providers == 0 {
+		s.Consensus.Providers = 1
+	}
+	if s.Consensus.Threshold == 0 {
+		s.Consensus.Threshold = 1
+	}
 
 	var urls []string
 	urls = append(urls, string(x.URL))
@@ -388,6 +410,33 @@ func (s *Source) UnmarshalJSON(d []byte) error {
 			const tag = "unable to parse poll_duration value: %s"
 			return fmt.Errorf(tag, string(x.PollDuration))
 		}
+	}
+
+	s.Consensus.RetryBackoff = 2 * time.Second
+	if len(x.Consensus.RetryBackoff) > 0 {
+		var err error
+		s.Consensus.RetryBackoff, err = time.ParseDuration(string(x.Consensus.RetryBackoff))
+		if err != nil {
+			const tag = "unable to parse retry_backoff value: %s"
+			return fmt.Errorf(tag, string(x.Consensus.RetryBackoff))
+		}
+	}
+
+	s.Consensus.MaxBackoff = 30 * time.Second
+	if len(x.Consensus.MaxBackoff) > 0 {
+		var err error
+		s.Consensus.MaxBackoff, err = time.ParseDuration(string(x.Consensus.MaxBackoff))
+		if err != nil {
+			const tag = "unable to parse max_backoff value: %s"
+			return fmt.Errorf(tag, string(x.Consensus.MaxBackoff))
+		}
+	}
+
+	if len(s.URLs) > 0 && len(s.URLs) < s.Consensus.Providers {
+		return fmt.Errorf("configured %d consensus providers but only %d URLs provided", s.Consensus.Providers, len(s.URLs))
+	}
+	if s.Consensus.Threshold > s.Consensus.Providers {
+		return fmt.Errorf("consensus threshold (%d) cannot exceed providers (%d)", s.Consensus.Threshold, s.Consensus.Providers)
 	}
 
 	return nil

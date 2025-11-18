@@ -141,10 +141,13 @@ func (b *Block) Tx(idx uint64) *Tx {
 }
 
 type Log struct {
-	Idx     Uint64  `json:"logIndex"`
-	Address Bytes   `json:"address"`
-	Topics  []Bytes `json:"topics"`
-	Data    Bytes   `json:"data"`
+	BlockNumber Uint64  `json:"blockNumber"`
+	TxHash      Bytes   `json:"transactionHash"`
+	Idx         Uint64  `json:"logIndex"`
+	TxIdx       Uint64  `json:"transactionIndex"`
+	Address     Bytes   `json:"address"`
+	Topics      []Bytes `json:"topics"`
+	Data        Bytes   `json:"data"`
 }
 
 type Logs []Log
@@ -157,7 +160,10 @@ func (ls *Logs) Add(other *Log) {
 	}
 
 	l := Log{}
+	l.BlockNumber = other.BlockNumber
+	l.TxHash.Write(other.TxHash)
 	l.Idx = other.Idx
+	l.TxIdx = other.TxIdx
 	l.Address.Write(other.Address)
 	l.Topics = make([]Bytes, len(other.Topics))
 	for i := range other.Topics {
@@ -168,11 +174,11 @@ func (ls *Logs) Add(other *Log) {
 }
 
 type Receipt struct {
-	Status            Byte
-	GasUsed           Uint64
-	EffectiveGasPrice uint256.Int
-	Logs              Logs
-	ContractAddress   Bytes
+	Status              Byte
+	GasUsed             Uint64
+	EffectiveGasPrice   uint256.Int
+	Logs                Logs
+	ContractAddress     Bytes
 	L1BaseFeeScalar     *uint256.Int `json:"l1BaseFeeScalar,omitempty"`
 	L1BlobBaseFee       *uint256.Int `json:"l1BlobBaseFee,omitempty"`
 	L1BlobBaseFeeScalar *uint256.Int `json:"l1BlobBaseFeeScalar,omitempty"`

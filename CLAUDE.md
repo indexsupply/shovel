@@ -166,7 +166,10 @@ Supports dual configuration sources: JSON files and database storage. Validates 
    - Queries latest available block from Ethereum node
    - Calculates delta (what needs indexing)
    - Checks integration dependencies
-   - **Task.load()** fetches blocks from Ethereum (concurrent batch requests, filter application, reorg detection)
+   - **Task.load()** OR **ConsensusEngine.FetchWithQuorum()** fetches blocks from Ethereum:
+     - Single-provider mode: concurrent batch requests, filter application, reorg detection
+     - Multi-provider consensus mode: fetches from multiple providers, compares hashes, selects majority response
+     - **Provider expansion:** If consensus fails, progressively adds more providers from pool until consensus reached
    - **Task.insert()** transforms and inserts data (ABI decoding,filter evaluation, bulk COPY)
    - Updates task_updates table with progress
 
@@ -182,6 +185,59 @@ Shovel detects reorgs by comparing parent hashes:
 4. Supports up to 1000 reorg iterations per convergence cycle
 
 The parent hash check ensures chain continuity - each block references its parent, creating an immutable chain. A hash mismatch indicates the chain has forked and Shovel must roll back to the fork point.
+
+### Consensus Engine (Phase 1 - SEND-68)
+
+**ConsensusEngine** (`shovel/consensus.go`)
+Implements multi-provider consensus to prevent missing logs from faulty RPC providers. When enabled, fetches data from multiple providers in parallel, computes deterministic hashes of results, and requires N-of-M providers to agree before accepting data.
+
+**Key Features:**
+- **Provider expansion:** Starts with K providers, progressively expands toward M total providers on consensus failures
+- **Quorum voting:** Configurable N-of-M threshold (e.g., 2-of-3, 3-of-5)
+- **Deterministic hashing:** keccak256(blockNum || txHash || logIdx || payloadHash) for log comparison
+- **Retry with backoff:** Exponential backoff (2s → 30s max) on consensus failures
+- **Metrics:** Tracks consensus attempts, failures, expansions, provider errors
+
+**Configuration Example:**
+```json
+{
+  "eth_sources": [{
+    "name": "mainnet",
+    "chain_id": 1,
+    "urls": [
+      "https://provider1.example.com",
+      "https://provider2.example.com",
+      "https://provider3.example.com",
+      "https://provider4.example.com",
+      "https://provider5.example.com"
+    ],
+    "consensus": {
+      "providers": 3,          // Start with 3 providers (K)
+      "threshold": 2,          // Require 2 to agree (N)
+      "retry_backoff": "2s",   // Initial retry delay
+      "max_backoff": "30s"     // Maximum retry delay
+    }
+  }]
+}
+```
+
+**How Provider Expansion Works:**
+1. **Attempt 1:** Query K=3 providers (providers 1-3)
+2. If no consensus: wait 2s, **expand to K+1=4 providers** (providers 1-4)
+3. If still no consensus: wait 4s, **expand to K+2=5 providers** (all providers)
+4. Continue with exponential backoff up to 1000 attempts or until consensus reached
+
+**Budget Tuning:**
+- **Small deployments:** `providers: 2, threshold: 2` (minimal cost, both must agree)
+- **Production:** `providers: 3, threshold: 2` (2-of-3 consensus, tolerates 1 faulty provider)
+- **High-assurance:** `providers: 5, threshold: 3` (3-of-5 consensus, tolerates 2 faulty providers)
+
+**Observability:**
+- `shovel_consensus_attempts_total` - Number of consensus evaluations
+- `shovel_consensus_failures_total` - Failed consensus attempts per retry
+- `shovel_consensus_expansions_total` - Times provider pool was expanded
+- `shovel_consensus_duration_seconds` - Time to reach consensus
+- `shovel_provider_error_total` - RPC errors per provider URL
 
 ### Supporting Packages
 

@@ -26,6 +26,7 @@ import (
 	"filippo.io/age"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/kr/session"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 var (
@@ -184,6 +185,8 @@ func (h *Handler) Prom(w http.ResponseWriter, r *http.Request) {
 	}
 	h.diagLastReq = time.Now()
 	h.diagLastReqMut.Unlock()
+
+	promhttp.Handler().ServeHTTP(w, r)
 
 	checkSource := func(srcName string, src shovel.Source) []string {
 		var (

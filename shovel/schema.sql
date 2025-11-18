@@ -20,6 +20,8 @@ create table if not exists shovel.sources (
 	url text
 );
 create table if not exists shovel.task_updates (
+	chain_id integer,
+	ig_name text,
 	num numeric,
 	hash bytea,
 	insert_at timestamptz default now(),
@@ -28,10 +30,54 @@ create table if not exists shovel.task_updates (
 	nblocks numeric,
 	nrows numeric,
 	latency interval,
-	backfill boolean default false,
 	src_name text,
 	stop numeric
 );
+
+create table if not exists shovel.block_verification (
+	src_name text not null,
+	ig_name text not null,
+	block_num numeric not null,
+	consensus_hash bytea,
+	receipt_hash bytea,
+	audit_status text not null default 'pending',
+	provider_set jsonb,
+	retry_count int not null default 0,
+	last_verified_at timestamptz,
+	created_at timestamptz not null default now(),
+	unique (src_name, ig_name, block_num)
+);
+create index if not exists block_verification_audit_status_idx
+on shovel.block_verification (audit_status, block_num);
+
+create table if not exists shovel.repair_jobs (
+	repair_id text primary key,
+	src_name text not null,
+	ig_name text not null,
+	start_block numeric not null,
+	end_block numeric not null,
+	status text not null default 'in_progress',
+	blocks_deleted int not null default 0,
+	blocks_reprocessed int not null default 0,
+	errors jsonb,
+	created_at timestamptz not null default now(),
+	completed_at timestamptz
+);
+create index if not exists repair_jobs_src_ig_created_idx
+on shovel.repair_jobs (src_name, ig_name, created_at);
+
+create table if not exists shovel.repair_audit (
+	id bigserial primary key,
+	repair_id text references shovel.repair_jobs(repair_id),
+	requester text,
+	src_name text not null,
+	ig_name text not null,
+	start_block numeric not null,
+	end_block numeric not null,
+	dry_run boolean not null default false,
+	created_at timestamptz not null default now()
+);
+
 create unique index
 if not exists intg_name_src_name_backfill_num_idx
 on shovel.ig_updates

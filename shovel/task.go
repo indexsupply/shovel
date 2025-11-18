@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	_ "embed"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -113,6 +114,12 @@ func WithConcurrency(concurrency, batchSize int) Option {
 
 var compiled = map[string]Destination{}
 
+func WithConsensus(ce *ConsensusEngine) Option {
+	return func(t *Task) {
+		t.consensus = ce
+	}
+}
+
 func NewDestination(ig config.Integration) (Destination, error) {
 	switch {
 	case len(ig.Compiled.Name) > 0:
@@ -183,6 +190,8 @@ type Task struct {
 	src        Source
 	srcName    string
 	srcChainID uint64
+
+	consensus *ConsensusEngine
 
 	dests       []Destination
 	destFactory func(config.Integration) (Destination, error)
@@ -303,21 +312,23 @@ func (t *Task) latest(ctx context.Context, pg wpg.Conn) (uint64, []byte, error) 
 	).Scan(&localNum, &localHash)
 	switch {
 	case errors.Is(err, pgx.ErrNoRows):
+		// Cache URL at start to avoid rotation drift across multiple calls
+		url := t.src.NextURL().String()
 		switch {
 		case t.start > 0:
 			n := t.start - 1
-			h, err := t.src.Hash(ctx, t.src.NextURL().String(), n)
+			h, err := t.src.Hash(ctx, url, n)
 			if err != nil {
 				return 0, nil, fmt.Errorf("getting hash for %d: %w", n, err)
 			}
 			slog.InfoContext(t.ctx, "start at config", "num", t.start)
 			return n, h, nil
 		default:
-			n, _, err := t.src.Latest(ctx, t.src.NextURL().String(), 0)
+			n, _, err := t.src.Latest(ctx, url, 0)
 			if err != nil {
 				return 0, nil, err
 			}
-			h, err := t.src.Hash(ctx, t.src.NextURL().String(), n-1)
+			h, err := t.src.Hash(ctx, url, n-1)
 			if err != nil {
 				return 0, nil, fmt.Errorf("getting hash for %d: %w", n-1, err)
 			}
@@ -413,7 +424,24 @@ func (task *Task) Converge() error {
 			return ErrNothingNew
 		}
 		ctx = wctx.WithNumLimit(ctx, localNum+1, delta)
-		blocks, err := task.load(ctx, url, localHash, localNum+1, delta)
+		var (
+			blocks        []eth.Block
+			consensusHash []byte
+		)
+		if task.consensus != nil {
+			// Consensus fetch (all providers)
+			blocks, consensusHash, err = task.consensus.FetchWithQuorum(ctx, &task.filter, localNum+1, delta)
+			// Reorg detection for consensus path, mirroring legacy load behavior
+			if err == nil && len(blocks) > 0 {
+				first := blocks[0]
+				if len(first.Header.Parent) == 32 && !bytes.Equal(localHash, first.Header.Parent) {
+					err = ErrReorg
+				}
+			}
+		} else {
+			// Legacy single-provider fetch
+			blocks, err = task.load(ctx, url, localHash, localNum+1, delta)
+		}
 		if errors.Is(err, ErrReorg) {
 			slog.ErrorContext(ctx, "reorg",
 				"n", localNum,
@@ -445,6 +473,46 @@ func (task *Task) Converge() error {
 		if err != nil {
 			pgtx.Rollback(ctx)
 			return fmt.Errorf("updating task: %w", err)
+		}
+		if task.consensus != nil {
+			const q = `
+				insert into shovel.block_verification (
+					src_name,
+					ig_name,
+					block_num,
+					consensus_hash,
+					audit_status,
+					provider_set,
+					created_at
+				) values ($1, $2, $3, $4, 'healthy', $5, now())
+				on conflict (src_name, ig_name, block_num)
+				do update set
+					consensus_hash = excluded.consensus_hash,
+					audit_status = 'healthy',
+					last_verified_at = now()
+			`
+			// Cache URLs before loop to avoid rotation drift
+			providerSet := make([]string, len(task.consensus.providers))
+			for i := range task.consensus.providers {
+				providerSet[i] = task.consensus.providers[i].NextURL().String()
+			}
+			providerSetJSON, err := json.Marshal(providerSet)
+			if err != nil {
+				pgtx.Rollback(ctx)
+				return fmt.Errorf("marshaling provider set: %w", err)
+			}
+			lastBlock := blocks[len(blocks)-1]
+			_, err = pgtx.Exec(ctx, q,
+				task.srcName,
+				task.destConfig.Name,
+				lastBlock.Num(),
+				consensusHash,
+				providerSetJSON,
+			)
+			if err != nil {
+				pgtx.Rollback(ctx)
+				return fmt.Errorf("updating block_verification: %w", err)
+			}
 		}
 		if err := pgtx.Commit(ctx); err != nil {
 			return fmt.Errorf("committing task tx: %w", err)
@@ -808,6 +876,20 @@ func loadTasks(ctx context.Context, pgp *pgxpool.Pool, c config.Root) ([]*Task, 
 			if !ok {
 				return nil, fmt.Errorf("finding source for %s", scRef.Name)
 			}
+			var ce *ConsensusEngine
+			if sc.Consensus.Providers > 1 {
+				var providers []*jrpc2.Client
+				// Initialize all URLs as providers for expansion pool
+				// ConsensusEngine will use sc.Consensus.Providers initially (K)
+				// and expand toward all URLs (M) on consensus failures
+				for i := 0; i < len(sc.URLs); i++ {
+					providers = append(providers, jrpc2.New(sc.URLs[i]))
+				}
+				ce, err = NewConsensusEngine(providers, sc.Consensus, NewMetrics(sc.Name, ig.Name))
+				if err != nil {
+					return nil, fmt.Errorf("setting up consensus engine: %w", err)
+				}
+			}
 			task, err := NewTask(
 				WithContext(ctx),
 				WithPG(pgp),
@@ -818,6 +900,7 @@ func loadTasks(ctx context.Context, pgp *pgxpool.Pool, c config.Root) ([]*Task, 
 				WithChainID(sc.ChainID),
 				WithSource(src),
 				WithIntegration(ig),
+				WithConsensus(ce),
 			)
 			if err != nil {
 				return nil, fmt.Errorf("setting up main task: %w", err)

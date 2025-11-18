@@ -136,6 +136,33 @@ export type Event = {
 };
 
 /**
+ * Consensus configuration for multi-provider validation.
+ */
+export type Consensus = {
+  /**
+   * Number of RPC providers to use for consensus validation.
+   * Defaults to 1 if not specified.
+   */
+  providers?: EnvRef | number;
+  /**
+   * Number of providers that must agree for data to be accepted.
+   * Defaults to 1 if not specified.
+   * Must be <= providers.
+   */
+  threshold?: EnvRef | number;
+  /**
+   * Initial backoff duration when retrying after consensus failure.
+   * Defaults to "2s" if not specified.
+   */
+  retry_backoff?: EnvRef | string;
+  /**
+   * Maximum backoff duration for retries.
+   * Defaults to "30s" if not specified.
+   */
+  max_backoff?: EnvRef | string;
+};
+
+/**
  * Source represents an Ethereum HTTP JSON RPC API Provider.
  */
 export type Source = {
@@ -152,6 +179,12 @@ export type Source = {
   poll_duration?: EnvRef | string;
   concurrency?: EnvRef | number;
   batch_size?: EnvRef | number;
+  /**
+   * Consensus configuration for multi-provider validation.
+   * When specified, shovel will query multiple providers and require
+   * agreement before accepting data.
+   */
+  consensus?: Consensus;
 };
 
 export type SourceReference = {
