@@ -262,6 +262,22 @@ func (t *Task) Delete(pg wpg.Conn, n uint64) error {
 	if err != nil {
 		return fmt.Errorf("deleting block: %w", err)
 	}
+	// Clear verification state on reorg to prevent stale audit_status='healthy'
+	// on reindexed blocks. This ensures audit loop will re-verify the block.
+	// However, preserve rows in 'retrying', 'failed', or 'verifying' state since
+	// those are actively managed by the auditor and contain important retry_count
+	// state or are currently being processed.
+	const clearVerification = `
+		delete from shovel.block_verification
+		where src_name = $1
+		and ig_name = $2
+		and block_num >= $3
+		and audit_status NOT IN ('retrying', 'failed', 'verifying')
+	`
+	_, err = pg.Exec(t.ctx, clearVerification, t.srcName, t.destConfig.Name, n)
+	if err != nil {
+		return fmt.Errorf("clearing verification state: %w", err)
+	}
 	slog.InfoContext(t.ctx, "task-delete",
 		"n", n,
 		"task_updates", cmd.RowsAffected(),
@@ -377,6 +393,17 @@ func (task *Task) Converge() error {
 	if err != nil {
 		return fmt.Errorf("unable to start tx: %w", err)
 	}
+	// Serialize all task updates and deletes for this (src, ig) pair using
+	// a transaction-scoped advisory lock. This mirrors the pattern in
+	// cmd/shovel/main.go, which calls:
+	//
+	//   dbtx.Exec(ctx, "select pg_advisory_xact_lock($1)", wpg.LockHash("main.migrate"))
+	//
+	// Here we reuse the precomputed task.lockid so that both the main task
+	// loop and the auditor share the same lock namespace.
+	if _, err := pgtx.Exec(ctx, "select pg_advisory_xact_lock($1)", task.lockid); err != nil {
+		return fmt.Errorf("acquiring task lock: %w", err)
+	}
 	defer pgtx.Rollback(ctx)
 
 	for reorgs := 0; reorgs <= 1000; reorgs++ {
@@ -434,12 +461,11 @@ func (task *Task) Converge() error {
 		}
 		ctx = wctx.WithNumLimit(ctx, localNum+1, delta)
 		var (
-			blocks        []eth.Block
-			consensusHash []byte
+			blocks []eth.Block
 		)
 		if task.consensus != nil {
 			// Consensus fetch (all providers)
-			blocks, consensusHash, err = task.consensus.FetchWithQuorum(ctx, &task.filter, localNum+1, delta)
+			blocks, _, err = task.consensus.FetchWithQuorum(ctx, &task.filter, localNum+1, delta)
 			// Reorg detection for consensus path, mirroring legacy load behavior
 			if err == nil && len(blocks) > 0 {
 				first := blocks[0]
@@ -471,6 +497,9 @@ func (task *Task) Converge() error {
 		pgtx, err = task.pgp.Begin(ctx)
 		if err != nil {
 			return fmt.Errorf("starting insert pg tx: %w", err)
+		}
+		if _, err := pgtx.Exec(ctx, "select pg_advisory_xact_lock($1)", task.lockid); err != nil {
+			return fmt.Errorf("acquiring task lock: %w", err)
 		}
 	nrows, err := task.insert(ctx, pgtx, blocks)
 	if err != nil {
@@ -530,8 +559,10 @@ func (task *Task) Converge() error {
 			// Use HashBlocksWithRange for consistency with receipt validator empty-range handling
 			blockHash := HashBlocksWithRange([]eth.Block{b}, b.Num(), 1)
 			if err := task.receiptValidator.Validate(ctx, &task.filter, b.Num(), blockHash); err != nil {
-				pgtx.Rollback(ctx)
 				slog.ErrorContext(ctx, "receipt-mismatch", "block", b.Num(), "error", err)
+
+				// Rollback the current transaction before starting cleanup
+				pgtx.Rollback(ctx)
 
 				// Mark block for retry by updating block_verification status and retry count
 				const q = `
@@ -549,18 +580,22 @@ func (task *Task) Converge() error {
 						last_verified_at = now()
 				`
 
+				// Create fresh transaction for cleanup operations (avoiding nested transaction)
 				cleanupTx, err := task.pgp.Begin(ctx)
 				if err != nil {
 					return fmt.Errorf("starting cleanup tx: %w", err)
 				}
+				defer cleanupTx.Rollback(ctx)
+
+				if _, err := cleanupTx.Exec(ctx, "select pg_advisory_xact_lock($1)", task.lockid); err != nil {
+					return fmt.Errorf("acquiring task lock: %w", err)
+				}
 
 				if _, err := cleanupTx.Exec(ctx, q, task.srcName, task.destConfig.Name, b.Num()); err != nil {
-					cleanupTx.Rollback(ctx)
 					return fmt.Errorf("updating receipt verification status: %w", err)
 				}
 
 				if err := task.Delete(cleanupTx, b.Num()); err != nil {
-					cleanupTx.Rollback(ctx)
 					return fmt.Errorf("deleting mismatched block: %w", err)
 				}
 
@@ -579,13 +614,6 @@ func (task *Task) Converge() error {
 			return fmt.Errorf("updating task: %w", err)
 		}
 		if task.consensus != nil {
-			// Compute receipt hash from actual receipts (not consensus blocks)
-			var receiptHash []byte
-			if task.receiptValidator != nil && task.receiptValidator.Enabled() {
-				lastBlock := blocks[len(blocks)-1]
-				receiptHash = task.receiptValidator.FetchReceiptHash(ctx, &task.filter, lastBlock.Num())
-			}
-
 			const q = `
 				insert into shovel.block_verification (
 					src_name,
@@ -596,13 +624,12 @@ func (task *Task) Converge() error {
 					audit_status,
 					provider_set,
 					created_at
-				) values ($1, $2, $3, $4, $5, 'healthy', $6, now())
+				) values ($1, $2, $3, $4, $5, 'pending', $6, now())
 				on conflict (src_name, ig_name, block_num)
 				do update set
 					consensus_hash = excluded.consensus_hash,
 					receipt_hash = excluded.receipt_hash,
-					audit_status = 'healthy',
-					last_verified_at = now()
+					provider_set = excluded.provider_set
 			`
 			// Cache URLs before loop to avoid rotation drift
 			providerSet := make([]string, len(task.consensus.providers))
@@ -614,18 +641,29 @@ func (task *Task) Converge() error {
 				pgtx.Rollback(ctx)
 				return fmt.Errorf("marshaling provider set: %w", err)
 			}
-			lastBlock := blocks[len(blocks)-1]
-			_, err = pgtx.Exec(ctx, q,
-				task.srcName,
-				task.destConfig.Name,
-				lastBlock.Num(),
-				consensusHash,
-				receiptHash,
-				providerSetJSON,
-			)
-			if err != nil {
-				pgtx.Rollback(ctx)
-				return fmt.Errorf("updating block_verification: %w", err)
+			// Store per-block hashes so that Phase 3 audits can validate a single
+			// block against the same HashBlocks([]eth.Block{b}) value used here.
+			// This mirrors the pattern used by the receipt validator, which builds
+			// a per-block hash before validating receipts.
+			for _, b := range blocks {
+				blockHash := HashBlocks([]eth.Block{b})
+				// Compute receipt hash from actual receipts (not consensus blocks)
+				var receiptHash []byte
+				if task.receiptValidator != nil && task.receiptValidator.Enabled() {
+					receiptHash = task.receiptValidator.FetchReceiptHash(ctx, &task.filter, b.Num())
+				}
+				_, err = pgtx.Exec(ctx, q,
+					task.srcName,
+					task.destConfig.Name,
+					b.Num(),
+					blockHash,
+					receiptHash,
+					providerSetJSON,
+				)
+				if err != nil {
+					pgtx.Rollback(ctx)
+					return fmt.Errorf("updating block_verification: %w", err)
+				}
 			}
 		}
 		if err := pgtx.Commit(ctx); err != nil {
@@ -865,12 +903,13 @@ func TaskUpdates(ctx context.Context, pg wpg.Conn) ([]TaskUpdate, error) {
 // based on config stored in the DB and in the config file.
 type Manager struct {
 	ctx     context.Context
-	running sync.Mutex
-	restart chan struct{}
-	tasks   []*Task
-	updates chan uint64
 	pgp     *pgxpool.Pool
 	conf    config.Root
+	tasks   []*Task
+	restart chan struct{}
+	updates chan uint64
+	running sync.Mutex
+	auditor *Auditor
 }
 
 func NewManager(ctx context.Context, pgp *pgxpool.Pool, conf config.Root) *Manager {
@@ -943,6 +982,15 @@ func (tm *Manager) Run(ec chan error) {
 		return
 	}
 	close(ec)
+
+	// Start auditor if any source has audit enabled
+	for _, sc := range tm.conf.Sources {
+		if sc.Audit.Enabled {
+			tm.auditor = NewAuditor(tm.pgp, tm.conf, tm.tasks)
+			go tm.auditor.Run(tm.ctx)
+			break
+		}
+	}
 
 	tm.restart = make(chan struct{})
 	var wg sync.WaitGroup

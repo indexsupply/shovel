@@ -343,6 +343,7 @@ type Source struct {
 	BatchSize       int
 	Consensus       Consensus
 	ReceiptVerifier ReceiptVerifier
+	Audit        Audit
 }
 
 type Consensus struct {
@@ -374,6 +375,14 @@ type ReceiptVerifier struct {
 	Enabled  bool   `json:"enabled"`
 }
 
+type Audit struct {
+	ProvidersPerBlock int           `json:"providers_per_block"`
+	Confirmations     uint64        `json:"confirmations"`
+	Parallelism       int           `json:"parallelism"`
+	CheckInterval     time.Duration `json:"check_interval"`
+	Enabled           bool          `json:"enabled"`
+}
+
 func (s *Source) UnmarshalJSON(d []byte) error {
 	x := struct {
 		Name         wos.EnvString   `json:"name"`
@@ -396,6 +405,13 @@ func (s *Source) UnmarshalJSON(d []byte) error {
 			Provider wos.EnvString `json:"provider"`
 			Enabled  bool          `json:"enabled"`
 		} `json:"receipt_verifier"`
+		Audit struct {
+			ProvidersPerBlock wos.EnvInt    `json:"providers_per_block"`
+			Confirmations     wos.EnvUint64 `json:"confirmations"`
+			Parallelism       wos.EnvInt    `json:"parallelism"`
+			CheckInterval     wos.EnvString `json:"check_interval"`
+			Enabled           bool          `json:"enabled"`
+		} `json:"audit"`
 	}{}
 	if err := json.Unmarshal(d, &x); err != nil {
 		return err
@@ -411,6 +427,10 @@ func (s *Source) UnmarshalJSON(d []byte) error {
 	s.Consensus.Threshold = int(x.Consensus.Threshold)
 	s.ReceiptVerifier.Provider = string(x.ReceiptVerifier.Provider)
 	s.ReceiptVerifier.Enabled = x.ReceiptVerifier.Enabled
+	s.Audit.ProvidersPerBlock = int(x.Audit.ProvidersPerBlock)
+	s.Audit.Confirmations = uint64(x.Audit.Confirmations)
+	s.Audit.Parallelism = int(x.Audit.Parallelism)
+	s.Audit.Enabled = x.Audit.Enabled
 	if s.Consensus.Providers == 0 {
 		s.Consensus.Providers = 1
 	}
@@ -459,6 +479,28 @@ func (s *Source) UnmarshalJSON(d []byte) error {
 			const tag = "unable to parse max_backoff value: %s"
 			return fmt.Errorf(tag, string(x.Consensus.MaxBackoff))
 		}
+	}
+
+	// Audit defaults and parsing, mirroring the style used for PollDuration
+	// and consensus backoff fields above.
+	s.Audit.CheckInterval = 5 * time.Second
+	if len(x.Audit.CheckInterval) > 0 {
+		var err error
+		s.Audit.CheckInterval, err = time.ParseDuration(string(x.Audit.CheckInterval))
+		if err != nil {
+			const tag = "unable to parse check_interval value: %s"
+			return fmt.Errorf(tag, string(x.Audit.CheckInterval))
+		}
+	}
+
+	if s.Audit.ProvidersPerBlock == 0 {
+		s.Audit.ProvidersPerBlock = 2
+	}
+	if s.Audit.Confirmations == 0 {
+		s.Audit.Confirmations = 128
+	}
+	if s.Audit.Parallelism == 0 {
+		s.Audit.Parallelism = 4
 	}
 
 	if len(s.URLs) > 0 && len(s.URLs) < s.Consensus.Providers {

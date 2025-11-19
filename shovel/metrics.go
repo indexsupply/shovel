@@ -40,6 +40,26 @@ var (
 		Name: "shovel_receipt_mismatch_total",
 		Help: "Number of receipt validation mismatches",
 	}, []string{"src_name", "ig_name"})
+
+	AuditVerifications = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "shovel_audit_verifications_total",
+		Help: "Total confirmation audits executed",
+	}, []string{"src_name", "ig_name"})
+
+	AuditFailures = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "shovel_audit_failures_total",
+		Help: "Confirmation audits that failed verification",
+	}, []string{"src_name", "ig_name"})
+
+	AuditQueueLength = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "shovel_audit_queue_length",
+		Help: "Number of confirmed blocks pending audit",
+	}, []string{"src_name"})
+
+	AuditBacklogAge = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "shovel_audit_backlog_age_seconds",
+		Help: "Age in seconds of the oldest block pending audit for this source",
+	}, []string{"src_name"})
 )
 
 type Metrics struct {
