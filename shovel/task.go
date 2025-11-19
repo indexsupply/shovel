@@ -613,6 +613,8 @@ func (task *Task) Converge() error {
 			pgtx.Rollback(ctx)
 			return fmt.Errorf("updating task: %w", err)
 		}
+		// Create verification rows for auditing. This handles both consensus
+		// and receipt-validated paths to ensure audit trail exists.
 		if task.consensus != nil {
 			const q = `
 				insert into shovel.block_verification (
@@ -624,12 +626,17 @@ func (task *Task) Converge() error {
 					audit_status,
 					provider_set,
 					created_at
-				) values ($1, $2, $3, $4, $5, 'pending', $6, now())
-				on conflict (src_name, ig_name, block_num)
-				do update set
-					consensus_hash = excluded.consensus_hash,
-					receipt_hash = excluded.receipt_hash,
-					provider_set = excluded.provider_set
+			) values ($1, $2, $3, $4, $5, 'pending', $6, now())
+			on conflict (src_name, ig_name, block_num)
+			do update set
+				consensus_hash = excluded.consensus_hash,
+				receipt_hash = excluded.receipt_hash,
+				provider_set = excluded.provider_set,
+				audit_status = CASE
+					WHEN shovel.block_verification.audit_status IN ('failed', 'receipt_unverified', 'retrying')
+					THEN 'pending'
+					ELSE shovel.block_verification.audit_status
+				END
 			`
 			// Cache URLs before loop to avoid rotation drift
 			providerSet := make([]string, len(task.consensus.providers))
@@ -659,6 +666,47 @@ func (task *Task) Converge() error {
 					blockHash,
 					receiptHash,
 					providerSetJSON,
+				)
+				if err != nil {
+					pgtx.Rollback(ctx)
+					return fmt.Errorf("updating block_verification: %w", err)
+				}
+			}
+		} else if task.receiptValidator != nil && task.receiptValidator.Enabled() {
+			// Receipt-only validation (no consensus): create verification rows
+			// so audit loop can verify these blocks. This ensures single-provider
+			// tasks with receipt validation have an audit trail.
+			const q = `
+				insert into shovel.block_verification (
+					src_name,
+					ig_name,
+					block_num,
+					consensus_hash,
+					receipt_hash,
+					audit_status,
+					created_at
+			) values ($1, $2, $3, $4, $5, 'pending', now())
+			on conflict (src_name, ig_name, block_num)
+			do update set
+				consensus_hash = excluded.consensus_hash,
+				receipt_hash = excluded.receipt_hash,
+				audit_status = CASE
+					WHEN shovel.block_verification.audit_status IN ('failed', 'receipt_unverified', 'retrying')
+					THEN 'pending'
+					ELSE shovel.block_verification.audit_status
+				END
+			`
+			// For single-provider tasks, compute hash per block for audit verification
+			for _, b := range blocks {
+				blockHash := HashBlocks([]eth.Block{b})
+				// Compute receipt hash from actual receipts
+				receiptHash := task.receiptValidator.FetchReceiptHash(ctx, &task.filter, b.Num())
+				_, err = pgtx.Exec(ctx, q,
+					task.srcName,
+					task.destConfig.Name,
+					b.Num(),
+					blockHash,
+					receiptHash,
 				)
 				if err != nil {
 					pgtx.Rollback(ctx)

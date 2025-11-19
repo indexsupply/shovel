@@ -224,7 +224,7 @@ func (a *Auditor) verify(ctx context.Context, sc config.Source, t auditTask) err
 	if len(providers) == 0 {
 		return fmt.Errorf("no providers for source %s", sc.Name)
 	}
-	
+
 	// Fetch from K providers
 	k := sc.Audit.ProvidersPerBlock
 	if k <= 0 {
@@ -236,7 +236,7 @@ func (a *Auditor) verify(ctx context.Context, sc config.Source, t auditTask) err
 
 	// Simple rotation: start at blockNum % len
 	startIdx := int(t.blockNum) % len(providers)
-	
+
 	var (
 		matches = 0
 		mu      sync.Mutex

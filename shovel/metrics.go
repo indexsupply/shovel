@@ -60,6 +60,16 @@ var (
 		Name: "shovel_audit_backlog_age_seconds",
 		Help: "Age in seconds of the oldest block pending audit for this source",
 	}, []string{"src_name"})
+
+	RepairRequests = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "shovel_repair_requests_total",
+		Help: "Total number of repair requests received",
+	}, []string{"src_name", "ig_name"})
+
+	RepairBlocksReprocessed = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "shovel_repair_blocks_reprocessed_total",
+		Help: "Total number of blocks reprocessed by repair jobs",
+	}, []string{"src_name", "ig_name"})
 )
 
 type Metrics struct {

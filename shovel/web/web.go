@@ -58,6 +58,7 @@ type Handler struct {
 	pgp  *pgxpool.Pool
 	mgr  *shovel.Manager
 	conf *config.Root
+	rs   *shovel.RepairService
 
 	clientsMutex sync.Mutex
 	clients      map[string]chan []byte
@@ -72,11 +73,12 @@ type Handler struct {
 	diagLastReq    time.Time
 }
 
-func New(mgr *shovel.Manager, conf *config.Root, pgp *pgxpool.Pool) *Handler {
+func New(mgr *shovel.Manager, conf *config.Root, pgp *pgxpool.Pool, rs *shovel.RepairService) *Handler {
 	h := &Handler{
 		pgp:       pgp,
 		mgr:       mgr,
 		conf:      conf,
+		rs:        rs,
 		clients:   make(map[string]chan []byte),
 		templates: make(map[string]*template.Template),
 	}
@@ -93,6 +95,18 @@ func New(mgr *shovel.Manager, conf *config.Root, pgp *pgxpool.Pool) *Handler {
 		hex.Encode(h.password, b)
 	}
 	return h
+}
+
+func (h *Handler) HandleRepairRequest(w http.ResponseWriter, r *http.Request) {
+	h.rs.HandleRepairRequest(w, r)
+}
+
+func (h *Handler) HandleRepairStatus(w http.ResponseWriter, r *http.Request) {
+	h.rs.HandleRepairStatus(w, r)
+}
+
+func (h *Handler) HandleListRepairs(w http.ResponseWriter, r *http.Request) {
+	h.rs.HandleListRepairs(w, r)
 }
 
 func (h *Handler) Authn(next http.HandlerFunc) http.Handler {
