@@ -109,6 +109,7 @@ func TestIntegrations(t *testing.T) {
 			"select count(*) = 0 from seaport_test",
 		},
 	}
+
 	for _, c := range cases {
 		var (
 			ctx  = context.Background()
