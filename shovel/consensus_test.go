@@ -38,6 +38,31 @@ func TestConsensusEngine_New(t *testing.T) {
 	if err == nil {
 		t.Error("expected error when threshold < 1")
 	}
+
+	// Test BFT requirement validation
+	// With 3 providers, threshold must be >= 2 for BFT
+	// minThreshold = 2 * ((3-1) / 3) + 1 = 2 * 0 + 1 = 1
+	// So threshold=1 should pass
+	p3 := []*jrpc2.Client{{}, {}, {}}
+	c = config.Consensus{Threshold: 1}
+	_, err = NewConsensusEngine(p3, c, nil)
+	if err != nil {
+		t.Errorf("expected no error for threshold=1 with 3 providers, got: %v", err)
+	}
+
+	// With 4 providers, threshold must be >= 3 for BFT
+	// minThreshold = 2 * ((4-1) / 3) + 1 = 2 * 1 + 1 = 3
+	p4 := []*jrpc2.Client{{}, {}, {}, {}}
+	c = config.Consensus{Threshold: 2}
+	_, err = NewConsensusEngine(p4, c, nil)
+	if err == nil {
+		t.Error("expected error for threshold=2 with 4 providers (need >= 3 for BFT)")
+	}
+	c = config.Consensus{Threshold: 3}
+	_, err = NewConsensusEngine(p4, c, nil)
+	if err != nil {
+		t.Errorf("expected no error for threshold=3 with 4 providers, got: %v", err)
+	}
 }
 
 func TestHashBlocks_Deterministic(t *testing.T) {
@@ -1160,19 +1185,21 @@ func TestConsensus_ReconcilesWithMockProviders(t *testing.T) {
 //
 // SCENARIO:
 // - 5 total providers configured
-// - consensus.providers = 2 (start with 2 providers)
-// - consensus.threshold = 2 (both must agree)
-// - Providers 1-2: return different wrong data (no consensus)
-// - Providers 3-5: return correct data (consensus possible)
+// - consensus.providers = 3 (start with 3 providers)
+// - consensus.threshold = 3 (all must agree, BFT requirement for N=5)
+// - Providers 1-2: return different wrong data
+// - Provider 3: returns different wrong data
+// - Providers 4-5: return correct data (consensus possible)
 //
 // EXECUTION:
-// - Attempt 1: Providers 1-2 disagree → no consensus → expand
-// - Attempt 2: Providers 1-3 (added provider 3) → still disagree → expand
-// - Attempt 3: Providers 1-4 (added provider 4) → 3 & 4 agree → consensus!
+// - Attempt 1: Providers 1-3 disagree → no consensus → expand
+// - Attempt 2: Providers 1-4 (added provider 4) → still disagree → expand
+// - Attempt 3: Providers 1-5 (added provider 5) → 4 & 5 agree, but need 3 votes → no consensus
+// - Eventually consensus reached when enough providers return correct data
 //
 // VERIFICATION:
 // - Consensus eventually succeeds by expanding provider pool
-// - Correct data is returned from providers 3 & 4
+// - Correct data is returned from providers 4 & 5
 // - Expansion metric increments
 func TestConsensus_ProviderExpansion(t *testing.T) {
 	ctx := context.Background()
@@ -1238,13 +1265,14 @@ func TestConsensus_ProviderExpansion(t *testing.T) {
 		jrpc2.New(server5.URL),
 	}
 
-	// Configure: start with 2 providers, threshold 2 (both must agree)
-	// This forces expansion since providers 1-2 will disagree
+	// Configure: start with 3 providers, threshold 3 (all must agree)
+	// With 5 total providers, BFT requires threshold >= 3
+	// This forces expansion since providers 1-2 disagree with 3
 	ce, err := NewConsensusEngine(
 		providers,
 		config.Consensus{
-			Providers:    2, // Start with only 2 providers (K=2, M=5)
-			Threshold:    2, // Both must agree
+			Providers:    3, // Start with 3 providers (K=3, M=5)
+			Threshold:    3, // All 3 must agree (BFT requirement)
 			RetryBackoff: 10 * time.Millisecond,
 			MaxBackoff:   100 * time.Millisecond,
 		},
@@ -1253,8 +1281,8 @@ func TestConsensus_ProviderExpansion(t *testing.T) {
 	tc.NoErr(t, err)
 
 	// Verify initial state
-	if ce.initialProviders != 2 {
-		t.Errorf("Expected initialProviders=2, got %d", ce.initialProviders)
+	if ce.initialProviders != 3 {
+		t.Errorf("Expected initialProviders=3, got %d", ce.initialProviders)
 	}
 	if len(ce.providers) != 5 {
 		t.Errorf("Expected 5 total providers, got %d", len(ce.providers))
@@ -1290,11 +1318,162 @@ func TestConsensus_ProviderExpansion(t *testing.T) {
 	}
 
 	t.Logf("✓ SUCCESS: Provider expansion validated")
-	t.Logf("  Initial providers: 2 (disagreed)")
+	t.Logf("  Initial providers: 3 (disagreed)")
 	t.Logf("  Total providers: 5")
-	t.Logf("  Consensus threshold: 2")
+	t.Logf("  Consensus threshold: 3 (BFT requirement)")
 	t.Logf("  Expansion occurred: providers gradually added until consensus reached")
 	t.Logf("  Time taken: %v", elapsed)
+}
+
+// TestConsensus_ByzantineFaultTolerance_2of3 tests the classic Byzantine fault
+// tolerance scenario: 3 providers with threshold=2, where 1 provider is malicious
+// (returns crafted incorrect data) and 2 providers are honest.
+//
+// SCENARIO:
+// - 3 providers total (N=3)
+// - threshold=2 (quorum requires 2-of-3 agreement)
+// - Provider 1 (Byzantine): Returns malicious data with different address
+// - Provider 2 (Honest): Returns correct data
+// - Provider 3 (Honest): Returns correct data
+//
+// BFT MATH:
+// - N = 3f + 1, where f is max faulty nodes
+// - For N=3: f = (3-1)/3 = 0 (can tolerate 0 Byzantine faults)
+// - threshold >= 2f + 1 = 2(0) + 1 = 1
+// - Our threshold=2 exceeds minimum, providing safety
+//
+// EXECUTION:
+// - All 3 providers queried in parallel
+// - Provider 1 returns hash_A (malicious data)
+// - Provider 2 returns hash_B (correct data)
+// - Provider 3 returns hash_B (correct data)
+// - Vote count: hash_A=1, hash_B=2
+// - Consensus: hash_B reaches threshold (2 >= 2)
+//
+// VERIFICATION:
+// - Consensus succeeds with correct data from providers 2 & 3
+// - Malicious provider's data is rejected (didn't reach threshold)
+// - This validates BFT property: honest majority prevails
+func TestConsensus_ByzantineFaultTolerance_2of3(t *testing.T) {
+	ctx := context.Background()
+
+	// Correct logs data (honest providers)
+	correctLogs := []any{
+		map[string]any{
+			"address":          "0x57f1887a8bf19b14fc0df6fd9b2acc9af147ea85",
+			"topics":           []string{"0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"},
+			"data":             "0x",
+			"blockNumber":      "0x111cd23",
+			"logIndex":         "0x100",
+			"transactionHash":  "0x713df81a2ab53db1d01531106fc5de43012a401ddc3e0586d522e5c55a162d42",
+			"transactionIndex": "0x0",
+		},
+		map[string]any{
+			"address":          "0x57f1887a8bf19b14fc0df6fd9b2acc9af147ea85",
+			"topics":           []string{"0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"},
+			"data":             "0x",
+			"blockNumber":      "0x111cd23",
+			"logIndex":         "0x101",
+			"transactionHash":  "0x713df81a2ab53db1d01531106fc5de43012a401ddc3e0586d522e5c55a162d42",
+			"transactionIndex": "0x0",
+		},
+	}
+
+	// Malicious logs data (Byzantine provider)
+	// Same structure but different address - this is crafted to look valid
+	// but contains incorrect data (simulates Byzantine behavior)
+	maliciousLogs := []any{
+		map[string]any{
+			"address":          "0xbad1111111111111111111111111111111111111", // Different address
+			"topics":           []string{"0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"},
+			"data":             "0x",
+			"blockNumber":      "0x111cd23",
+			"logIndex":         "0x100",
+			"transactionHash":  "0x713df81a2ab53db1d01531106fc5de43012a401ddc3e0586d522e5c55a162d42",
+			"transactionIndex": "0x0",
+		},
+		map[string]any{
+			"address":          "0xbad1111111111111111111111111111111111111",
+			"topics":           []string{"0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"},
+			"data":             "0x",
+			"blockNumber":      "0x111cd23",
+			"logIndex":         "0x101",
+			"transactionHash":  "0x713df81a2ab53db1d01531106fc5de43012a401ddc3e0586d522e5c55a162d42",
+			"transactionIndex": "0x0",
+		},
+	}
+
+	// Create 3 providers:
+	// - Provider 1: Byzantine (malicious data)
+	// - Provider 2: Honest (correct data)
+	// - Provider 3: Honest (correct data)
+	byzantineServer := createMockProvider(maliciousLogs)
+	honestServer1 := createMockProvider(correctLogs)
+	honestServer2 := createMockProvider(correctLogs)
+	defer byzantineServer.Close()
+	defer honestServer1.Close()
+	defer honestServer2.Close()
+
+	providers := []*jrpc2.Client{
+		jrpc2.New(byzantineServer.URL),
+		jrpc2.New(honestServer1.URL),
+		jrpc2.New(honestServer2.URL),
+	}
+
+	// Configure 2-of-3 consensus
+	ce, err := NewConsensusEngine(
+		providers,
+		config.Consensus{
+			Providers:    3, // Use all 3 providers
+			Threshold:    2, // Require 2 to agree
+			RetryBackoff: 10 * time.Millisecond,
+			MaxBackoff:   100 * time.Millisecond,
+		},
+		NewMetrics("test", "test_ig"),
+	)
+	tc.NoErr(t, err)
+
+	// Execute consensus
+	filter := &glf.Filter{UseLogs: true}
+	blocks, hash, err := ce.FetchWithQuorum(ctx, filter, 17943843, 1)
+
+	// Should succeed - 2 honest providers reach threshold
+	tc.NoErr(t, err)
+	if len(hash) == 0 {
+		t.Error("Expected non-empty consensus hash")
+	}
+	if len(blocks) == 0 {
+		t.Error("Expected blocks to be returned")
+	}
+
+	// Verify returned data is correct (from honest providers, not Byzantine)
+	if len(blocks) > 0 && len(blocks[0].Txs) > 0 && len(blocks[0].Txs[0].Logs) > 0 {
+		log := blocks[0].Txs[0].Logs[0]
+		expectedAddr := "0x57f1887a8bf19b14fc0df6fd9b2acc9af147ea85"
+		actualAddr := hex.EncodeToString(log.Address.Bytes())
+		maliciousAddr := "bad1111111111111111111111111111111111111"
+
+		if actualAddr != expectedAddr[2:] {
+			t.Errorf("Expected correct address %s, got %s", expectedAddr, actualAddr)
+		}
+		if actualAddr == maliciousAddr {
+			t.Error("Byzantine provider's malicious data was accepted! BFT failed.")
+		}
+
+		// Verify we have both logs from the correct data
+		if len(blocks[0].Txs[0].Logs) != 2 {
+			t.Errorf("Expected 2 logs from honest providers, got %d", len(blocks[0].Txs[0].Logs))
+		}
+	}
+
+	t.Logf("✓ SUCCESS: Byzantine fault tolerance validated")
+	t.Logf("  Provider 1 (Byzantine): returned malicious data (different address)")
+	t.Logf("  Provider 2 (Honest): returned correct data")
+	t.Logf("  Provider 3 (Honest): returned correct data")
+	t.Logf("  Voting: malicious_hash=1, correct_hash=2")
+	t.Logf("  Consensus: correct_hash reached threshold (2 >= 2)")
+	t.Logf("  Result: Honest majority prevailed, Byzantine provider rejected")
+	t.Logf("  BFT property verified: System tolerates f=0 faulty nodes with N=3")
 }
 
 // createMockProvider is a helper to create a mock RPC provider

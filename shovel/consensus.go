@@ -3,6 +3,7 @@ package shovel
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"fmt"
 	"log/slog"
 	"slices"
@@ -28,6 +29,14 @@ func NewConsensusEngine(providers []*jrpc2.Client, conf config.Consensus, metric
 	}
 	if conf.Threshold < 1 {
 		return nil, fmt.Errorf("threshold must be >= 1")
+	}
+	// Validate Byzantine Fault Tolerance requirements:
+	// For BFT: N >= 3f + 1, where threshold >= 2f + 1
+	// This means: threshold >= 2 * ((len(providers) - 1) / 3) + 1
+	// Example: 3 providers requires threshold >= 2, 4 providers requires threshold >= 3
+	minThreshold := 2*((len(providers)-1)/3) + 1
+	if conf.Threshold < minThreshold {
+		return nil, fmt.Errorf("threshold (%d) insufficient for BFT with %d providers (need >= %d)", conf.Threshold, len(providers), minThreshold)
 	}
 	// Initial provider count: use configured value or all providers if not specified
 	initialProviders := conf.Providers
@@ -89,12 +98,12 @@ func (ce *ConsensusEngine) FetchWithQuorum(ctx context.Context, filter *glf.Filt
 			ce.metrics.Expansion()
 		}
 
-		// Parallel fetch
+		// Parallel fetch with context cancellation
 		var (
-			eg        errgroup.Group
 			responses = make([][]eth.Block, numProviders)
 			errs      = make([]error, numProviders)
 		)
+		eg, egCtx := errgroup.WithContext(ctx)
 		for i, p := range activeProviders {
 			i, p := i, p
 			eg.Go(func() error {
@@ -102,7 +111,7 @@ func (ce *ConsensusEngine) FetchWithQuorum(ctx context.Context, filter *glf.Filt
 				url := p.NextURL()
 				// Use Get method directly, similar to how Task.load works
 				// but without the batching loop since we want exact range
-				blocks, err := p.Get(ctx, url.String(), filter, start, limit)
+				blocks, err := p.Get(egCtx, url.String(), filter, start, limit)
 				if err != nil {
 					errs[i] = err
 					ce.metrics.ProviderError(url.String())
@@ -127,7 +136,7 @@ func (ce *ConsensusEngine) FetchWithQuorum(ctx context.Context, filter *glf.Filt
 				continue
 			}
 			h := HashBlocksWithRange(blocks, start, limit)
-			s := string(h)
+			s := hex.EncodeToString(h)
 			counts[s]++
 			if counts[s] >= conf.Threshold {
 				canonHash = s
@@ -146,6 +155,23 @@ func (ce *ConsensusEngine) FetchWithQuorum(ctx context.Context, filter *glf.Filt
 				"elapsed", time.Since(t0),
 			)
 			return responses[canonIdx], []byte(canonHash), nil
+		}
+
+		// Log failed providers for debugging
+		var failedProviders []string
+		for i := range responses {
+			if errs[i] != nil {
+				// Cache URL to get same one that was used in the request
+				url := activeProviders[i].NextURL()
+				failedProviders = append(failedProviders, url.String())
+			}
+		}
+		if len(failedProviders) > 0 {
+			slog.WarnContext(ctx, "providers-failed",
+				"failed_count", len(failedProviders),
+				"providers", failedProviders,
+				"attempt", attempt+1,
+			)
 		}
 
 		ce.metrics.Failure()

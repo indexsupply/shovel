@@ -351,6 +351,23 @@ type Consensus struct {
 	MaxBackoff   time.Duration `json:"max_backoff"`
 }
 
+// Validate checks that Consensus configuration is valid
+func (c *Consensus) Validate() error {
+	if c.Threshold < 1 {
+		return fmt.Errorf("threshold must be >= 1, got %d", c.Threshold)
+	}
+	if c.Providers < c.Threshold {
+		return fmt.Errorf("providers (%d) must be >= threshold (%d)", c.Providers, c.Threshold)
+	}
+	if c.RetryBackoff < 0 {
+		return fmt.Errorf("retry_backoff must be non-negative")
+	}
+	if c.MaxBackoff < c.RetryBackoff {
+		return fmt.Errorf("max_backoff must be >= retry_backoff")
+	}
+	return nil
+}
+
 func (s *Source) UnmarshalJSON(d []byte) error {
 	x := struct {
 		Name         wos.EnvString   `json:"name"`
