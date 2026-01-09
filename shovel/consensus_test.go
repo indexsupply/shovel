@@ -330,8 +330,8 @@ func TestConsensus_PreventsMissingLogs(t *testing.T) {
 // is returned (2 of 4 events). This is harder to detect without consensus validation.
 //
 // TEST BEHAVIOR:
-// - With correct implementation: Test PASSES (detects partial data, requires consensus)
-// - With buggy implementation: Test FAILS (accepts 2 events, missing 2)
+// - With consensus: Test PASSES (detects partial data, uses majority response)
+// - Without consensus: Test FAILS (accepts 2 events, missing 2)
 func TestBugConditions_PartialLogs(t *testing.T) {
 	var (
 		ctx  = context.Background()
@@ -342,7 +342,6 @@ func TestBugConditions_PartialLogs(t *testing.T) {
 	decode(t, read(t, "erc721.json"), &conf.Integrations)
 	tc.NoErr(t, config.ValidateFix(&conf))
 	tc.NoErr(t, config.Migrate(ctx, pg, conf))
-
 	const (
 		targetBlock     = 17943843
 		parentBlockHash = "0x1e2daaa5c2e7fa9632fe767eb2f1fe0b42d8cbe1e8d18a2a275bc2060e86a1be"
@@ -351,7 +350,13 @@ func TestBugConditions_PartialLogs(t *testing.T) {
 		chainID         = 1
 	)
 
-	// Provider returns only 2 of 4 logs - even more subtle bug
+	// Use Mainnet RPC for testing consensus with partial logs
+	mainnetRPC := os.Getenv("MAINNET_RPC_URL")
+	if mainnetRPC == "" {
+		t.Skip("MAINNET_RPC_URL not set, skipping integration test")
+	}
+
+	// Provider A returns only 2 of 4 logs - even more subtle bug
 	partialServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
 		
@@ -426,13 +431,52 @@ func TestBugConditions_PartialLogs(t *testing.T) {
 	}))
 	defer partialServer.Close()
 
-	partialProvider := jrpc2.New(partialServer.URL)
+	// Create 3 providers for consensus:
+	// - Provider A: Faulty (returns only 2 of 4 logs)
+	// - Provider B: Mainnet RPC (returns all 4 logs)
+	// - Provider C: Mainnet RPC (returns all 4 logs)
+	providerA := jrpc2.New(partialServer.URL)
+	providerB := jrpc2.New(mainnetRPC)
+	providerC := jrpc2.New(mainnetRPC)
+
+	// Create consensus engine: 2-of-3 threshold
+	consensusConfig := config.Consensus{
+		Providers:    3,
+		Threshold:    2,
+		RetryBackoff: 2 * time.Second,
+		MaxBackoff:   30 * time.Second,
+	}
+
+	ce, err := NewConsensusEngine(
+		[]*jrpc2.Client{providerA, providerB, providerC},
+		consensusConfig,
+		NewMetrics(srcName, "erc721_test"),
+	)
+	tc.NoErr(t, err)
 	
 	ig := conf.Integrations[0]
+
+	// Initialize task_updates with parent block
+	const initQuery = `
+		insert into shovel.task_updates (
+			chain_id, src_name, ig_name, num, hash, src_num, src_hash, stop, nblocks, nrows, latency
+		) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+	`
+	_, err = pg.Exec(ctx, initQuery,
+		chainID, srcName, ig.Name,
+		targetBlock-1,
+		mustHex(parentBlockHash),
+		targetBlock-1,
+		mustHex(parentBlockHash),
+		0, 1, 0, time.Duration(0),
+	)
+	tc.NoErr(t, err)
+
 	task, err := NewTask(
 		WithContext(ctx),
 		WithPG(pg),
-		WithSource(partialProvider),
+		WithSource(providerB), // Legacy source for non-consensus paths
+		WithConsensus(ce),     // Enable consensus to detect partial logs
 		WithIntegration(ig),
 		WithRange(targetBlock, targetBlock+1),
 		WithSrcName(srcName),
