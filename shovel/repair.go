@@ -340,6 +340,12 @@ func (rs *RepairService) countAffectedRows(ctx context.Context, srcName, igName 
 }
 
 func (rs *RepairService) executeRepair(ctx context.Context, repairID string, req RepairRequest) {
+	// Check if manager is initialized
+	if rs.manager == nil {
+		rs.updateRepairStatus(ctx, repairID, "failed", []string{"RepairService not initialized with Manager"})
+		return
+	}
+
 	// Find task first (needed for lockid)
 	var task *Task
 	for _, t := range rs.manager.tasks {
