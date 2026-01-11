@@ -13,6 +13,10 @@ import (
 )
 
 func TestIntegrations(t *testing.T) {
+	rpcURL := os.Getenv("ETH_RPC_URL")
+	if rpcURL == "" {
+		t.Skip("ETH_RPC_URL not set")
+	}
 	cases := []struct {
 		blockNum uint64
 		config   string
@@ -117,7 +121,7 @@ func TestIntegrations(t *testing.T) {
 		for _, ig := range conf.Integrations {
 			task, err := NewTask(
 				WithPG(pg),
-				WithSource(jrpc2.New("https://practical-flashy-research.quiknode.pro/caae41d41b732f1f0872c8fa3ca2fe66ebb76a93/")),
+				WithSource(jrpc2.New(rpcURL)),
 				WithIntegration(ig),
 				WithRange(c.blockNum, c.blockNum+1),
 			)
@@ -128,7 +132,7 @@ func TestIntegrations(t *testing.T) {
 		for _, ig := range conf.Integrations {
 			task, err := NewTask(
 				WithPG(pg),
-				WithSource(jrpc2.New("https://practical-flashy-research.quiknode.pro/caae41d41b732f1f0872c8fa3ca2fe66ebb76a93/")),
+				WithSource(jrpc2.New(rpcURL)),
 				WithIntegration(ig),
 			)
 			tc.NoErr(t, err)

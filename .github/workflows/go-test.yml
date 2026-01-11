@@ -27,3 +27,5 @@ jobs:
             ${{ runner.os }}-go-
       - name: go test
         run: go test -p 1 ./...
+        env:
+          ETH_RPC_URL: ${{ secrets.ETH_RPC_URL }}
