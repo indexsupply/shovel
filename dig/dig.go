@@ -396,6 +396,8 @@ func (f Filter) Accept(ctx context.Context, pgmut *sync.Mutex, pg wpg.Conn, d an
 		d = []byte(v)
 	case eth.Uint64:
 		d = uint64(v)
+	case eth.Byte:
+		d = uint64(v)
 	}
 	switch v := d.(type) {
 	case []byte:

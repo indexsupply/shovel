@@ -430,6 +430,47 @@ func TestFilter(t *testing.T) {
 			eth.Uint64(2),
 			true,
 		},
+		// eth.Byte tests (tx_type, tx_status)
+		{
+			Filter{Op: "eq", Arg: []string{"2"}},
+			eth.Byte(2),
+			true,
+		},
+		{
+			Filter{Op: "eq", Arg: []string{"2"}},
+			eth.Byte(118),
+			false,
+		},
+		{
+			Filter{Op: "ne", Arg: []string{"118"}},
+			eth.Byte(2),
+			true,
+		},
+		{
+			Filter{Op: "ne", Arg: []string{"118"}},
+			eth.Byte(118),
+			false,
+		},
+		{
+			Filter{Op: "lt", Arg: []string{"118"}},
+			eth.Byte(2),
+			true,
+		},
+		{
+			Filter{Op: "lt", Arg: []string{"118"}},
+			eth.Byte(118),
+			false,
+		},
+		{
+			Filter{Op: "gt", Arg: []string{"100"}},
+			eth.Byte(118),
+			true,
+		},
+		{
+			Filter{Op: "gt", Arg: []string{"100"}},
+			eth.Byte(2),
+			false,
+		},
 		{
 			Filter{Op: "eq", Arg: []string{"340282366920938463463374607431768211456"}},
 			dec2uint256("340282366920938463463374607431768211456"),
