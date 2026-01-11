@@ -6,7 +6,7 @@ on:
       - 'r/docker'
 jobs:
   docker:
-    runs-on: large
+    runs-on: ubuntu-latest
     steps:
       -
         name: Checkout
