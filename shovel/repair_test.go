@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -24,7 +25,7 @@ func TestHandleRepairRequest(t *testing.T) {
 	// Create test table for repair operations
 	_, err := pg.Exec(ctx, "CREATE TABLE shovel.bar (src_name text, ig_name text, block_num bigint)")
 	tc.NoErr(t, err)
-	
+
 	// Setup a mock source that returns blocks
 	mockSrc := &mockSource{
 		blocks: []eth.Block{
@@ -37,24 +38,24 @@ func TestHandleRepairRequest(t *testing.T) {
 			newMockBlock(105, []byte("hash105"), []byte("hash104"), "data105"),
 		},
 	}
-	
+
 	// Setup a destination
 	dest := &mockDestination{
 		tableName: "shovel.bar",
 		pgp:       pg,
 	}
-	
+
 	task := &Task{
-		ctx:        ctx,
-		pgp:        pg,
-		src:        mockSrc,
-		srcName:    "foo",
-		destConfig: config.Integration{Name: "bar"},
-		dests:      []Destination{dest},
-		filter:     glf.Filter{},
-		batchSize:  10,
+		ctx:         ctx,
+		pgp:         pg,
+		src:         mockSrc,
+		srcName:     "foo",
+		destConfig:  config.Integration{Name: "bar", Table: wpg.Table{Name: "shovel.bar"}},
+		dests:       []Destination{dest},
+		filter:      glf.Filter{},
+		batchSize:   10,
 		concurrency: 1,
-		lockid:     wpg.LockHash("test-repair-foo-bar"),
+		lockid:      wpg.LockHash("test-repair-foo-bar"),
 	}
 	mgr := &Manager{
 		tasks: []*Task{task},
@@ -64,9 +65,9 @@ func TestHandleRepairRequest(t *testing.T) {
 		Sources: []config.Source{{Name: "foo"}},
 		Integrations: []config.Integration{
 			{
-				Name: "bar", 
+				Name:    "bar",
 				Enabled: true,
-				Table: wpg.Table{Name: "shovel.bar"},
+				Table:   wpg.Table{Name: "shovel.bar"},
 				Sources: []config.Source{{Name: "foo"}},
 			},
 		},
@@ -109,18 +110,18 @@ func TestHandleRepairRequest(t *testing.T) {
 			}
 			time.Sleep(50 * time.Millisecond)
 		}
-		
+
 		// Check final status
 		reqStatus := httptest.NewRequest("GET", "/api/v1/repair/"+resp.RepairID, nil)
 		wStatus := httptest.NewRecorder()
 		rs.HandleRepairStatus(wStatus, reqStatus)
-		
+
 		if wStatus.Code != http.StatusOK {
 			t.Errorf("status: expected 200 OK, got %d", wStatus.Code)
 		}
 		var statusResp RepairResponse
 		json.NewDecoder(wStatus.Body).Decode(&statusResp)
-		
+
 		if statusResp.Status != "completed" {
 			t.Errorf("expected completed, got %s (errors: %v)", statusResp.Status, statusResp.Errors)
 		}
@@ -189,11 +190,11 @@ func TestRepairList(t *testing.T) {
 func TestAffectedRows(t *testing.T) {
 	pg := testpg(t)
 	ctx := context.Background()
-	
+
 	// Create table
 	_, err := pg.Exec(ctx, "create table shovel.bar (src_name text, ig_name text, block_num bigint)")
 	tc.NoErr(t, err)
-	
+
 	// Insert data
 	_, err = pg.Exec(ctx, "insert into shovel.bar values ('foo', 'bar', 10), ('foo', 'bar', 11), ('foo', 'baz', 10)")
 	tc.NoErr(t, err)
@@ -622,9 +623,9 @@ func TestRepairConsensusMode(t *testing.T) {
 	tc.NoErr(t, err)
 
 	// Track FetchWithQuorum calls via mock server
-	var consensusCalls int
+	var consensusCalls atomic.Int64
 	mockConsensusServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		consensusCalls++
+		consensusCalls.Add(1)
 		// Return valid block data for consensus
 		response := `[
 			{"jsonrpc":"2.0","id":"1","result":{
@@ -711,7 +712,7 @@ func TestRepairConsensusMode(t *testing.T) {
 	rs := NewRepairService(pg, conf, mgr)
 
 	// Reset counter
-	consensusCalls = 0
+	consensusCalls.Store(0)
 
 	// Call with empty URL - should trigger consensus mode (repair.go:497-511)
 	_, err = rs.reindexBlocks(ctx, taskWithConsensus, "", 100, 100)
@@ -719,8 +720,8 @@ func TestRepairConsensusMode(t *testing.T) {
 	// The call may fail due to reorg detection (parent hash check),
 	// but the key assertion is that consensus mode was triggered
 	// (FetchWithQuorum was called, which calls the mock server)
-	if consensusCalls == 0 {
+	if consensusCalls.Load() == 0 {
 		t.Error("consensus mode not triggered: expected FetchWithQuorum to be called, but mock server received 0 requests")
 	}
-	t.Logf("consensus mode verified: mock server received %d requests (error: %v)", consensusCalls, err)
+	t.Logf("consensus mode verified: mock server received %d requests (error: %v)", consensusCalls.Load(), err)
 }

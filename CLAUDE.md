@@ -194,7 +194,7 @@ Implements multi-provider consensus to prevent missing logs from faulty RPC prov
 **Key Features:**
 - **Provider expansion:** Starts with K providers, progressively expands toward M total providers on consensus failures
 - **Quorum voting:** Configurable N-of-M threshold (e.g., 2-of-3, 3-of-5)
-- **Deterministic hashing:** keccak256(blockNum || txHash || logIdx || payloadHash) for log comparison
+- **Deterministic hashing:** keccak256(address || blockNum || txHash || logIdx || txIdx || payloadHash) where payloadHash = keccak256(data || topics)
 - **Retry with backoff:** Exponential backoff (2s → 30s max) on consensus failures
 - **Metrics:** Tracks consensus attempts, failures, expansions, provider errors
 

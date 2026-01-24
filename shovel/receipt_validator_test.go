@@ -1,6 +1,7 @@
 package shovel
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -139,6 +140,34 @@ func TestReceiptValidator_ValidateWithMockClient(t *testing.T) {
 		}
 		t.Logf("mock server received: %s", string(body))
 
+		if bytes.Contains(body, []byte("eth_getBlockReceipts")) {
+			receiptResp := fmt.Sprintf(`[
+				{"jsonrpc":"2.0","id":"1","result":[
+					{
+						"blockHash":"0xcb5cab7266694daa0d28cbf40496c08dd30bf732c41e0455e7ad389c10d79f4f",
+						"blockNumber":"0x%x",
+						"transactionIndex":"0x0",
+						"status":"0x1",
+						"gasUsed":"0x5208",
+						"effectiveGasPrice":"0x1",
+						"logs":[
+							{
+								"address":"0x0000000000000000000000000000000000000001",
+								"topics":["0x0000000000000000000000000000000000000000000000000000000000000001"],
+								"data":"0x01",
+								"blockNumber":"0x%x",
+								"blockHash":"0xcb5cab7266694daa0d28cbf40496c08dd30bf732c41e0455e7ad389c10d79f4f",
+								"transactionIndex":"0x0",
+								"logIndex":"0x0"
+							}
+						]
+					}
+				]}
+			]`, blockNum, blockNum)
+			w.Write([]byte(receiptResp))
+			return
+		}
+
 		// Return a minimal valid response for eth_getBlockByNumber + eth_getLogs
 		// The response format is a JSON-RPC batch response
 		response := fmt.Sprintf(`[
@@ -172,8 +201,10 @@ func TestReceiptValidator_ValidateWithMockClient(t *testing.T) {
 
 	// First, fetch data to compute the expected consensus hash
 	ctx := context.Background()
-	blocks, err := client.Get(ctx, client.NextURL().String(), filter, blockNum, 1)
+	receiptFilter := receiptValidationFilter(filter)
+	blocks, err := client.Get(ctx, client.NextURL().String(), &receiptFilter, blockNum, 1)
 	tc.NoErr(t, err)
+	blocks = filterBlocksByLogFilter(blocks, filter)
 	expectedHash := HashBlocks(blocks)
 
 	t.Run("Validate_Match", func(t *testing.T) {
@@ -225,10 +256,9 @@ func TestReceiptValidator_ValidateWithMockClient(t *testing.T) {
 func TestReceiptValidator_ValidateRPCError(t *testing.T) {
 	// Create a mock server that returns an error for both requests in batch
 	errorServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Return batch response with error for the block request
+		// Return batch response with error for the receipts request
 		w.Write([]byte(`[
-			{"jsonrpc":"2.0","id":"1","error":{"code":-32000,"message":"test error"}},
-			{"jsonrpc":"2.0","id":"2","result":[]}
+			{"jsonrpc":"2.0","id":"1","error":{"code":-32000,"message":"test error"}}
 		]`))
 	}))
 	defer errorServer.Close()

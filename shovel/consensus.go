@@ -209,7 +209,9 @@ func HashBlocksWithRange(blocks []eth.Block, start, limit uint64) []byte {
 // concatenates address || blockNumber || txHash || logIdx || txIdx || payloadHash, and finally
 // computes keccak256 of the full buffer.
 //
-// This aligns with the specification: keccak256(blockNum || txHash || logIdx || payloadHash).
+// Full hash formula: keccak256(address || blockNum || txHash || logIdx || txIdx || payloadHash)
+// where payloadHash = keccak256(data || topics)
+//
 // Note: abi_idx is not included as it doesn't exist at the raw log layer (only computed
 // during ABI decoding when processing logs into user tables).
 func HashBlocks(blocks []eth.Block) []byte {

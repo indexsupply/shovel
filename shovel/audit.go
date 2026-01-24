@@ -26,7 +26,7 @@ type Auditor struct {
 	// inFlight tracks the number of active audit verifications. It uses the
 	// same atomic increment/decrement pattern as Task.insert's nrows counter
 	// (see task.go:667-686) to avoid races without additional locks.
-	inFlight   int64
+	inFlight    int64
 	maxInFlight int64
 }
 
@@ -302,6 +302,9 @@ func (a *Auditor) verify(ctx context.Context, sc config.Source, t auditTask) err
 		threshold := sc.Audit.ProvidersPerBlock
 		if threshold <= 0 {
 			threshold = 1
+		}
+		if threshold > len(providers) {
+			threshold = len(providers)
 		}
 		if allMatches >= threshold {
 			matches = k

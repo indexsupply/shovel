@@ -186,13 +186,15 @@ func (rs *RepairService) HandleRepairRequest(w http.ResponseWriter, r *http.Requ
 		slog.ErrorContext(r.Context(), "audit log failed", "error", err)
 	}
 
-	// Start repair in background with request-derived context
-	// Use generous timeout to prevent indefinite repairs while allowing proper cancellation
+	// Start repair in background with detached context.
+	// Use context.Background() so repairs complete regardless of HTTP client disconnect.
+	// This prevents leaving the database in an inconsistent state where data is deleted
+	// but not yet reindexed. Timeout still applies for safety.
 	timeout := time.Duration((req.EndBlock-req.StartBlock)/1000) * time.Hour
 	if timeout < 10*time.Minute {
 		timeout = 10 * time.Minute
 	}
-	repairCtx, cancel := context.WithTimeout(r.Context(), timeout)
+	repairCtx, cancel := context.WithTimeout(context.Background(), timeout)
 	go func() {
 		defer cancel()
 		rs.executeRepair(repairCtx, repairID, req)
@@ -236,7 +238,11 @@ func (rs *RepairService) HandleRepairStatus(w http.ResponseWriter, r *http.Reque
 		&resp.CreatedAt, &resp.CompletedAt,
 	)
 	if err != nil {
-		http.Error(w, "Repair job not found", http.StatusNotFound)
+		if errors.Is(err, pgx.ErrNoRows) {
+			http.Error(w, "Repair job not found", http.StatusNotFound)
+		} else {
+			http.Error(w, fmt.Sprintf("Database error: %v", err), http.StatusInternalServerError)
+		}
 		return
 	}
 
@@ -333,7 +339,7 @@ func (rs *RepairService) countAffectedRows(ctx context.Context, srcName, igName 
 		SELECT COUNT(*) FROM %s
 		WHERE src_name = $1 AND ig_name = $2 AND block_num >= $3 AND block_num <= $4
 	`, tableName)
-	
+
 	var count int
 	err = rs.pgp.QueryRow(ctx, q, srcName, igName, start, end).Scan(&count)
 	return count, err
@@ -374,14 +380,11 @@ func (rs *RepairService) executeRepair(ctx context.Context, repairID string, req
 	}
 
 	// Delete data for the block range
-	var blocksDeleted int
-	for blockNum := req.StartBlock; blockNum <= req.EndBlock; blockNum++ {
-		if err := task.Delete(pgtx, blockNum); err != nil {
-			rs.updateRepairStatus(ctx, repairID, "failed", []string{fmt.Sprintf("Delete block %d: %v", blockNum, err)})
-			return
-		}
-		blocksDeleted++
+	if err := task.DeleteRange(pgtx, req.StartBlock, req.EndBlock); err != nil {
+		rs.updateRepairStatus(ctx, repairID, "failed", []string{fmt.Sprintf("Delete range %d-%d: %v", req.StartBlock, req.EndBlock, err)})
+		return
 	}
+	blocksDeleted := int(req.EndBlock - req.StartBlock + 1)
 
 	// Commit deletion before reindexing
 	if err := pgtx.Commit(ctx); err != nil {
@@ -486,64 +489,68 @@ func (rs *RepairService) reindexBlocks(ctx context.Context, task *Task, url stri
 			return totalReprocessed, fmt.Errorf("acquiring task lock: %w", err)
 		}
 
-	// Fetch blocks with reorg retry logic (mirrors Task.Converge pattern)
-	// Repair uses fewer retries (10) than live indexing (1000) since repairs
-	// are typically run on stable historical ranges
-	const maxReorgRetries = 10
-	var blocks []eth.Block
-	var fetchErr error
+		// Fetch blocks with reorg retry logic (mirrors Task.Converge pattern)
+		// Repair uses fewer retries (10) than live indexing (1000) since repairs
+		// are typically run on stable historical ranges
+		const maxReorgRetries = 10
+		var blocks []eth.Block
+		var fetchErr error
 
-	for attempt := 0; attempt < maxReorgRetries; attempt++ {
-		if task.consensus != nil && url == "" {
-			// Consensus mode
-			blocks, _, fetchErr = task.consensus.FetchWithQuorum(ctx, &task.filter, blockNum, limit)
-			// Reorg detection for consensus path
-			if fetchErr == nil && len(blocks) > 0 && blockNum > 0 {
-				first := blocks[0]
-				if len(first.Header.Parent) == 32 {
-					// Need to fetch previous block hash to detect reorg
-					var prevHash []byte
-					prevHash, fetchErr = task.src.Hash(ctx, url, blockNum-1)
-					if fetchErr == nil && !bytes.Equal(prevHash, first.Header.Parent) {
-						fetchErr = ErrReorg
+		for attempt := 0; attempt < maxReorgRetries; attempt++ {
+			if task.consensus != nil && url == "" {
+				// Consensus mode
+				blocks, _, fetchErr = task.consensus.FetchWithQuorum(ctx, &task.filter, blockNum, limit)
+				// Reorg detection for consensus path
+				if fetchErr == nil && len(blocks) > 0 && blockNum > 0 {
+					first := blocks[0]
+					if len(first.Header.Parent) == 32 {
+						// Need to fetch previous block hash to detect reorg
+						var prevHash []byte
+						hashURL := task.src.NextURL().String()
+						prevHash, fetchErr = task.src.Hash(ctx, hashURL, blockNum-1)
+						if fetchErr == nil && !bytes.Equal(prevHash, first.Header.Parent) {
+							fetchErr = ErrReorg
+						}
 					}
 				}
-			}
-		} else {
-			// Single provider mode (or force_all_providers with specific URL)
-			// Get previous block hash for reorg detection
-			var prevHash []byte
-			if blockNum > 0 {
-				prevHash, fetchErr = task.src.Hash(ctx, url, blockNum-1)
-				if fetchErr != nil {
-					pgtx.Rollback(ctx)
-					return totalReprocessed, fmt.Errorf("getting prev hash for %d: %w", blockNum-1, fetchErr)
+			} else {
+				// Single provider mode (or force_all_providers with specific URL)
+				if url == "" {
+					url = task.src.NextURL().String()
 				}
+				// Get previous block hash for reorg detection
+				var prevHash []byte
+				if blockNum > 0 {
+					prevHash, fetchErr = task.src.Hash(ctx, url, blockNum-1)
+					if fetchErr != nil {
+						pgtx.Rollback(ctx)
+						return totalReprocessed, fmt.Errorf("getting prev hash for %d: %w", blockNum-1, fetchErr)
+					}
+				}
+				blocks, fetchErr = task.load(ctx, url, prevHash, blockNum, limit)
 			}
-			blocks, fetchErr = task.load(ctx, url, prevHash, blockNum, limit)
+
+			if errors.Is(fetchErr, ErrReorg) {
+				slog.WarnContext(ctx, "reorg-during-repair",
+					"block", blockNum,
+					"attempt", attempt+1,
+					"max_retries", maxReorgRetries,
+				)
+				// Retry with updated chain state
+				continue
+			}
+
+			// Success or non-reorg error - break out of retry loop
+			break
 		}
 
-		if errors.Is(fetchErr, ErrReorg) {
-			slog.WarnContext(ctx, "reorg-during-repair",
-				"block", blockNum,
-				"attempt", attempt+1,
-				"max_retries", maxReorgRetries,
-			)
-			// Retry with updated chain state
-			continue
+		if fetchErr != nil {
+			pgtx.Rollback(ctx)
+			if errors.Is(fetchErr, ErrReorg) {
+				return totalReprocessed, fmt.Errorf("exhausted reorg retries (%d attempts) for blocks %d-%d", maxReorgRetries, blockNum, batchEnd)
+			}
+			return totalReprocessed, fmt.Errorf("loading blocks %d-%d: %w", blockNum, batchEnd, fetchErr)
 		}
-
-		// Success or non-reorg error - break out of retry loop
-		break
-	}
-
-	if fetchErr != nil {
-		pgtx.Rollback(ctx)
-		if errors.Is(fetchErr, ErrReorg) {
-			return totalReprocessed, fmt.Errorf("exhausted reorg retries (%d attempts) for blocks %d-%d", maxReorgRetries, blockNum, batchEnd)
-		}
-		return totalReprocessed, fmt.Errorf("loading blocks %d-%d: %w", blockNum, batchEnd, fetchErr)
-	}
 
 		if len(blocks) == 0 {
 			pgtx.Rollback(ctx)

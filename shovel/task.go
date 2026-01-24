@@ -285,6 +285,53 @@ func (t *Task) Delete(pg wpg.Conn, n uint64) error {
 	return nil
 }
 
+func (t *Task) DeleteRange(pg wpg.Conn, start, end uint64) error {
+	if end < start {
+		return fmt.Errorf("invalid delete range: start=%d end=%d", start, end)
+	}
+	if t.destConfig.Table.Name == "" {
+		return fmt.Errorf("missing table name for integration %s", t.destConfig.Name)
+	}
+	const q = `
+		delete from shovel.task_updates
+		where src_name = $1
+		and ig_name = $2
+		and num >= $3
+		and num <= $4
+	`
+	cmd, err := pg.Exec(t.ctx, q, t.srcName, t.destConfig.Name, start, end)
+	if err != nil {
+		return fmt.Errorf("deleting task_updates range: %w", err)
+	}
+	deleteBlocks := fmt.Sprintf(`
+		delete from %s
+		where src_name = $1
+		and ig_name = $2
+		and block_num >= $3
+		and block_num <= $4
+	`, t.destConfig.Table.Name)
+	if _, err := pg.Exec(t.ctx, deleteBlocks, t.srcName, t.destConfig.Name, start, end); err != nil {
+		return fmt.Errorf("deleting block range: %w", err)
+	}
+	const clearVerification = `
+		delete from shovel.block_verification
+		where src_name = $1
+		and ig_name = $2
+		and block_num >= $3
+		and block_num <= $4
+		and audit_status NOT IN ('retrying', 'failed', 'verifying')
+	`
+	if _, err := pg.Exec(t.ctx, clearVerification, t.srcName, t.destConfig.Name, start, end); err != nil {
+		return fmt.Errorf("clearing verification state: %w", err)
+	}
+	slog.InfoContext(t.ctx, "task-delete-range",
+		"start", start,
+		"end", end,
+		"task_updates", cmd.RowsAffected(),
+	)
+	return nil
+}
+
 func (t *Task) latestDependency(pg wpg.Conn) (uint64, []byte, error) {
 	const q = `
 		with latest as (
@@ -501,31 +548,31 @@ func (task *Task) Converge() error {
 		if _, err := pgtx.Exec(ctx, "select pg_advisory_xact_lock($1)", task.lockid); err != nil {
 			return fmt.Errorf("acquiring task lock: %w", err)
 		}
-	nrows, err := task.insert(ctx, pgtx, blocks)
-	if err != nil {
-		pgtx.Rollback(ctx)
-		return fmt.Errorf("inserting data: %w", err)
-	}
-	if task.receiptValidator != nil && task.receiptValidator.Enabled() {
-		for _, b := range blocks {
-			// Check retry count for this block before attempting validation
-			const checkRetryQ = `
+		nrows, err := task.insert(ctx, pgtx, blocks)
+		if err != nil {
+			pgtx.Rollback(ctx)
+			return fmt.Errorf("inserting data: %w", err)
+		}
+		if task.receiptValidator != nil && task.receiptValidator.Enabled() {
+			for _, b := range blocks {
+				// Check retry count for this block before attempting validation
+				const checkRetryQ = `
 				select retry_count from shovel.block_verification
 				where src_name = $1 and ig_name = $2 and block_num = $3
 			`
-			var retryCount int
-			if err := pgtx.QueryRow(ctx, checkRetryQ, task.srcName, task.destConfig.Name, b.Num()).Scan(&retryCount); err != nil {
-				switch {
-				case errors.Is(err, pgx.ErrNoRows):
-					retryCount = 0
-				default:
-					pgtx.Rollback(ctx)
-					return fmt.Errorf("checking receipt retry count: %w", err)
+				var retryCount int
+				if err := pgtx.QueryRow(ctx, checkRetryQ, task.srcName, task.destConfig.Name, b.Num()).Scan(&retryCount); err != nil {
+					switch {
+					case errors.Is(err, pgx.ErrNoRows):
+						retryCount = 0
+					default:
+						pgtx.Rollback(ctx)
+						return fmt.Errorf("checking receipt retry count: %w", err)
+					}
 				}
-			}
-			if retryCount > maxReceiptRetries {
-				// Mark as unverified but allow indexing to proceed
-				const unverifiedQ = `
+				if retryCount > maxReceiptRetries {
+					// Mark as unverified but allow indexing to proceed
+					const unverifiedQ = `
 					insert into shovel.block_verification (
 						src_name,
 						ig_name,
@@ -540,32 +587,32 @@ func (task *Task) Converge() error {
 						retry_count = excluded.retry_count,
 						last_verified_at = now()
 				`
-				_, err := pgtx.Exec(ctx, unverifiedQ, task.srcName, task.destConfig.Name, b.Num(), retryCount)
-				if err != nil {
-					pgtx.Rollback(ctx)
-					return fmt.Errorf("marking block as receipt_unverified: %w", err)
+					_, err := pgtx.Exec(ctx, unverifiedQ, task.srcName, task.destConfig.Name, b.Num(), retryCount)
+					if err != nil {
+						pgtx.Rollback(ctx)
+						return fmt.Errorf("marking block as receipt_unverified: %w", err)
+					}
+
+					slog.WarnContext(ctx, "receipt-validation-unverified",
+						"block", b.Num(),
+						"retry_count", retryCount,
+						"status", "Data indexed but marked as receipt_unverified",
+					)
+
+					// Continue processing - don't block indexing
+					continue
 				}
 
-				slog.WarnContext(ctx, "receipt-validation-unverified",
-					"block", b.Num(),
-					"retry_count", retryCount,
-					"status", "Data indexed but marked as receipt_unverified",
-				)
+				// Use HashBlocksWithRange for consistency with receipt validator empty-range handling
+				blockHash := HashBlocksWithRange([]eth.Block{b}, b.Num(), 1)
+				if err := task.receiptValidator.Validate(ctx, &task.filter, b.Num(), blockHash); err != nil {
+					slog.ErrorContext(ctx, "receipt-mismatch", "block", b.Num(), "error", err)
 
-				// Continue processing - don't block indexing
-				continue
-			}
+					// Rollback the current transaction before starting cleanup
+					pgtx.Rollback(ctx)
 
-			// Use HashBlocksWithRange for consistency with receipt validator empty-range handling
-			blockHash := HashBlocksWithRange([]eth.Block{b}, b.Num(), 1)
-			if err := task.receiptValidator.Validate(ctx, &task.filter, b.Num(), blockHash); err != nil {
-				slog.ErrorContext(ctx, "receipt-mismatch", "block", b.Num(), "error", err)
-
-				// Rollback the current transaction before starting cleanup
-				pgtx.Rollback(ctx)
-
-				// Mark block for retry by updating block_verification status and retry count
-				const q = `
+					// Mark block for retry by updating block_verification status and retry count
+					const q = `
 					insert into shovel.block_verification (
 						src_name,
 						ig_name,
@@ -580,34 +627,34 @@ func (task *Task) Converge() error {
 						last_verified_at = now()
 				`
 
-				// Create fresh transaction for cleanup operations (avoiding nested transaction)
-				cleanupTx, err := task.pgp.Begin(ctx)
-				if err != nil {
-					return fmt.Errorf("starting cleanup tx: %w", err)
-				}
-				defer cleanupTx.Rollback(ctx)
+					// Create fresh transaction for cleanup operations (avoiding nested transaction)
+					cleanupTx, err := task.pgp.Begin(ctx)
+					if err != nil {
+						return fmt.Errorf("starting cleanup tx: %w", err)
+					}
+					defer cleanupTx.Rollback(ctx)
 
-				if _, err := cleanupTx.Exec(ctx, "select pg_advisory_xact_lock($1)", task.lockid); err != nil {
-					return fmt.Errorf("acquiring task lock: %w", err)
-				}
+					if _, err := cleanupTx.Exec(ctx, "select pg_advisory_xact_lock($1)", task.lockid); err != nil {
+						return fmt.Errorf("acquiring task lock: %w", err)
+					}
 
-				if _, err := cleanupTx.Exec(ctx, q, task.srcName, task.destConfig.Name, b.Num()); err != nil {
-					return fmt.Errorf("updating receipt verification status: %w", err)
-				}
+					if _, err := cleanupTx.Exec(ctx, q, task.srcName, task.destConfig.Name, b.Num()); err != nil {
+						return fmt.Errorf("updating receipt verification status: %w", err)
+					}
 
-				if err := task.Delete(cleanupTx, b.Num()); err != nil {
-					return fmt.Errorf("deleting mismatched block: %w", err)
-				}
+					if err := task.Delete(cleanupTx, b.Num()); err != nil {
+						return fmt.Errorf("deleting mismatched block: %w", err)
+					}
 
-				if err := cleanupTx.Commit(ctx); err != nil {
-					return fmt.Errorf("committing cleanup tx: %w", err)
-				}
+					if err := cleanupTx.Commit(ctx); err != nil {
+						return fmt.Errorf("committing cleanup tx: %w", err)
+					}
 
-				return fmt.Errorf("validating receipts: %w", err)
+					return fmt.Errorf("validating receipts: %w", err)
+				}
 			}
 		}
-	}
-	last := blocks[len(blocks)-1]
+		last := blocks[len(blocks)-1]
 		err = task.update(pgtx, last.Num(), last.Hash(), targetNum, targetHash, delta, nrows, time.Since(t0))
 		if err != nil {
 			pgtx.Rollback(ctx)
@@ -752,10 +799,10 @@ func (t *Task) load(
 			continue
 		}
 		eg.Go(func() error {
-			ctx = wctx.WithNumLimit(ctx, m, n)
-			b, err := t.src.Get(ctx, url, &t.filter, m, n)
+			localCtx := wctx.WithNumLimit(ctx, m, n)
+			b, err := t.src.Get(localCtx, url, &t.filter, m, n)
 			if err != nil {
-				slog.ErrorContext(ctx, "loading blocks", "error", err)
+				slog.ErrorContext(localCtx, "loading blocks", "error", err)
 				return fmt.Errorf("loading blocks: %w", err)
 			}
 			blocksMut.Lock()
@@ -801,8 +848,8 @@ func (t *Task) insert(
 			n = len(blocks)
 		}
 		eg.Go(func() error {
-			ctx = wctx.WithNumLimit(ctx, uint64(i), uint64(n))
-			nr, err := t.dests[i].Insert(ctx, &pgmut, pg, blocks[i:n])
+			localCtx := wctx.WithNumLimit(ctx, uint64(i), uint64(n))
+			nr, err := t.dests[i].Insert(localCtx, &pgmut, pg, blocks[i:n])
 			if err != nil {
 				return fmt.Errorf("inserting blocks: %w", err)
 			}
@@ -1098,6 +1145,16 @@ func loadTasks(ctx context.Context, pgp *pgxpool.Pool, c config.Root) ([]*Task, 
 				ce, err = NewConsensusEngine(providers, sc.Consensus, NewMetrics(sc.Name, ig.Name))
 				if err != nil {
 					return nil, fmt.Errorf("setting up consensus engine: %w", err)
+				}
+				// Consensus engine uses HashBlocks which operates on logs.
+				// Warn if consensus is enabled for a non-log integration since
+				// hash comparison would always match on empty logs.
+				if len(ig.Event.Selected()) == 0 {
+					slog.WarnContext(ctx, "consensus-on-non-log-integration",
+						"source", sc.Name,
+						"integration", ig.Name,
+						"warning", "Consensus enabled but integration has no event selector. Hash comparison operates on logs only.",
+					)
 				}
 			}
 			var rv *ReceiptValidator

@@ -343,7 +343,7 @@ type Source struct {
 	BatchSize       int
 	Consensus       Consensus
 	ReceiptVerifier ReceiptVerifier
-	Audit        Audit
+	Audit           Audit
 }
 
 type Consensus struct {
@@ -401,6 +401,7 @@ func (s *Source) UnmarshalJSON(d []byte) error {
 			Threshold    wos.EnvInt    `json:"threshold"`
 			RetryBackoff wos.EnvString `json:"retry_backoff"`
 			MaxBackoff   wos.EnvString `json:"max_backoff"`
+			MaxAttempts  wos.EnvInt    `json:"max_attempts"`
 		} `json:"consensus"`
 		ReceiptVerifier struct {
 			Provider wos.EnvString `json:"provider"`
@@ -426,6 +427,7 @@ func (s *Source) UnmarshalJSON(d []byte) error {
 	s.BatchSize = int(x.BatchSize)
 	s.Consensus.Providers = int(x.Consensus.Providers)
 	s.Consensus.Threshold = int(x.Consensus.Threshold)
+	s.Consensus.MaxAttempts = int(x.Consensus.MaxAttempts)
 	s.ReceiptVerifier.Provider = string(x.ReceiptVerifier.Provider)
 	s.ReceiptVerifier.Enabled = x.ReceiptVerifier.Enabled
 	s.Audit.ProvidersPerBlock = int(x.Audit.ProvidersPerBlock)
