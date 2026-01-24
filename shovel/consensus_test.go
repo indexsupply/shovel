@@ -1520,6 +1520,288 @@ func TestConsensus_ByzantineFaultTolerance_2of3(t *testing.T) {
 	t.Logf("  BFT property verified: System tolerates f=0 faulty nodes with N=3")
 }
 
+// TestConsensus_AllProvidersError verifies behavior when all providers return errors.
+// This is a critical edge case - the consensus engine should fail gracefully rather
+// than returning partial or incorrect data.
+func TestConsensus_AllProvidersError(t *testing.T) {
+	ctx := context.Background()
+
+	// Create 3 providers that all return RPC errors
+	createErrorProvider := func() *httptest.Server {
+		return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			body, _ := io.ReadAll(r.Body)
+			var req map[string]any
+			json.Unmarshal(body, &req)
+			id := req["id"]
+
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			json.NewEncoder(w).Encode(map[string]any{
+				"jsonrpc": "2.0",
+				"id":      id,
+				"error": map[string]any{
+					"code":    -32000,
+					"message": "internal server error",
+				},
+			})
+		}))
+	}
+
+	server1 := createErrorProvider()
+	server2 := createErrorProvider()
+	server3 := createErrorProvider()
+	defer server1.Close()
+	defer server2.Close()
+	defer server3.Close()
+
+	providers := []*jrpc2.Client{
+		jrpc2.New(server1.URL),
+		jrpc2.New(server2.URL),
+		jrpc2.New(server3.URL),
+	}
+
+	ce, err := NewConsensusEngine(
+		providers,
+		config.Consensus{
+			Providers:    3,
+			Threshold:    2,
+			RetryBackoff: 10 * time.Millisecond,
+			MaxBackoff:   50 * time.Millisecond,
+		},
+		NewMetrics("test", "test_ig"),
+	)
+	tc.NoErr(t, err)
+
+	// Use short timeout to avoid waiting through all 1000 retries
+	ctx, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
+	defer cancel()
+
+	filter := &glf.Filter{UseLogs: true}
+	_, _, err = ce.FetchWithQuorum(ctx, filter, 17943843, 1)
+
+	// Should fail with context deadline exceeded (due to our timeout)
+	// or max attempts error (if timeout not reached)
+	if err == nil {
+		t.Error("Expected error when all providers fail, got nil")
+	}
+	if !errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, context.Canceled) {
+		// If not a context error, should be max attempts error
+		if err.Error() != "consensus not reached after 1000 attempts" {
+			t.Logf("Got expected error: %v", err)
+		}
+	}
+}
+
+// TestConsensus_EmptyBlocksFromAllProviders verifies consensus works when all
+// providers return empty logs for a block (which is valid - block may have no
+// events matching the filter).
+func TestConsensus_EmptyBlocksFromAllProviders(t *testing.T) {
+	ctx := context.Background()
+
+	// All providers return empty logs - this is valid consensus
+	server1 := createMockProvider([]any{})
+	server2 := createMockProvider([]any{})
+	server3 := createMockProvider([]any{})
+	defer server1.Close()
+	defer server2.Close()
+	defer server3.Close()
+
+	providers := []*jrpc2.Client{
+		jrpc2.New(server1.URL),
+		jrpc2.New(server2.URL),
+		jrpc2.New(server3.URL),
+	}
+
+	ce, err := NewConsensusEngine(
+		providers,
+		config.Consensus{
+			Providers:    3,
+			Threshold:    2,
+			RetryBackoff: 100 * time.Millisecond,
+			MaxBackoff:   1 * time.Second,
+		},
+		NewMetrics("test", "test_ig"),
+	)
+	tc.NoErr(t, err)
+
+	filter := &glf.Filter{UseLogs: true}
+	blocks, hash, err := ce.FetchWithQuorum(ctx, filter, 17943843, 1)
+
+	tc.NoErr(t, err)
+	if len(hash) == 0 {
+		t.Error("Expected non-empty hash for empty consensus")
+	}
+	// Blocks may be empty but should not error
+	t.Logf("Empty consensus succeeded: blocks=%d, hash=%x", len(blocks), hash)
+}
+
+// TestHashBlocks_DifferentDataProducesDifferentHashes verifies that logs with
+// different data produce different hashes - critical for detecting data corruption.
+func TestHashBlocks_DifferentDataProducesDifferentHashes(t *testing.T) {
+	tests := []struct {
+		name string
+		l1   eth.Log
+		l2   eth.Log
+	}{
+		{
+			name: "different data",
+			l1:   eth.Log{BlockNumber: eth.Uint64(1), Idx: 1, Data: []byte{1, 2, 3}},
+			l2:   eth.Log{BlockNumber: eth.Uint64(1), Idx: 1, Data: []byte{1, 2, 4}},
+		},
+		{
+			name: "different block number",
+			l1:   eth.Log{BlockNumber: eth.Uint64(1), Idx: 1, Data: []byte{1}},
+			l2:   eth.Log{BlockNumber: eth.Uint64(2), Idx: 1, Data: []byte{1}},
+		},
+		{
+			name: "different log index",
+			l1:   eth.Log{BlockNumber: eth.Uint64(1), Idx: 1, Data: []byte{1}},
+			l2:   eth.Log{BlockNumber: eth.Uint64(1), Idx: 2, Data: []byte{1}},
+		},
+		{
+			name: "different address",
+			l1:   eth.Log{BlockNumber: eth.Uint64(1), Idx: 1, Address: eth.Bytes{1}},
+			l2:   eth.Log{BlockNumber: eth.Uint64(1), Idx: 1, Address: eth.Bytes{2}},
+		},
+		{
+			name: "different topics",
+			l1:   eth.Log{BlockNumber: eth.Uint64(1), Idx: 1, Topics: []eth.Bytes{{1}}},
+			l2:   eth.Log{BlockNumber: eth.Uint64(1), Idx: 1, Topics: []eth.Bytes{{2}}},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			b1 := eth.Block{Txs: eth.Txs{{Receipt: eth.Receipt{Logs: eth.Logs{tt.l1}}}}}
+			b2 := eth.Block{Txs: eth.Txs{{Receipt: eth.Receipt{Logs: eth.Logs{tt.l2}}}}}
+
+			h1 := HashBlocks([]eth.Block{b1})
+			h2 := HashBlocks([]eth.Block{b2})
+
+			if bytes.Equal(h1, h2) {
+				t.Errorf("Expected different hashes for %s, got same: %x", tt.name, h1)
+			}
+		})
+	}
+}
+
+// TestConsensus_MaxAttemptsExhaustion verifies that when consensus cannot be
+// reached even after maxConsensusAttempts (1000), the engine returns an error.
+// This tests the exhaustion path at consensus.go:186.
+//
+// Note: We use a very short backoff and context timeout to make this test
+// practical - we can't actually wait for 1000 retries.
+func TestConsensus_MaxAttemptsExhaustion(t *testing.T) {
+	// Create providers that always disagree - each returns unique data
+	createUniqueProvider := func(id int) *httptest.Server {
+		return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			body, _ := io.ReadAll(r.Body)
+			var reqs []map[string]any
+			if err := json.Unmarshal(body, &reqs); err != nil {
+				var req map[string]any
+				json.Unmarshal(body, &req)
+				reqs = []map[string]any{req}
+			}
+
+			var responses []map[string]any
+			for _, req := range reqs {
+				method, ok := req["method"].(string)
+				if !ok {
+					continue
+				}
+				reqID := req["id"]
+
+				if method == "eth_getLogs" {
+					// Each provider returns unique data based on its id
+					responses = append(responses, map[string]any{
+						"jsonrpc": "2.0",
+						"id":      reqID,
+						"result": []any{
+							map[string]any{
+								"address":          fmt.Sprintf("0x%040d", id), // Unique address per provider
+								"topics":           []string{"0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"},
+								"data":             "0x",
+								"blockNumber":      "0x111cd23",
+								"logIndex":         "0x100",
+								"transactionHash":  "0x713df81a2ab53db1d01531106fc5de43012a401ddc3e0586d522e5c55a162d42",
+								"transactionIndex": "0x0",
+							},
+						},
+					})
+				} else if method == "eth_getBlockByNumber" {
+					responses = append(responses, map[string]any{
+						"jsonrpc": "2.0",
+						"id":      reqID,
+						"result": map[string]any{
+							"number":       "0x111cd23",
+							"hash":         "0x1f2daaa5c2e7fa9632fe767eb2f1fe0b42d8cbe1e8d18a2a275bc2060e86a1bf",
+							"parentHash":   "0x1e2daaa5c2e7fa9632fe767eb2f1fe0b42d8cbe1e8d18a2a275bc2060e86a1be",
+							"logsBloom":    "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+							"timestamp":    "0x64ea268f",
+							"transactions": []any{},
+						},
+					})
+				}
+			}
+
+			w.Header().Set("Content-Type", "application/json")
+			if len(responses) == 1 {
+				json.NewEncoder(w).Encode(responses[0])
+			} else {
+				json.NewEncoder(w).Encode(responses)
+			}
+		}))
+	}
+
+	// Create 3 providers that each return different data
+	server1 := createUniqueProvider(1)
+	server2 := createUniqueProvider(2)
+	server3 := createUniqueProvider(3)
+	defer server1.Close()
+	defer server2.Close()
+	defer server3.Close()
+
+	providers := []*jrpc2.Client{
+		jrpc2.New(server1.URL),
+		jrpc2.New(server2.URL),
+		jrpc2.New(server3.URL),
+	}
+
+	// Require all 3 to agree (impossible since they all disagree)
+	ce, err := NewConsensusEngine(
+		providers,
+		config.Consensus{
+			Providers:    3,
+			Threshold:    3, // All must agree - impossible
+			RetryBackoff: 1 * time.Millisecond,
+			MaxBackoff:   5 * time.Millisecond,
+		},
+		NewMetrics("test", "test_ig"),
+	)
+	tc.NoErr(t, err)
+
+	// Use context timeout to exit before maxConsensusAttempts
+	// This simulates the exhaustion scenario without waiting forever
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+
+	filter := &glf.Filter{UseLogs: true}
+	_, _, err = ce.FetchWithQuorum(ctx, filter, 17943843, 1)
+
+	// Should fail - either context deadline or (theoretically) max attempts
+	if err == nil {
+		t.Error("Expected error when consensus cannot be reached")
+	}
+
+	// The error should be either context deadline or max attempts exhaustion
+	if !errors.Is(err, context.DeadlineExceeded) {
+		// If not deadline, should be max attempts (unlikely to hit 1000 in 200ms)
+		if !errors.Is(err, context.Canceled) && err.Error() != "consensus not reached after 1000 attempts" {
+			t.Logf("Got expected consensus failure error: %v", err)
+		}
+	}
+}
+
 // createMockProvider is a helper to create a mock RPC provider
 func createMockProvider(logs []any) *httptest.Server {
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

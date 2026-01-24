@@ -211,6 +211,126 @@ func TestAffectedRows(t *testing.T) {
 	}
 }
 
+// TestRepairDryRun verifies the dry_run parameter returns affected row count
+// without actually modifying data.
+func TestRepairDryRun(t *testing.T) {
+	pg := testpg(t)
+	ctx := context.Background()
+
+	// Create table and insert test data
+	_, err := pg.Exec(ctx, "CREATE TABLE shovel.dryrun_test (src_name text, ig_name text, block_num bigint)")
+	tc.NoErr(t, err)
+
+	_, err = pg.Exec(ctx, `
+		INSERT INTO shovel.dryrun_test VALUES
+		('test_src', 'test_ig', 100),
+		('test_src', 'test_ig', 101),
+		('test_src', 'test_ig', 102),
+		('test_src', 'test_ig', 200)
+	`)
+	tc.NoErr(t, err)
+
+	conf := config.Root{
+		Sources: []config.Source{{Name: "test_src"}},
+		Integrations: []config.Integration{{
+			Name:    "test_ig",
+			Enabled: true,
+			Table:   wpg.Table{Name: "shovel.dryrun_test"},
+		}},
+	}
+	rs := NewRepairService(pg, conf, nil)
+
+	// Test dry_run=true
+	reqBody := `{"source": "test_src", "integration": "test_ig", "start_block": 100, "end_block": 102, "dry_run": true}`
+	req := httptest.NewRequest("POST", "/api/v1/repair", strings.NewReader(reqBody))
+	w := httptest.NewRecorder()
+
+	rs.HandleRepairRequest(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp RepairResponse
+	json.NewDecoder(w.Body).Decode(&resp)
+
+	// Should report 3 rows affected (blocks 100, 101, 102)
+	if resp.Status != "dry_run" {
+		t.Errorf("expected status dry_run, got %s", resp.Status)
+	}
+	if resp.RowsAffected != 3 {
+		t.Errorf("expected 3 rows affected, got %d", resp.RowsAffected)
+	}
+
+	// Verify data was NOT deleted
+	var count int
+	err = pg.QueryRow(ctx, "SELECT COUNT(*) FROM shovel.dryrun_test").Scan(&count)
+	tc.NoErr(t, err)
+	if count != 4 {
+		t.Errorf("expected 4 rows still in table (dry run should not delete), got %d", count)
+	}
+
+	// Verify no repair job was created
+	var jobCount int
+	err = pg.QueryRow(ctx, "SELECT COUNT(*) FROM shovel.repair_jobs").Scan(&jobCount)
+	tc.NoErr(t, err)
+	if jobCount != 0 {
+		t.Errorf("expected 0 repair jobs (dry run should not create job), got %d", jobCount)
+	}
+}
+
+// TestRepairStatusFilter verifies HandleListRepairs filters by status correctly.
+func TestRepairStatusFilter(t *testing.T) {
+	pg := testpg(t)
+
+	// Insert jobs with different statuses
+	_, err := pg.Exec(context.Background(), `
+		INSERT INTO shovel.repair_jobs (repair_id, src_name, ig_name, start_block, end_block, status, created_at)
+		VALUES
+		('job1', 'src', 'ig', 10, 20, 'completed', now()),
+		('job2', 'src', 'ig', 30, 40, 'in_progress', now()),
+		('job3', 'src', 'ig', 50, 60, 'failed', now()),
+		('job4', 'src', 'ig', 70, 80, 'completed', now())
+	`)
+	tc.NoErr(t, err)
+
+	rs := NewRepairService(pg, config.Root{}, nil)
+
+	// Test filtering by "completed"
+	req := httptest.NewRequest("GET", "/api/v1/repairs?status=completed", nil)
+	w := httptest.NewRecorder()
+	rs.HandleListRepairs(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	var res struct {
+		Repairs []RepairResponse `json:"repairs"`
+		Total   int              `json:"total"`
+	}
+	json.NewDecoder(w.Body).Decode(&res)
+
+	if res.Total != 2 {
+		t.Errorf("expected 2 completed repairs, got %d", res.Total)
+	}
+	for _, r := range res.Repairs {
+		if r.Status != "completed" {
+			t.Errorf("expected status=completed, got %s", r.Status)
+		}
+	}
+
+	// Test filtering by "in_progress"
+	req = httptest.NewRequest("GET", "/api/v1/repairs?status=in_progress", nil)
+	w = httptest.NewRecorder()
+	rs.HandleListRepairs(w, req)
+
+	json.NewDecoder(w.Body).Decode(&res)
+	if res.Total != 1 {
+		t.Errorf("expected 1 in_progress repair, got %d", res.Total)
+	}
+}
+
 func TestRepairForceAllProvidersParameter(t *testing.T) {
 	pg := testpg(t)
 	ctx := context.Background()
@@ -316,4 +436,183 @@ func TestRepairForceAllProvidersParameter(t *testing.T) {
 			t.Errorf("expected status in_progress, got %s", resp.Status)
 		}
 	})
+}
+
+// TestRepairReorgRetryExhaustion tests that reindexBlocks returns an error
+// after exhausting maxReorgRetries (10) when continuous reorgs are detected.
+func TestRepairReorgRetryExhaustion(t *testing.T) {
+	pg := testpg(t)
+	ctx := context.Background()
+
+	// Create test table
+	_, err := pg.Exec(ctx, "CREATE TABLE IF NOT EXISTS shovel.reorg_test (src_name text, ig_name text, block_num bigint)")
+	tc.NoErr(t, err)
+
+	// Create 32-byte hashes (required for reorg detection at task.go:774)
+	// The reorg check requires len(first.Header.Parent) == 32
+	hash99 := make([]byte, 32)
+	copy(hash99, []byte("hash99"))
+
+	wrongParent := make([]byte, 32)
+	copy(wrongParent, []byte("WRONG_PARENT")) // Different from hash99
+
+	// Create a mock source with blocks that have mismatched parent hashes
+	// Block 99's hash is hash99, but block 100's parent is wrongParent
+	// This mismatch will trigger ErrReorg on every fetch attempt
+	reorgSrc := &mockSource{
+		blocks: []eth.Block{
+			// Block 99 - parent block with hash "hash99"
+			newMockBlock(99, hash99, make([]byte, 32), "parent"),
+			// Block 100 - its parent is wrongParent, not hash99
+			// This mismatch triggers ErrReorg
+			newMockBlock(100, make([]byte, 32), wrongParent, "data100"),
+		},
+	}
+
+	dest := &mockDestination{
+		tableName: "shovel.reorg_test",
+		pgp:       pg,
+	}
+
+	task := &Task{
+		ctx:         ctx,
+		pgp:         pg,
+		src:         reorgSrc,
+		srcName:     "reorg-src",
+		srcChainID:  1,
+		destConfig:  config.Integration{Name: "reorg-ig"},
+		dests:       []Destination{dest},
+		filter:      glf.Filter{},
+		batchSize:   10,
+		concurrency: 1,
+		lockid:      wpg.LockHash("test-reorg-repair"),
+	}
+	mgr := &Manager{
+		tasks: []*Task{task},
+	}
+
+	conf := config.Root{
+		Sources: []config.Source{{Name: "reorg-src"}},
+		Integrations: []config.Integration{
+			{
+				Name:    "reorg-ig",
+				Enabled: true,
+				Table:   wpg.Table{Name: "shovel.reorg_test"},
+				Sources: []config.Source{{Name: "reorg-src"}},
+			},
+		},
+	}
+
+	rs := NewRepairService(pg, conf, mgr)
+
+	// Call reindexBlocks directly - this should exhaust retries and return error
+	_, err = rs.reindexBlocks(ctx, task, "http://mock-url", 100, 100)
+
+	// Verify error mentions retry exhaustion
+	if err == nil {
+		t.Fatal("expected error from reindexBlocks, got nil")
+	}
+	if !strings.Contains(err.Error(), "exhausted reorg retries") {
+		t.Errorf("expected 'exhausted reorg retries' in error, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "10 attempts") {
+		t.Errorf("expected '10 attempts' in error, got: %v", err)
+	}
+}
+
+// TestRepairConsensusVsSingleProviderMode tests that the repair service
+// correctly selects between consensus mode (url="") and single provider mode.
+// The selection logic is at repair.go:497-523:
+//   - If task.consensus != nil && url == "" -> consensus mode
+//   - Otherwise -> single provider mode
+func TestRepairConsensusVsSingleProviderMode(t *testing.T) {
+	pg := testpg(t)
+	ctx := context.Background()
+
+	// Create test table
+	_, err := pg.Exec(ctx, "CREATE TABLE IF NOT EXISTS shovel.mode_test (src_name text, ig_name text, block_num bigint)")
+	tc.NoErr(t, err)
+
+	// Create proper 32-byte hashes for reorg detection
+	hash98 := make([]byte, 32)
+	copy(hash98, []byte("hash98"))
+	hash99 := make([]byte, 32)
+	copy(hash99, []byte("hash99"))
+	hash100 := make([]byte, 32)
+	copy(hash100, []byte("hash100"))
+
+	// mockSource that returns valid blocks with correct parent chain
+	mockSrc := &mockSource{
+		blocks: []eth.Block{
+			newMockBlock(99, hash99, hash98, "parent"),
+			newMockBlock(100, hash100, hash99, "data100"), // Parent correctly references hash99
+		},
+	}
+
+	dest := &mockDestination{
+		tableName: "shovel.mode_test",
+		pgp:       pg,
+	}
+
+	// Task without consensus engine (single provider mode)
+	taskSingle := &Task{
+		ctx:         ctx,
+		pgp:         pg,
+		src:         mockSrc,
+		srcName:     "mode-src",
+		srcChainID:  1,
+		destConfig:  config.Integration{Name: "mode-ig"},
+		dests:       []Destination{dest},
+		filter:      glf.Filter{},
+		batchSize:   10,
+		concurrency: 1,
+		lockid:      wpg.LockHash("test-mode-single"),
+		consensus:   nil, // No consensus engine - will use single provider mode
+	}
+
+	conf := config.Root{
+		Sources: []config.Source{{Name: "mode-src"}},
+		Integrations: []config.Integration{
+			{
+				Name:    "mode-ig",
+				Enabled: true,
+				Table:   wpg.Table{Name: "shovel.mode_test"},
+				Sources: []config.Source{{Name: "mode-src"}},
+			},
+		},
+	}
+
+	mgr := &Manager{tasks: []*Task{taskSingle}}
+	rs := NewRepairService(pg, conf, mgr)
+
+	t.Run("single provider mode with URL", func(t *testing.T) {
+		// Clear previous data
+		mockSrc.callsByURL = make(map[string]int)
+
+		// With explicit URL and no consensus engine, should use single provider mode
+		// This exercises the code path at repair.go:512-523
+		n, err := rs.reindexBlocks(ctx, taskSingle, "http://explicit-provider", 100, 100)
+		tc.NoErr(t, err)
+
+		// Verify blocks were processed
+		t.Logf("reindexBlocks returned %d rows", n)
+	})
+
+	t.Run("single provider mode when consensus is nil", func(t *testing.T) {
+		// Even with empty URL, if task.consensus is nil, it uses single provider mode
+		// This is the fallback path at repair.go:512-523
+		mockSrc.callsByURL = make(map[string]int)
+
+		// With empty URL but no consensus engine, still uses single provider mode
+		n, err := rs.reindexBlocks(ctx, taskSingle, "", 100, 100)
+		tc.NoErr(t, err)
+		t.Logf("reindexBlocks (empty URL, nil consensus) returned %d rows", n)
+	})
+
+	// Note: Testing consensus mode (url="" with task.consensus != nil) would require
+	// a real ConsensusEngine instance, which needs actual jrpc2.Client providers.
+	// That code path is exercised in repair_integration_test.go with full provider setup.
+	// The key selection logic we're testing is:
+	//   if task.consensus != nil && url == "" { consensus mode }
+	//   else { single provider mode }
 }
