@@ -51,17 +51,21 @@ func NewConsensusEngine(providers []*jrpc2.Client, conf config.Consensus, metric
 	}, nil
 }
 
-const maxConsensusAttempts = 1000
-
 func (ce *ConsensusEngine) FetchWithQuorum(ctx context.Context, filter *glf.Filter, start, limit uint64) ([]eth.Block, []byte, error) {
 	var (
 		conf = ce.config
 		t0   = time.Now()
 	)
+	// Default to 1000 if not configured
+	maxAttempts := conf.MaxAttempts
+	if maxAttempts <= 0 {
+		maxAttempts = 1000
+	}
+
 	ce.metrics.Start()
 	defer ce.metrics.Stop()
 
-	for attempt := 0; attempt < maxConsensusAttempts; attempt++ {
+	for attempt := 0; attempt < maxAttempts; attempt++ {
 		// Short-circuit if context is already cancelled
 		if ctx.Err() != nil {
 			return nil, nil, ctx.Err()
@@ -183,7 +187,7 @@ func (ce *ConsensusEngine) FetchWithQuorum(ctx context.Context, filter *glf.Filt
 		)
 	}
 
-	return nil, nil, fmt.Errorf("consensus not reached after %d attempts", maxConsensusAttempts)
+	return nil, nil, fmt.Errorf("consensus not reached after %d attempts", maxAttempts)
 }
 
 // HashBlocksWithRange computes a deterministic hash of the logs in the blocks,

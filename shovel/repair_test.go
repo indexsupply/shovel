@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/indexsupply/shovel/eth"
+	"github.com/indexsupply/shovel/jrpc2"
 	"github.com/indexsupply/shovel/shovel/config"
 	"github.com/indexsupply/shovel/shovel/glf"
 	"github.com/indexsupply/shovel/tc"
@@ -608,11 +609,118 @@ func TestRepairConsensusVsSingleProviderMode(t *testing.T) {
 		tc.NoErr(t, err)
 		t.Logf("reindexBlocks (empty URL, nil consensus) returned %d rows", n)
 	})
+}
 
-	// Note: Testing consensus mode (url="" with task.consensus != nil) would require
-	// a real ConsensusEngine instance, which needs actual jrpc2.Client providers.
-	// That code path is exercised in repair_integration_test.go with full provider setup.
-	// The key selection logic we're testing is:
-	//   if task.consensus != nil && url == "" { consensus mode }
-	//   else { single provider mode }
+// TestRepairConsensusMode tests the consensus mode path at repair.go:497-511
+// where task.consensus != nil && url == "" triggers FetchWithQuorum.
+func TestRepairConsensusMode(t *testing.T) {
+	pg := testpg(t)
+	ctx := context.Background()
+
+	// Create test table
+	_, err := pg.Exec(ctx, "CREATE TABLE IF NOT EXISTS shovel.consensus_mode_test (src_name text, ig_name text, block_num bigint)")
+	tc.NoErr(t, err)
+
+	// Track FetchWithQuorum calls via mock server
+	var consensusCalls int
+	mockConsensusServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		consensusCalls++
+		// Return valid block data for consensus
+		response := `[
+			{"jsonrpc":"2.0","id":"1","result":{
+				"hash":"0x0000000000000000000000000000000000000000000000000000000000000064",
+				"number":"0x64",
+				"parentHash":"0x0000000000000000000000000000000000000000000000000000000000000063",
+				"timestamp":"0x64ea268f",
+				"gasLimit":"0x2fefd8",
+				"gasUsed":"0x5208",
+				"logsBloom":"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+			}},
+			{"jsonrpc":"2.0","id":"2","result":[]}
+		]`
+		w.Write([]byte(response))
+	}))
+	defer mockConsensusServer.Close()
+
+	// Create ConsensusEngine with 2 identical providers (for threshold=2)
+	providers := []*jrpc2.Client{
+		jrpc2.New(mockConsensusServer.URL),
+		jrpc2.New(mockConsensusServer.URL),
+	}
+	consensusEngine, err := NewConsensusEngine(
+		providers,
+		config.Consensus{
+			Providers:    2,
+			Threshold:    2,
+			RetryBackoff: 1 * time.Millisecond,
+			MaxBackoff:   5 * time.Millisecond,
+			MaxAttempts:  3,
+		},
+		NewMetrics("test", "consensus_mode_test"),
+	)
+	tc.NoErr(t, err)
+
+	// Create proper 32-byte hashes
+	hash99 := make([]byte, 32)
+	hash99[31] = 0x63 // matches parentHash in response
+	hash100 := make([]byte, 32)
+	hash100[31] = 0x64
+
+	// mockSource for Hash() lookups (used for reorg detection)
+	mockSrc := &mockSource{
+		blocks: []eth.Block{
+			newMockBlock(99, hash99, make([]byte, 32), "parent"),
+			newMockBlock(100, hash100, hash99, "data100"),
+		},
+	}
+
+	dest := &mockDestination{
+		tableName: "shovel.consensus_mode_test",
+		pgp:       pg,
+	}
+
+	// Task WITH consensus engine
+	taskWithConsensus := &Task{
+		ctx:         ctx,
+		pgp:         pg,
+		src:         mockSrc,
+		srcName:     "consensus-mode-src",
+		srcChainID:  1,
+		destConfig:  config.Integration{Name: "consensus-mode-ig"},
+		dests:       []Destination{dest},
+		filter:      glf.Filter{UseLogs: true},
+		batchSize:   10,
+		concurrency: 1,
+		lockid:      wpg.LockHash("test-consensus-mode"),
+		consensus:   consensusEngine, // Consensus engine present
+	}
+
+	conf := config.Root{
+		Sources: []config.Source{{Name: "consensus-mode-src"}},
+		Integrations: []config.Integration{
+			{
+				Name:    "consensus-mode-ig",
+				Enabled: true,
+				Table:   wpg.Table{Name: "shovel.consensus_mode_test"},
+				Sources: []config.Source{{Name: "consensus-mode-src"}},
+			},
+		},
+	}
+
+	mgr := &Manager{tasks: []*Task{taskWithConsensus}}
+	rs := NewRepairService(pg, conf, mgr)
+
+	// Reset counter
+	consensusCalls = 0
+
+	// Call with empty URL - should trigger consensus mode (repair.go:497-511)
+	_, err = rs.reindexBlocks(ctx, taskWithConsensus, "", 100, 100)
+
+	// The call may fail due to reorg detection (parent hash check),
+	// but the key assertion is that consensus mode was triggered
+	// (FetchWithQuorum was called, which calls the mock server)
+	if consensusCalls == 0 {
+		t.Error("consensus mode not triggered: expected FetchWithQuorum to be called, but mock server received 0 requests")
+	}
+	t.Logf("consensus mode verified: mock server received %d requests (error: %v)", consensusCalls, err)
 }

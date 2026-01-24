@@ -351,6 +351,7 @@ type Consensus struct {
 	Threshold    int           `json:"threshold"`
 	RetryBackoff time.Duration `json:"retry_backoff"`
 	MaxBackoff   time.Duration `json:"max_backoff"`
+	MaxAttempts  int           `json:"max_attempts"` // Max retry attempts before giving up (default: 1000)
 }
 
 // Validate checks that Consensus configuration is valid

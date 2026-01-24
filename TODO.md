@@ -14,12 +14,13 @@
 - [x] TestAuditor_CheckEmptyQueue - empty queue handling (initial)
 - [x] TestRepairDryRun - dry_run returns count without modifying (initial)
 - [x] TestRepairStatusFilter - list filtering by status (initial)
-- [x] TestConsensus_MaxAttemptsExhaustion - max consensus attempts (1000) exhaustion (iteration 1)
+- [x] TestConsensus_MaxAttemptsExhaustion - configurable MaxAttempts exhaustion (iteration 2)
 - [x] TestReceiptValidator_ValidateWithMockClient - full Validate() with mock RPC (iteration 1)
 - [x] TestReceiptValidator_ValidateRPCError - RPC error propagation (iteration 1)
-- [x] TestAuditor_EscalationThresholdConsensus - escalation threshold logic (iteration 1)
+- [x] TestAuditor_EscalationThresholdConsensus - deterministic escalation threshold assertion (iteration 2)
 - [x] TestRepairReorgRetryExhaustion - reorg retry exhaustion (maxReorgRetries=10) (iteration 1)
-- [x] TestRepairConsensusVsSingleProviderMode - consensus vs single provider mode selection (iteration 1)
+- [x] TestRepairConsensusVsSingleProviderMode - single provider mode paths (iteration 1)
+- [x] TestRepairConsensusMode - actual consensus mode with real ConsensusEngine (iteration 2)
 
 ## In Progress
 
@@ -29,10 +30,10 @@
 
 ## Notes
 - All SEND-68 test coverage gaps have been addressed
-- Phase 1 (consensus): maxConsensusAttempts=1000 test added
-- Phase 2 (receipt): Validate() with actual mock RPC added (not just validateReceipts helper)
-- Phase 3 (audit): escalation fallback path at audit.go:302-308 tested
-- Phase 4 (repair): reorg retry and mode selection tests added
+- Iteration 2 fixes:
+  - ISSUE-1: Made MaxAttempts configurable in config.Consensus, test now verifies exact error message after 5 attempts
+  - ISSUE-2: Escalation test now deterministically asserts "healthy" status, not "retrying"
+  - ISSUE-3: Added TestRepairConsensusMode to exercise consensus mode path (url="" + task.consensus != nil)
 - All tests pass: `go test -p 1 ./shovel`
 - Build passes: `go build ./...`
 - Dependencies tidy: `go mod tidy && git diff --exit-code go.mod go.sum`

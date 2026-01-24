@@ -1686,11 +1686,8 @@ func TestHashBlocks_DifferentDataProducesDifferentHashes(t *testing.T) {
 }
 
 // TestConsensus_MaxAttemptsExhaustion verifies that when consensus cannot be
-// reached even after maxConsensusAttempts (1000), the engine returns an error.
-// This tests the exhaustion path at consensus.go:186.
-//
-// Note: We use a very short backoff and context timeout to make this test
-// practical - we can't actually wait for 1000 retries.
+// reached even after MaxAttempts, the engine returns the specific exhaustion error.
+// This tests the exhaustion path at consensus.go:190.
 func TestConsensus_MaxAttemptsExhaustion(t *testing.T) {
 	// Create providers that always disagree - each returns unique data
 	createUniqueProvider := func(id int) *httptest.Server {
@@ -1767,38 +1764,35 @@ func TestConsensus_MaxAttemptsExhaustion(t *testing.T) {
 		jrpc2.New(server3.URL),
 	}
 
+	// Use a small MaxAttempts (5) so the test actually exhausts all attempts
 	// Require all 3 to agree (impossible since they all disagree)
+	const testMaxAttempts = 5
 	ce, err := NewConsensusEngine(
 		providers,
 		config.Consensus{
 			Providers:    3,
 			Threshold:    3, // All must agree - impossible
 			RetryBackoff: 1 * time.Millisecond,
-			MaxBackoff:   5 * time.Millisecond,
+			MaxBackoff:   2 * time.Millisecond,
+			MaxAttempts:  testMaxAttempts, // Low value so we actually hit exhaustion
 		},
 		NewMetrics("test", "test_ig"),
 	)
 	tc.NoErr(t, err)
 
-	// Use context timeout to exit before maxConsensusAttempts
-	// This simulates the exhaustion scenario without waiting forever
-	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
-	defer cancel()
-
+	ctx := context.Background()
 	filter := &glf.Filter{UseLogs: true}
 	_, _, err = ce.FetchWithQuorum(ctx, filter, 17943843, 1)
 
-	// Should fail - either context deadline or (theoretically) max attempts
+	// Must get the specific exhaustion error (not context timeout)
 	if err == nil {
-		t.Error("Expected error when consensus cannot be reached")
+		t.Fatal("Expected error when consensus cannot be reached")
 	}
 
-	// The error should be either context deadline or max attempts exhaustion
-	if !errors.Is(err, context.DeadlineExceeded) {
-		// If not deadline, should be max attempts (unlikely to hit 1000 in 200ms)
-		if !errors.Is(err, context.Canceled) && err.Error() != "consensus not reached after 1000 attempts" {
-			t.Logf("Got expected consensus failure error: %v", err)
-		}
+	// Verify we got the exact exhaustion error with the correct attempt count
+	expectedErr := fmt.Sprintf("consensus not reached after %d attempts", testMaxAttempts)
+	if err.Error() != expectedErr {
+		t.Errorf("Expected error %q, got %q", expectedErr, err.Error())
 	}
 }
 

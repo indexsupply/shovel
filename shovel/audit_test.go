@@ -447,8 +447,11 @@ func TestAuditor_EscalationThresholdConsensus(t *testing.T) {
 	tc.NoErr(t, err)
 
 	// Configure source with 3 providers, require 2 per block (threshold)
-	// Provider order: [bad, bad, good] - initial K=2 selects bad providers
-	// But rotation is based on blockNum % len, so we need to be careful
+	// Provider order: [bad, good, good]
+	// For blockNum=1000001, startIdx = 1000001 % 3 = 2
+	// Initial K=2 picks providers at indices 2, 0: [good, bad]
+	// This gives 1 match out of 2 required -> escalation triggered
+	// Escalation queries all 3: bad(0), good(1), good(2) -> 2 matches >= threshold(2) -> healthy
 	sc := config.Source{
 		Name:    srcName,
 		ChainID: 1,
@@ -480,8 +483,9 @@ func TestAuditor_EscalationThresholdConsensus(t *testing.T) {
 	tc.NoErr(t, err)
 
 	// Run verification - this should trigger escalation
-	// Initial K=2 providers may not all match (depending on rotation)
-	// But escalation queries all 3, and 2 good servers match (>= threshold of 2)
+	// Initial K=2 providers (indices 2,0 = [good,bad]) gives 1 match < 2 required
+	// Escalation queries all 3, gets 2 matches from good servers >= threshold(2)
+	// The threshold-based consensus at audit.go:302-308 should mark it healthy
 	err = aud.verify(ctx, sc, auditTask{
 		srcName:       sc.Name,
 		igName:        task.destConfig.Name,
@@ -490,7 +494,9 @@ func TestAuditor_EscalationThresholdConsensus(t *testing.T) {
 	})
 	tc.NoErr(t, err)
 
-	// Check result - should be healthy via threshold consensus
+	// Check result - MUST be healthy via threshold consensus
+	// The escalation threshold logic (allMatches >= threshold) at audit.go:302-308
+	// should mark the block healthy when 2 out of 3 providers agree
 	var status string
 	err = aud.pgp.QueryRow(ctx, `
 		SELECT audit_status FROM shovel.block_verification
@@ -498,11 +504,8 @@ func TestAuditor_EscalationThresholdConsensus(t *testing.T) {
 	`, sc.Name, task.destConfig.Name, blockNum).Scan(&status)
 	tc.NoErr(t, err)
 
-	// The test passes if status is healthy (threshold met during escalation)
-	// or retrying (if threshold wasn't met - depends on provider rotation)
-	// The key is that no error occurred and the escalation path was exercised
-	t.Logf("Final status: %s", status)
-	if status != "healthy" && status != "retrying" {
-		t.Errorf("expected healthy or retrying status, got %s", status)
+	// Must be healthy - this is the critical assertion for threshold-based consensus
+	if status != "healthy" {
+		t.Errorf("expected healthy status from threshold-based escalation consensus, got %s", status)
 	}
 }
