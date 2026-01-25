@@ -15,7 +15,10 @@ import (
 func TestIntegrations(t *testing.T) {
 	rpcURL := os.Getenv("ETH_RPC_URL")
 	if rpcURL == "" {
-		t.Skip("ETH_RPC_URL not set")
+		rpcURL = os.Getenv("MAINNET_RPC_URL")
+	}
+	if rpcURL == "" {
+		t.Skip("ETH_RPC_URL or MAINNET_RPC_URL not set")
 	}
 	cases := []struct {
 		blockNum uint64
