@@ -8,9 +8,12 @@ import (
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
+	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/propagation"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.37.0"
@@ -48,8 +51,22 @@ type TracingConfig struct {
 // Initialized to a no-op tracer by default; call InitTracing to enable real tracing.
 var Tracer trace.Tracer = otel.Tracer("shovel")
 
+// Meter is the global meter instance for Shovel metrics.
+// Initialized to a no-op meter by default; call InitTracing to enable real metrics.
+var Meter metric.Meter = otel.Meter("shovel")
+
+// OTEL metric instruments.
+var (
+	ConvergeDuration metric.Float64Histogram
+	BlocksIndexed    metric.Int64Counter
+	ProviderLatency  metric.Float64Histogram
+)
+
 // tracerProvider holds the SDK tracer provider for shutdown.
 var tracerProvider *sdktrace.TracerProvider
+
+// meterProvider holds the SDK meter provider for shutdown.
+var meterProvider *sdkmetric.MeterProvider
 
 // InitTracing initializes OpenTelemetry tracing with the given configuration.
 // Returns a shutdown function that should be called on application exit.
@@ -69,6 +86,10 @@ func InitTracing(ctx context.Context, cfg TracingConfig) (func(context.Context) 
 	if !cfg.Enabled {
 		// Return no-op tracer and shutdown
 		Tracer = otel.Tracer("shovel")
+		Meter = otel.Meter("shovel")
+		if err := initMetrics(Meter); err != nil {
+			return nil, err
+		}
 		return func(context.Context) error { return nil }, nil
 	}
 
@@ -135,12 +156,10 @@ func InitTracing(ctx context.Context, cfg TracingConfig) (func(context.Context) 
 	}
 
 	// Create sampler
-	var sampler sdktrace.Sampler
-	if cfg.SampleRate >= 1.0 {
-		sampler = sdktrace.AlwaysSample()
-	} else {
-		sampler = sdktrace.TraceIDRatioBased(cfg.SampleRate)
-	}
+	sampler := sdktrace.ParentBased(
+		sdktrace.TraceIDRatioBased(cfg.SampleRate),
+		sdktrace.WithRemoteParentSampled(sdktrace.AlwaysSample()),
+	)
 
 	// Create tracer provider
 	tracerProvider = sdktrace.NewTracerProvider(
@@ -161,6 +180,16 @@ func InitTracing(ctx context.Context, cfg TracingConfig) (func(context.Context) 
 	// Create named tracer
 	Tracer = tracerProvider.Tracer(cfg.ServiceName)
 
+	// Create meter provider and named meter
+	meterProvider = sdkmetric.NewMeterProvider(
+		sdkmetric.WithResource(res),
+	)
+	otel.SetMeterProvider(meterProvider)
+	Meter = meterProvider.Meter(cfg.ServiceName)
+	if err := initMetrics(Meter); err != nil {
+		return nil, err
+	}
+
 	slog.Info("tracing-initialized",
 		"endpoint", cfg.Endpoint,
 		"protocol", cfg.Protocol,
@@ -170,7 +199,18 @@ func InitTracing(ctx context.Context, cfg TracingConfig) (func(context.Context) 
 	// Return shutdown function
 	return func(ctx context.Context) error {
 		slog.Info("tracing-shutdown")
-		return tracerProvider.Shutdown(ctx)
+		var shutdownErr error
+		if tracerProvider != nil {
+			if err := tracerProvider.Shutdown(ctx); err != nil {
+				shutdownErr = err
+			}
+		}
+		if meterProvider != nil {
+			if err := meterProvider.Shutdown(ctx); err != nil && shutdownErr == nil {
+				shutdownErr = err
+			}
+		}
+		return shutdownErr
 	}, nil
 }
 
@@ -213,4 +253,49 @@ func SpanFromContext(ctx context.Context) trace.Span {
 func WithSpanAttributes(ctx context.Context, attrs ...attribute.KeyValue) {
 	span := trace.SpanFromContext(ctx)
 	span.SetAttributes(attrs...)
+}
+
+func recordSpanError(span trace.Span, err error, msg string) {
+	if err == nil {
+		return
+	}
+	span.RecordError(err)
+	if msg == "" {
+		msg = err.Error()
+	}
+	span.SetStatus(codes.Error, msg)
+}
+
+func initMetrics(meter metric.Meter) error {
+	var err error
+	ConvergeDuration, err = meter.Float64Histogram(
+		"shovel_converge_duration_seconds",
+		metric.WithDescription("Duration of task convergence"),
+		metric.WithUnit("s"),
+	)
+	if err != nil {
+		return fmt.Errorf("creating converge duration metric: %w", err)
+	}
+	BlocksIndexed, err = meter.Int64Counter(
+		"shovel_blocks_indexed_total",
+		metric.WithDescription("Total number of blocks indexed"),
+	)
+	if err != nil {
+		return fmt.Errorf("creating blocks indexed metric: %w", err)
+	}
+	ProviderLatency, err = meter.Float64Histogram(
+		"shovel_provider_latency_seconds",
+		metric.WithDescription("RPC provider latency"),
+		metric.WithUnit("s"),
+	)
+	if err != nil {
+		return fmt.Errorf("creating provider latency metric: %w", err)
+	}
+	return nil
+}
+
+func init() {
+	if err := initMetrics(Meter); err != nil {
+		slog.Error("tracing-metrics-init", "error", err)
+	}
 }

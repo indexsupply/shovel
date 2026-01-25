@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	neturl "net/url"
 	"strings"
 	"time"
 
@@ -527,7 +528,12 @@ func (rs *RepairService) reindexBlocks(ctx context.Context, task *Task, url stri
 						return totalReprocessed, fmt.Errorf("getting prev hash for %d: %w", blockNum-1, fetchErr)
 					}
 				}
-				blocks, fetchErr = task.load(ctx, url, prevHash, blockNum, limit)
+				parsedURL, _ := neturl.Parse(url)
+				providerHost := ""
+				if parsedURL != nil {
+					providerHost = parsedURL.Hostname()
+				}
+				blocks, fetchErr = task.load(ctx, url, providerHost, prevHash, blockNum, limit)
 			}
 
 			if errors.Is(fetchErr, ErrReorg) {

@@ -14,16 +14,16 @@ import (
 	"github.com/indexsupply/shovel/shovel/config"
 	"github.com/indexsupply/shovel/shovel/glf"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/sync/errgroup"
 )
 
 type ConsensusEngine struct {
-	providers       []*jrpc2.Client // Full provider pool (M providers)
+	providers        []*jrpc2.Client // Full provider pool (M providers)
 	initialProviders int             // Initial provider count to use (K <= M)
-	config          config.Consensus
-	metrics         *Metrics
+	config           config.Consensus
+	metrics          *Metrics
 }
 
 func NewConsensusEngine(providers []*jrpc2.Client, conf config.Consensus, metrics *Metrics) (*ConsensusEngine, error) {
@@ -47,10 +47,10 @@ func NewConsensusEngine(providers []*jrpc2.Client, conf config.Consensus, metric
 		initialProviders = len(providers)
 	}
 	return &ConsensusEngine{
-		providers:       providers,
+		providers:        providers,
 		initialProviders: initialProviders,
-		config:          conf,
-		metrics:         metrics,
+		config:           conf,
+		metrics:          metrics,
 	}, nil
 }
 
@@ -82,8 +82,7 @@ func (ce *ConsensusEngine) FetchWithQuorum(ctx context.Context, filter *glf.Filt
 	for attempt := 0; attempt < maxAttempts; attempt++ {
 		// Short-circuit if context is already cancelled
 		if ctx.Err() != nil {
-			span.RecordError(ctx.Err())
-			span.SetStatus(codes.Error, "context cancelled")
+			recordSpanError(span, ctx.Err(), "context cancelled")
 			return nil, nil, ctx.Err()
 		}
 
@@ -95,8 +94,7 @@ func (ce *ConsensusEngine) FetchWithQuorum(ctx context.Context, filter *glf.Filt
 			}
 			select {
 			case <-ctx.Done():
-				span.RecordError(ctx.Err())
-				span.SetStatus(codes.Error, "context cancelled during backoff")
+				recordSpanError(span, ctx.Err(), "context cancelled during backoff")
 				return nil, nil, ctx.Err()
 			case <-time.After(delay):
 			}
@@ -144,12 +142,17 @@ func (ce *ConsensusEngine) FetchWithQuorum(ctx context.Context, filter *glf.Filt
 
 				// Use Get method directly, similar to how Task.load works
 				// but without the batching loop since we want exact range
+				providerStart := time.Now()
 				blocks, err := p.Get(providerCtx, url.String(), filter, start, limit)
+				ProviderLatency.Record(
+					providerCtx,
+					time.Since(providerStart).Seconds(),
+					metric.WithAttributes(attribute.String("provider", url.Hostname())),
+				)
 				if err != nil {
 					errs[i] = err
 					ce.metrics.ProviderError(url.String())
-					providerSpan.RecordError(err)
-					providerSpan.SetStatus(codes.Error, err.Error())
+					recordSpanError(providerSpan, err, "provider fetch failed")
 					return nil // Don't fail the group, we handle errors individually
 				}
 
@@ -162,8 +165,7 @@ func (ce *ConsensusEngine) FetchWithQuorum(ctx context.Context, filter *glf.Filt
 			})
 		}
 		if err := eg.Wait(); err != nil {
-			span.RecordError(err)
-			span.SetStatus(codes.Error, err.Error())
+			recordSpanError(span, err, err.Error())
 			return nil, nil, err // Should not happen given we return nil above
 		}
 
@@ -234,8 +236,7 @@ func (ce *ConsensusEngine) FetchWithQuorum(ctx context.Context, filter *glf.Filt
 	}
 
 	err := fmt.Errorf("consensus not reached after %d attempts", maxAttempts)
-	span.RecordError(err)
-	span.SetStatus(codes.Error, err.Error())
+	recordSpanError(span, err, err.Error())
 	span.SetAttributes(attribute.Int("consensus.attempts", maxAttempts))
 	return nil, nil, err
 }
