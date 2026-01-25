@@ -270,7 +270,7 @@ func (h *Handler) Prom(w http.ResponseWriter, r *http.Request) {
 			res = append(res, line)
 		}
 	}
-	fmt.Fprintf(w, strings.Join(res, "\n"))
+	fmt.Fprint(w, strings.Join(res, "\n"))
 }
 
 func (h *Handler) Diag(w http.ResponseWriter, r *http.Request) {

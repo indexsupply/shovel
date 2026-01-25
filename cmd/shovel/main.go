@@ -134,6 +134,15 @@ func main() {
 	pg, err := wpg.NewPool(ctx, pgurl)
 	check(err)
 
+	// Initialize OpenTelemetry tracing
+	tracingCfg := shovel.TracingConfigFromEnv()
+	if tracingCfg.ServiceVersion == "" {
+		tracingCfg.ServiceVersion = Commit
+	}
+	shutdownTracing, err := shovel.InitTracing(ctx, tracingCfg)
+	check(err)
+	defer shutdownTracing(ctx)
+
 	if !skipMigrate {
 		dbtx, err := pg.Begin(ctx)
 		check(err)

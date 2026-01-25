@@ -13,6 +13,9 @@ import (
 	"github.com/indexsupply/shovel/jrpc2"
 	"github.com/indexsupply/shovel/shovel/config"
 	"github.com/indexsupply/shovel/shovel/glf"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -52,6 +55,17 @@ func NewConsensusEngine(providers []*jrpc2.Client, conf config.Consensus, metric
 }
 
 func (ce *ConsensusEngine) FetchWithQuorum(ctx context.Context, filter *glf.Filter, start, limit uint64) ([]eth.Block, []byte, error) {
+	ctx, span := Tracer.Start(ctx, "consensus.FetchWithQuorum",
+		trace.WithAttributes(
+			attribute.Int64("block.start", int64(start)),
+			attribute.Int64("block.limit", int64(limit)),
+			attribute.Int("providers.total", len(ce.providers)),
+			attribute.Int("providers.initial", ce.initialProviders),
+			attribute.Int("consensus.threshold", ce.config.Threshold),
+		),
+	)
+	defer span.End()
+
 	var (
 		conf = ce.config
 		t0   = time.Now()
@@ -68,6 +82,8 @@ func (ce *ConsensusEngine) FetchWithQuorum(ctx context.Context, filter *glf.Filt
 	for attempt := 0; attempt < maxAttempts; attempt++ {
 		// Short-circuit if context is already cancelled
 		if ctx.Err() != nil {
+			span.RecordError(ctx.Err())
+			span.SetStatus(codes.Error, "context cancelled")
 			return nil, nil, ctx.Err()
 		}
 
@@ -79,6 +95,8 @@ func (ce *ConsensusEngine) FetchWithQuorum(ctx context.Context, filter *glf.Filt
 			}
 			select {
 			case <-ctx.Done():
+				span.RecordError(ctx.Err())
+				span.SetStatus(codes.Error, "context cancelled during backoff")
 				return nil, nil, ctx.Err()
 			case <-time.After(delay):
 			}
@@ -113,19 +131,39 @@ func (ce *ConsensusEngine) FetchWithQuorum(ctx context.Context, filter *glf.Filt
 			eg.Go(func() error {
 				// Cache URL at start to avoid rotation drift across multiple calls
 				url := p.NextURL()
+
+				// Create child span for this provider fetch
+				// Use host-only to avoid exposing API keys in URL path/query
+				providerCtx, providerSpan := Tracer.Start(egCtx, "consensus.ProviderFetch",
+					trace.WithAttributes(
+						attribute.String("provider.host", url.Hostname()),
+						attribute.Int("provider.index", i),
+					),
+				)
+				defer providerSpan.End()
+
 				// Use Get method directly, similar to how Task.load works
 				// but without the batching loop since we want exact range
-				blocks, err := p.Get(egCtx, url.String(), filter, start, limit)
+				blocks, err := p.Get(providerCtx, url.String(), filter, start, limit)
 				if err != nil {
 					errs[i] = err
 					ce.metrics.ProviderError(url.String())
+					providerSpan.RecordError(err)
+					providerSpan.SetStatus(codes.Error, err.Error())
 					return nil // Don't fail the group, we handle errors individually
 				}
+
+				// Record success attributes
+				providerSpan.SetAttributes(
+					attribute.Int("blocks.count", len(blocks)),
+				)
 				responses[i] = blocks
 				return nil
 			})
 		}
 		if err := eg.Wait(); err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
 			return nil, nil, err // Should not happen given we return nil above
 		}
 
@@ -150,13 +188,21 @@ func (ce *ConsensusEngine) FetchWithQuorum(ctx context.Context, filter *glf.Filt
 		}
 
 		if canonIdx >= 0 {
+			elapsed := time.Since(t0)
+			span.SetAttributes(
+				attribute.Int("consensus.attempts", attempt+1),
+				attribute.Int("consensus.active_providers", numProviders),
+				attribute.Int("blocks.returned", len(responses[canonIdx])),
+				attribute.String("consensus.hash", canonHash[:16]+"..."), // Truncate for readability
+				attribute.Int64("duration_ms", elapsed.Milliseconds()),
+			)
 			slog.DebugContext(ctx, "consensus-reached",
 				"n", start,
 				"threshold", conf.Threshold,
 				"active_providers", numProviders,
 				"total_providers", len(ce.providers),
 				"attempt", attempt+1,
-				"elapsed", time.Since(t0),
+				"elapsed", elapsed,
 			)
 			return responses[canonIdx], []byte(canonHash), nil
 		}
@@ -187,7 +233,11 @@ func (ce *ConsensusEngine) FetchWithQuorum(ctx context.Context, filter *glf.Filt
 		)
 	}
 
-	return nil, nil, fmt.Errorf("consensus not reached after %d attempts", maxAttempts)
+	err := fmt.Errorf("consensus not reached after %d attempts", maxAttempts)
+	span.RecordError(err)
+	span.SetStatus(codes.Error, err.Error())
+	span.SetAttributes(attribute.Int("consensus.attempts", maxAttempts))
+	return nil, nil, err
 }
 
 // HashBlocksWithRange computes a deterministic hash of the logs in the blocks,

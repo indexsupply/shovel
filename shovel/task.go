@@ -26,6 +26,9 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -433,11 +436,25 @@ func (task *Task) Converge() error {
 		url     = nextURL.String()
 		nrpc    = uint64(0)
 	)
+
+	// Create trace span for this convergence cycle
+	ctx, span := Tracer.Start(ctx, "task.Converge",
+		trace.WithAttributes(
+			attribute.String("source.name", task.srcName),
+			attribute.Int64("source.chain_id", int64(task.srcChainID)),
+			attribute.String("integration.name", task.destConfig.Name),
+			attribute.Bool("consensus.enabled", task.consensus != nil),
+		),
+	)
+	defer span.End()
+
 	ctx = wctx.WithSrcHost(ctx, nextURL.Hostname())
 	ctx = wctx.WithCounter(ctx, &nrpc)
 
 	pgtx, err := task.pgp.Begin(ctx)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "unable to start tx")
 		return fmt.Errorf("unable to start tx: %w", err)
 	}
 	// Serialize all task updates and deletes for this (src, ig) pair using
@@ -449,6 +466,8 @@ func (task *Task) Converge() error {
 	// Here we reuse the precomputed task.lockid so that both the main task
 	// loop and the auditor share the same lock namespace.
 	if _, err := pgtx.Exec(ctx, "select pg_advisory_xact_lock($1)", task.lockid); err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "acquiring task lock")
 		return fmt.Errorf("acquiring task lock: %w", err)
 	}
 	defer pgtx.Rollback(ctx)
@@ -456,6 +475,8 @@ func (task *Task) Converge() error {
 	for reorgs := 0; reorgs <= 1000; reorgs++ {
 		localNum, localHash, err := task.latest(ctx, pgtx)
 		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, "getting latest from task")
 			return fmt.Errorf("getting latest from task: %w", err)
 		}
 		if task.stop > 0 && localNum >= task.stop {
@@ -463,6 +484,8 @@ func (task *Task) Converge() error {
 		}
 		gethNum, gethHash, err := task.src.Latest(ctx, url, localNum)
 		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, "getting latest from eth")
 			return fmt.Errorf("getting latest from eth: %w", err)
 		}
 		var (
@@ -473,6 +496,8 @@ func (task *Task) Converge() error {
 		case len(task.destConfig.Dependencies) > 0:
 			depNum, depHash, err := task.latestDependency(pgtx)
 			if err != nil {
+				span.RecordError(err)
+				span.SetStatus(codes.Error, "getting latest from dependencies")
 				return fmt.Errorf("getting latest from dependencies: %w", err)
 			}
 			switch {
@@ -497,6 +522,8 @@ func (task *Task) Converge() error {
 				"local", localNum,
 				"remote", targetNum,
 			)
+			span.RecordError(ErrAhead)
+			span.SetStatus(codes.Error, "local ahead of remote")
 			return ErrAhead
 		}
 		if localNum == targetNum {
@@ -506,6 +533,15 @@ func (task *Task) Converge() error {
 		if delta == 0 {
 			return ErrNothingNew
 		}
+
+		// Add block range to span
+		span.SetAttributes(
+			attribute.Int64("block.local", int64(localNum)),
+			attribute.Int64("block.target", int64(targetNum)),
+			attribute.Int64("block.delta", int64(delta)),
+			attribute.Int64("block.start", int64(localNum+1)),
+		)
+
 		ctx = wctx.WithNumLimit(ctx, localNum+1, delta)
 		var (
 			blocks []eth.Block
@@ -530,27 +566,39 @@ func (task *Task) Converge() error {
 				"h", fmt.Sprintf("%.4x", localHash),
 			)
 			if err := task.Delete(pgtx, localNum); err != nil {
+				span.RecordError(err)
+				span.SetStatus(codes.Error, "deleting during reorg")
 				return fmt.Errorf("deleting during reorg: %w", err)
 			}
 			continue
 		}
 		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, "loading data failed")
 			return fmt.Errorf("loading data: %w", err)
 		}
 		if err := pgtx.Commit(ctx); err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, "committing task_updates tx")
 			return fmt.Errorf("comitting task_updates tx: %w", err)
 		}
 
 		pgtx, err = task.pgp.Begin(ctx)
 		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, "starting insert pg tx")
 			return fmt.Errorf("starting insert pg tx: %w", err)
 		}
 		if _, err := pgtx.Exec(ctx, "select pg_advisory_xact_lock($1)", task.lockid); err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, "acquiring task lock")
 			return fmt.Errorf("acquiring task lock: %w", err)
 		}
 		nrows, err := task.insert(ctx, pgtx, blocks)
 		if err != nil {
 			pgtx.Rollback(ctx)
+			span.RecordError(err)
+			span.SetStatus(codes.Error, "inserting data")
 			return fmt.Errorf("inserting data: %w", err)
 		}
 		if task.receiptValidator != nil && task.receiptValidator.Enabled() {
@@ -567,6 +615,8 @@ func (task *Task) Converge() error {
 						retryCount = 0
 					default:
 						pgtx.Rollback(ctx)
+						span.RecordError(err)
+						span.SetStatus(codes.Error, "checking receipt retry count")
 						return fmt.Errorf("checking receipt retry count: %w", err)
 					}
 				}
@@ -590,6 +640,8 @@ func (task *Task) Converge() error {
 					_, err := pgtx.Exec(ctx, unverifiedQ, task.srcName, task.destConfig.Name, b.Num(), retryCount)
 					if err != nil {
 						pgtx.Rollback(ctx)
+						span.RecordError(err)
+						span.SetStatus(codes.Error, "marking block as receipt_unverified")
 						return fmt.Errorf("marking block as receipt_unverified: %w", err)
 					}
 
@@ -630,26 +682,38 @@ func (task *Task) Converge() error {
 					// Create fresh transaction for cleanup operations (avoiding nested transaction)
 					cleanupTx, err := task.pgp.Begin(ctx)
 					if err != nil {
+						span.RecordError(err)
+						span.SetStatus(codes.Error, "starting cleanup tx")
 						return fmt.Errorf("starting cleanup tx: %w", err)
 					}
 					defer cleanupTx.Rollback(ctx)
 
 					if _, err := cleanupTx.Exec(ctx, "select pg_advisory_xact_lock($1)", task.lockid); err != nil {
+						span.RecordError(err)
+						span.SetStatus(codes.Error, "acquiring task lock")
 						return fmt.Errorf("acquiring task lock: %w", err)
 					}
 
 					if _, err := cleanupTx.Exec(ctx, q, task.srcName, task.destConfig.Name, b.Num()); err != nil {
+						span.RecordError(err)
+						span.SetStatus(codes.Error, "updating receipt verification status")
 						return fmt.Errorf("updating receipt verification status: %w", err)
 					}
 
 					if err := task.Delete(cleanupTx, b.Num()); err != nil {
+						span.RecordError(err)
+						span.SetStatus(codes.Error, "deleting mismatched block")
 						return fmt.Errorf("deleting mismatched block: %w", err)
 					}
 
 					if err := cleanupTx.Commit(ctx); err != nil {
+						span.RecordError(err)
+						span.SetStatus(codes.Error, "committing cleanup tx")
 						return fmt.Errorf("committing cleanup tx: %w", err)
 					}
 
+					span.RecordError(err)
+					span.SetStatus(codes.Error, "validating receipts")
 					return fmt.Errorf("validating receipts: %w", err)
 				}
 			}
@@ -658,6 +722,8 @@ func (task *Task) Converge() error {
 		err = task.update(pgtx, last.Num(), last.Hash(), targetNum, targetHash, delta, nrows, time.Since(t0))
 		if err != nil {
 			pgtx.Rollback(ctx)
+			span.RecordError(err)
+			span.SetStatus(codes.Error, "updating task")
 			return fmt.Errorf("updating task: %w", err)
 		}
 		// Create verification rows for auditing. This handles both consensus
@@ -693,6 +759,8 @@ func (task *Task) Converge() error {
 			providerSetJSON, err := json.Marshal(providerSet)
 			if err != nil {
 				pgtx.Rollback(ctx)
+				span.RecordError(err)
+				span.SetStatus(codes.Error, "marshaling provider set")
 				return fmt.Errorf("marshaling provider set: %w", err)
 			}
 			// Store per-block hashes so that Phase 3 audits can validate a single
@@ -716,6 +784,8 @@ func (task *Task) Converge() error {
 				)
 				if err != nil {
 					pgtx.Rollback(ctx)
+					span.RecordError(err)
+					span.SetStatus(codes.Error, "updating block_verification")
 					return fmt.Errorf("updating block_verification: %w", err)
 				}
 			}
@@ -757,11 +827,15 @@ func (task *Task) Converge() error {
 				)
 				if err != nil {
 					pgtx.Rollback(ctx)
+					span.RecordError(err)
+					span.SetStatus(codes.Error, "updating block_verification")
 					return fmt.Errorf("updating block_verification: %w", err)
 				}
 			}
 		}
 		if err := pgtx.Commit(ctx); err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, "committing task tx")
 			return fmt.Errorf("committing task tx: %w", err)
 		}
 		slog.InfoContext(ctx, "converge",
@@ -774,6 +848,8 @@ func (task *Task) Converge() error {
 		)
 		return nil
 	}
+	span.RecordError(ErrReorg)
+	span.SetStatus(codes.Error, "reorg limit exceeded")
 	return ErrReorg
 }
 
